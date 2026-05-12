@@ -1177,52 +1177,6 @@ namespace Basis.BasisUI
                 descriptor.ForceRebuild();
             };
 
-            // --- Realtime Reflection Probes ---
-            PanelElementDescriptor realtimeReflectionGroup =
-                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
-            realtimeReflectionGroup.SetTitle(BasisLocalization.Get("settings.graphics.realtimeReflection.title"));
-            realtimeReflectionGroup.SetDescription(BasisLocalization.Get("settings.graphics.realtimeReflection.description"));
-
-            PanelToggle toggleRealtimeReflection = PanelToggle.CreateNewEntry(realtimeReflectionGroup.ContentParent);
-            toggleRealtimeReflection.AssignBinding(BasisSettingsDefaults.UseRealtimeReflectionProbes);
-            toggleRealtimeReflection.Descriptor.SetTitle(BasisLocalization.Get("settings.graphics.realtimeReflection.toggle"));
-            toggleRealtimeReflection.Descriptor.SetDescription(BasisLocalization.Get("settings.graphics.realtimeReflection.toggle.description"));
-
-            PanelDropdown dropdownReflectionRate = PanelDropdown.CreateNewEntry(realtimeReflectionGroup.ContentParent);
-            dropdownReflectionRate.Descriptor.SetTitle(BasisLocalization.Get("settings.graphics.realtimeReflection.rate"));
-            dropdownReflectionRate.AssignEntries(new List<string> { "Match Render", "30hz", "15hz", "10hz", "5hz", "1hz" });
-            dropdownReflectionRate.AssignBinding(BasisSettingsDefaults.RealtimeReflectionProbeRate);
-
-            dropdownReflectionRate.Descriptor.SetActive(toggleRealtimeReflection.Value);
-            toggleRealtimeReflection.OnValueChanged += (val) =>
-            {
-                dropdownReflectionRate.Descriptor.SetActive(val);
-                realtimeReflectionGroup.ForceRebuild();
-                descriptor.ForceRebuild();
-            };
-
-            // --- Motion Vectors ---
-            PanelElementDescriptor motionVectorsGroup =
-                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
-            motionVectorsGroup.SetTitle(BasisLocalization.Get("settings.graphics.motionVectors.title"));
-            motionVectorsGroup.SetDescription(BasisLocalization.Get("settings.graphics.motionVectors.description"));
-
-            PanelToggle toggleMotionVectors = PanelToggle.CreateNewEntry(motionVectorsGroup.ContentParent);
-            toggleMotionVectors.AssignBinding(BasisSettingsDefaults.UseMotionVectors);
-            toggleMotionVectors.Descriptor.SetTitle(BasisLocalization.Get("settings.graphics.motionVectors.toggle"));
-            toggleMotionVectors.Descriptor.SetDescription(BasisLocalization.Get("settings.graphics.motionVectors.toggle.description"));
-
-            // --- APV Memory Budget ---
-            PanelElementDescriptor apvBudgetGroup =
-                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
-            apvBudgetGroup.SetTitle(BasisLocalization.Get("settings.graphics.apvBudget.title"));
-            apvBudgetGroup.SetDescription(BasisLocalization.Get("settings.graphics.apvBudget.description"));
-
-            PanelDropdown dropdownAPVBudget = PanelDropdown.CreateNewEntry(apvBudgetGroup.ContentParent);
-            dropdownAPVBudget.Descriptor.SetTitle(BasisLocalization.Get("settings.graphics.apvBudget.level"));
-            dropdownAPVBudget.AssignEntries(new List<string> { "low", "medium", "high" });
-            dropdownAPVBudget.AssignBinding(BasisSettingsDefaults.APVMemoryBudget);
-
             // --- Camera Near/Far Override ---
             PanelElementDescriptor cameraClipGroup =
                 PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
@@ -1382,10 +1336,6 @@ namespace Basis.BasisUI
 
             BasisSettingsDefaults.UseBloomOverride.ResetToDefault();
             BasisSettingsDefaults.BloomIntensity.ResetToDefault();
-            BasisSettingsDefaults.UseRealtimeReflectionProbes.ResetToDefault();
-            BasisSettingsDefaults.RealtimeReflectionProbeRate.ResetToDefault();
-            BasisSettingsDefaults.UseMotionVectors.ResetToDefault();
-            BasisSettingsDefaults.APVMemoryBudget.ResetToDefault();
 
             // Note: Resolution & ScreenMode are not shown as BasisSettingsDefaults bindings in your snippet.
             // If you later add bindings for them, add them here.
@@ -1559,6 +1509,11 @@ namespace Basis.BasisUI
             toggleEyeGazeGizmo.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.eyeGazeGizmo.description"));
             toggleEyeGazeGizmo.AssignBinding(BasisSettingsDefaults.GizmoEyeGaze);
 
+            PanelToggle toggleIKColliders = PanelToggle.CreateNewEntry(gizmosGroup.ContentParent);
+            toggleIKColliders.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.ikColliders"));
+            toggleIKColliders.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.ikColliders.description"));
+            toggleIKColliders.AssignBinding(BasisSettingsDefaults.GizmoIKColliders);
+
             // Hide sub-toggles when the master is off — they're meaningless without it
             // and shouldn't clutter the page.
             void RefreshGizmoSubVisibility(bool masterOn)
@@ -1569,6 +1524,7 @@ namespace Basis.BasisUI
                 toggleTrackerGizmos.Descriptor.SetActive(masterOn);
                 toggleLinkedTrackerLines.Descriptor.SetActive(masterOn);
                 toggleEyeGazeGizmo.Descriptor.SetActive(masterOn);
+                toggleIKColliders.Descriptor.SetActive(masterOn);
                 gizmosGroup.ForceRebuild();
             }
             RefreshGizmoSubVisibility(toggleShowGizmos.Value);
@@ -1648,6 +1604,25 @@ namespace Basis.BasisUI
             toggleDisableLogging.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.disableLogging"));
             toggleDisableLogging.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.disableLogging.description"));
             toggleDisableLogging.AssignBinding(BasisSettingsDefaults.DisableLogging);
+
+            PanelDropdown dropdownLogTagFilter = PanelDropdown.CreateNewEntry(debugGroup.ContentParent);
+            dropdownLogTagFilter.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.logTagFilter"));
+            dropdownLogTagFilter.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.logTagFilter.description"));
+            List<string> tagEntries = new List<string> { BasisSettingsDefaults.DebugLogFilterAll };
+            tagEntries.AddRange(Enum.GetNames(typeof(BasisDebug.LogTag)));
+            dropdownLogTagFilter.AssignEntries(tagEntries);
+            dropdownLogTagFilter.AssignBinding(BasisSettingsDefaults.DebugLogTagFilter);
+
+            PanelDropdown dropdownLogLevelFilter = PanelDropdown.CreateNewEntry(debugGroup.ContentParent);
+            dropdownLogLevelFilter.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.logLevelFilter"));
+            dropdownLogLevelFilter.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.logLevelFilter.description"));
+            dropdownLogLevelFilter.AssignEntries(new List<string>
+            {
+                BasisSettingsDefaults.DebugLogFilterAll,
+                BasisSettingsDefaults.DebugLogLevelWarningsAndErrors,
+                BasisSettingsDefaults.DebugLogLevelErrorsOnly,
+            });
+            dropdownLogLevelFilter.AssignBinding(BasisSettingsDefaults.DebugLogLevelFilter);
 
             // ---- Section Visibility Toggles ----
             PanelElementDescriptor sectionTogglesGroup =
@@ -1932,6 +1907,7 @@ namespace Basis.BasisUI
             BasisSettingsDefaults.TrackerGizmos.ResetToDefault();
             BasisSettingsDefaults.LinkedTrackerLines.ResetToDefault();
             BasisSettingsDefaults.GizmoEyeGaze.ResetToDefault();
+            BasisSettingsDefaults.GizmoIKColliders.ResetToDefault();
             BasisSettingsDefaults.VisualState.SetValue("off");
             BasisSettingsDefaults.EnableStatistics.ResetToDefault();
             BasisSettingsDefaults.EnableStreamingMeta.ResetToDefault();

@@ -671,14 +671,11 @@ namespace Cilbox
 		{
 			public CilboxMethod meth;
 			public CilboxProxy o;
-
-			//will reuse the object now instead of every call creating new object.
-			private object[] a1; private object[] a2; private object[] a3; private object[] a4;
-		    public void ActionCallback0( )                                         { meth.Interpret( o, Array.Empty<object>() ); }
-		    public void ActionCallback1<T0>( T0 o0 )                               { var a = a1 ??= new object[1]; a[0] = o0; meth.Interpret( o, a ); }
-		    public void ActionCallback2<T0,T1>( T0 o0, T1 o1 )                     { var a = a2 ??= new object[2]; a[0] = o0; a[1] = o1; meth.Interpret( o, a ); }
-		    public void ActionCallback3<T0,T1,T2>( T0 o0, T1 o1, T2 o2 )           { var a = a3 ??= new object[3]; a[0] = o0; a[1] = o1; a[2] = o2; meth.Interpret( o, a ); }
-		    public void ActionCallback4<T0,T1,T2,T3>( T0 o0, T1 o1, T2 o2, T3 o3 ) { var a = a4 ??= new object[4]; a[0] = o0; a[1] = o1; a[2] = o2; a[3] = o3; meth.Interpret( o, a ); }
+		    public void ActionCallback0( )                                         { object[] oa = o.box.RentObjectArray(0); meth.Interpret( o, oa ); }
+		    public void ActionCallback1<T0>( T0 o0 )                               { object[] oa = o.box.RentObjectArray(1); oa[0] = o0; meth.Interpret( o, oa ); }
+		    public void ActionCallback2<T0,T1>( T0 o0, T1 o1 )                     { object[] oa = o.box.RentObjectArray(2); oa[0] = o0; oa[1] = o1; meth.Interpret( o, oa ); }
+		    public void ActionCallback3<T0,T1,T2>( T0 o0, T1 o1, T2 o2 )           { object[] oa = o.box.RentObjectArray(3); oa[0] = o0; oa[1] = o1; oa[2] = o2; meth.Interpret( o, oa ); }
+		    public void ActionCallback4<T0,T1,T2,T3>( T0 o0, T1 o1, T2 o2, T3 o3 ) { object[] oa = o.box.RentObjectArray(4); oa[0] = o0; oa[1] = o1; oa[2] = o2; oa[3] = o3; meth.Interpret( o, oa ); }
 		}
 	}
 }
