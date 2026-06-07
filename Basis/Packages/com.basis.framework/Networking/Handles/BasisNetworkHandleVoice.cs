@@ -19,7 +19,16 @@ public static class BasisNetworkHandleVoice
     {
         try
         {
-            await semaphore.WaitAsync(TimeoutMilliseconds);
+            if (!await semaphore.WaitAsync(TimeoutMilliseconds))
+            {
+                // Timed out before acquiring the lock — drop this packet rather than
+                // process it unsynchronized, and don't release a lock we never took.
+                if (Reader.IsNull == false)
+                {
+                    Reader.Recycle();
+                }
+                return;
+            }
             try
             {
                 if (Message.TryDequeue(out ServerAudioSegmentMessage audioUpdate) == false)
@@ -27,7 +36,7 @@ public static class BasisNetworkHandleVoice
                     audioUpdate = new ServerAudioSegmentMessage();
                 }
                 audioUpdate.Deserialize(Reader, largeId);
-                if (BasisNetworkPlayers.RemotePlayers.TryGetValue(audioUpdate.playerIdMessage.playerID, out BasisNetworkReceiver player))
+                if (BasisNetworkPlayers.RemotePlayerReceivers.TryGetValue(audioUpdate.playerIdMessage.playerID, out BasisNetworkReceiver player))
                 {
                     if (audioUpdate.audioSegmentData.LengthUsed == 0)
                     {
@@ -78,7 +87,16 @@ public static class BasisNetworkHandleVoice
     {
         try
         {
-            await shoutSemaphore.WaitAsync(TimeoutMilliseconds);
+            if (!await shoutSemaphore.WaitAsync(TimeoutMilliseconds))
+            {
+                // Timed out before acquiring the lock — drop this packet rather than
+                // process it unsynchronized, and don't release a lock we never took.
+                if (Reader.IsNull == false)
+                {
+                    Reader.Recycle();
+                }
+                return;
+            }
             try
             {
                 if (ShoutMessage.TryDequeue(out ServerAudioSegmentMessage audioUpdate) == false)

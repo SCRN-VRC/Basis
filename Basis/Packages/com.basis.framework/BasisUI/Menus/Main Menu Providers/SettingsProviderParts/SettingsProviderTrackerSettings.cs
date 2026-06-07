@@ -1,7 +1,10 @@
+using Basis.BasisUI.Styling;
 using Basis.Scripts.Avatar;
+using Basis.Scripts.Debugging;
 using Basis.Scripts.Device_Management;
 using Basis.Scripts.Device_Management.Devices;
 using Basis.Scripts.Device_Management.Devices.Pairing;
+using Basis.Scripts.Drivers;
 using Basis.Scripts.TransformBinders.BoneControl;
 using System;
 using System.Collections.Generic;
@@ -59,6 +62,7 @@ namespace Basis.BasisUI
         {
             public string Id;
             public PanelElementDescriptor Group;
+            public PanelButton IdentifyButton;
             public PanelDropdown LinkDropdown;
             public PanelDropdown RoleDropdown;
         }
@@ -154,6 +158,9 @@ namespace Basis.BasisUI
             }
             BasisTrackerPairing.OnPairingsChanged += handleChange;
             BasisTrackerRoleOverride.OnOverridesChanged += handleChange;
+            BasisTrackerIdentifyGizmos.OnIdentifyChanged += handleChange;
+            BasisLocalAvatarDriver.CalibrationComplete += handleChange;
+            BasisAvatarIKStageCalibration.OnFullBodyCalibrated += handleChange;
 
             tabPage.OnInstanceReleased += () =>
             {
@@ -164,6 +171,9 @@ namespace Basis.BasisUI
                 }
                 BasisTrackerPairing.OnPairingsChanged -= handleChange;
                 BasisTrackerRoleOverride.OnOverridesChanged -= handleChange;
+                BasisTrackerIdentifyGizmos.OnIdentifyChanged -= handleChange;
+                BasisLocalAvatarDriver.CalibrationComplete -= handleChange;
+                BasisAvatarIKStageCalibration.OnFullBodyCalibrated -= handleChange;
                 state.TrackersContainer = null;
                 state.TrackersGroup = null;
                 state.TabDescriptor = null;
@@ -195,6 +205,7 @@ namespace Basis.BasisUI
             };
 
             handleChange();
+            SettingsProvider.TrackerSettingsExtraBuilder?.Invoke(tabRoot);
             tabDesc.ForceRebuild();
             return tabPage;
         }
@@ -276,6 +287,7 @@ namespace Basis.BasisUI
                 {
                     entry.Group.SetDescription(BuildEntryDescription(input));
                 }
+                ApplyIdentifyVisual(entry.IdentifyButton, input);
                 if (entry.LinkDropdown != null && !entry.LinkDropdown.IsReleased)
                 {
                     entry.LinkDropdown.SetValueWithoutNotify(ResolveCurrentLink(id, ids));
@@ -355,6 +367,16 @@ namespace Basis.BasisUI
             group.SetTitle(title);
             group.SetDescription(BuildEntryDescription(input));
 
+            PanelButton identifyButton = PanelButton.CreateNew(group.ContentParent);
+            identifyButton.Descriptor.SetDescription(BasisLocalization.Get("trackerLinking.identifyDescription"));
+            if (identifyButton.ButtonStyling != null)
+            {
+                identifyButton.ButtonStyling.ShowIndicator(false);
+            }
+            ApplyIdentifyVisual(identifyButton, input);
+            BasisInput capturedInput = input;
+            identifyButton.OnClicked += () => BasisTrackerIdentifyGizmos.Toggle(capturedInput);
+
             PanelDropdown linkDropdown = PanelDropdown.CreateNewEntry(group.ContentParent);
             linkDropdown.Descriptor.SetTitle(BasisLocalization.Get("trackerLinking.linkLabel"));
             linkDropdown.Descriptor.SetDescription(BasisLocalization.Get("trackerLinking.linkDescription"));
@@ -409,9 +431,42 @@ namespace Basis.BasisUI
             {
                 Id = id,
                 Group = group,
+                IdentifyButton = identifyButton,
                 LinkDropdown = linkDropdown,
                 RoleDropdown = roleDropdown,
             });
+        }
+
+        private static void ApplyIdentifyVisual(PanelButton button, BasisInput input)
+        {
+            if (button == null || button.IsReleased) return;
+            PanelElementDescriptor descriptor = button.Descriptor;
+            if (descriptor == null || !descriptor.HasTitle) return;
+
+            string label;
+            if (BasisTrackerIdentifyGizmos.TryGetColor(input, out Color color))
+            {
+                string hex = ColorUtility.ToHtmlStringRGB(color);
+                label = $"<b><color=#{hex}>{BasisLocalization.Get("trackerLinking.identifyShowing")}</color></b>";
+            }
+            else
+            {
+                string accentHex = ColorUtility.ToHtmlStringRGB(ResolveAccentColor());
+                label = $"<b><color=#{accentHex}>{BasisLocalization.Get("trackerLinking.identifyLabel")}</color></b>";
+            }
+
+            if (input != null && input.TryGetRole(out BasisBoneTrackedRole role))
+            {
+                label += $" <size=85%>{BasisLocalization.Get("trackerLinking.identifyCalibratedRole", role.ToString())}</size>";
+            }
+
+            descriptor.SetTitle(label);
+        }
+
+        private static Color ResolveAccentColor()
+        {
+            UiStylePalette palette = UiStyleSettings.GetActivePalette();
+            return palette != null ? palette.AccentColor : new Color(0.14f, 0.46f, 0.93f);
         }
 
         private static string BuildEntryDescription(BasisInput input)
@@ -561,6 +616,16 @@ namespace Basis.BasisUI
             {
                 weightSmoothing.Descriptor.SetDescription(BasisLocalization.Get("trackerLinking.tuning.weightSmoothing.description"));
             }
+
+            // Rotation low-pass half-life (seconds).
+            PanelSlider rotationHalfLife = PanelSlider.CreateAndBind(parent,
+                PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("trackerLinking.tuning.rotationHalfLife"),
+                    0f, 0.3f, false, 3, ValueDisplayMode.Raw),
+                BasisSettingsDefaults.PairingRotationHalfLife);
+            if (rotationHalfLife != null)
+            {
+                rotationHalfLife.Descriptor.SetDescription(BasisLocalization.Get("trackerLinking.tuning.rotationHalfLife.description"));
+            }
         }
 
         private static void ResetTrackerSettingsDefaults()
@@ -576,6 +641,10 @@ namespace Basis.BasisUI
             BasisSettingsDefaults.PairingEmaAlpha.ResetToDefault();
             BasisSettingsDefaults.PairingDistanceEmaAlpha.ResetToDefault();
             BasisSettingsDefaults.PairingWeightSmoothing.ResetToDefault();
+            BasisSettingsDefaults.PairingRotationHalfLife.ResetToDefault();
+            BasisTrackerRoleOverride.ClearAll();
+            BasisTrackerPairing.ClearAll();
+            BasisTrackerIdentifyGizmos.ClearAll();
         }
 
         private static List<BasisInput> CollectEligibleTrackers()

@@ -121,10 +121,10 @@ public class BasisLocalHandDriver
     /// </summary>
     public void ReInitialize(Animator OriginalAnimator)
     {
-        int cacheKey = BasisAvatarModelCache.GetKey(OriginalAnimator);
+        EntityId cacheKey = BasisAvatarModelCache.GetKey(OriginalAnimator);
 
         // --- Cache hit: copy pose grid data without instantiating a copy ---
-        if (cacheKey != 0 && BasisAvatarModelCache.TryGet(cacheKey, out var entry) && entry.HandPoseGrid != null)
+        if (cacheKey != EntityId.None && BasisAvatarModelCache.TryGet(cacheKey, out var entry) && entry.HandPoseGrid != null)
         {
             RestoreFromCache(entry.HandPoseGrid);
             RebuildTransformAccess();
@@ -145,7 +145,7 @@ public class BasisLocalHandDriver
             GameObject.Destroy(CopyOfOrigionally);
             return;
         }
-        if (BasisTransformMapping.AutoDetectReferences(Animator, Animator.transform, ref Mapping) == false)
+        if (BasisTransformMapping.AutoDetectReferences(Animator, Animator.transform, ref Mapping, detectArmTwist: false) == false)
         {
             GameObject.Destroy(CopyOfOrigionally);
             return;
@@ -189,13 +189,15 @@ public class BasisLocalHandDriver
             }
         }
 
+        poseHandler.Dispose();
+
         GameObject.Destroy(CopyOfOrigionally);
 
         BuildNativePoseGrid();
         RebuildTransformAccess();
 
         // Store in cache for future loads of the same avatar
-        if (cacheKey != 0)
+        if (cacheKey != EntityId.None)
         {
             SaveToCache(cacheKey);
         }
@@ -208,7 +210,7 @@ public class BasisLocalHandDriver
     //  Cache save / restore
     // ────────────────────────────────────────────────────────────
 
-    private void SaveToCache(int cacheKey)
+    private void SaveToCache(EntityId cacheKey)
     {
         int totalElements = _nativePoseGrid.Length;
         float[] snapshot = new float[totalElements * 4];

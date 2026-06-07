@@ -35,44 +35,55 @@ namespace Basis.BasisUI
 
             AdminTabController controller = tab.gameObject.AddComponent<AdminTabController>();
 
+            // --- Menu-bar shout (local opt-in; off by default) ---
+            PanelElementDescriptor shoutGroup =
+                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
+            shoutGroup.SetTitle(BasisLocalization.Get("settings.admin.title.shout"));
+            shoutGroup.SetDescription("Local-only preference for your own menu. Does not affect other players or the server.");
+
+            PanelToggle shoutOnMenuBarToggle = PanelToggle.CreateNewEntry(shoutGroup.ContentParent);
+            shoutOnMenuBarToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.showShoutOnMenuBar"));
+            shoutOnMenuBarToggle.Descriptor.SetDescription("Adds the Shout option to the mic-mode button on your main menu bar. Off by default, so the button stays hidden until you enable it here.");
+            shoutOnMenuBarToggle.AssignBinding(BasisSettingsDefaults.ShoutShowOnMenuBar);
+
             // --- Global lock group ---
             PanelElementDescriptor lockGroup =
                 PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
-            lockGroup.SetTitle("Global Content Locks");
+            lockGroup.SetTitle(BasisLocalization.Get("settings.admin.title.globalContentLocks"));
             lockGroup.SetDescription("Globally disable loading for all non-admin players. Everyone is notified.");
 
             PanelToggle avatarLock = PanelToggle.CreateNewEntry(lockGroup.ContentParent);
-            avatarLock.Descriptor.SetTitle("Lock Avatars");
+            avatarLock.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.lockAvatars"));
             avatarLock.Descriptor.SetDescription("Prevents all non-admin avatar loading over the network.");
             avatarLock.SetValueWithoutNotify(BasisNetworkModeration.GlobalAvatarsLocked);
             avatarLock.OnValueChanged += _ => BasisNetworkModeration.GlobalToggleAvatars();
 
             PanelToggle propLock = PanelToggle.CreateNewEntry(lockGroup.ContentParent);
-            propLock.Descriptor.SetTitle("Lock Props");
+            propLock.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.lockProps"));
             propLock.Descriptor.SetDescription("Prevents all non-admin prop loading over the network.");
             propLock.SetValueWithoutNotify(BasisNetworkModeration.GlobalPropsLocked);
             propLock.OnValueChanged += _ => BasisNetworkModeration.GlobalToggleProps();
 
             PanelToggle worldLock = PanelToggle.CreateNewEntry(lockGroup.ContentParent);
-            worldLock.Descriptor.SetTitle("Lock Worlds");
+            worldLock.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.lockWorlds"));
             worldLock.Descriptor.SetDescription("Prevents all non-admin world loading over the network.");
             worldLock.SetValueWithoutNotify(BasisNetworkModeration.GlobalWorldsLocked);
             worldLock.OnValueChanged += _ => BasisNetworkModeration.GlobalToggleWorlds();
 
             PanelToggle serverShareLock = PanelToggle.CreateNewEntry(lockGroup.ContentParent);
-            serverShareLock.Descriptor.SetTitle("Lock Server Sharing");
+            serverShareLock.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.lockServerSharing"));
             serverShareLock.Descriptor.SetDescription("Prevents non-admin players from sharing saved-server entries through the content-share system.");
             serverShareLock.SetValueWithoutNotify(BasisNetworkModeration.GlobalServersLocked);
             serverShareLock.OnValueChanged += _ => BasisNetworkModeration.GlobalToggleServers();
 
             PanelToggle headlessAudioToggle = PanelToggle.CreateNewEntry(lockGroup.ContentParent);
-            headlessAudioToggle.Descriptor.SetTitle("Headless audio off");
+            headlessAudioToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.headlessAudioOff"));
             headlessAudioToggle.Descriptor.SetDescription("Silences headless BasisAudioClipPlayer clients over the network.");
             headlessAudioToggle.SetValueWithoutNotify(BasisNetworkModeration.GlobalHeadlessAudioOff);
             headlessAudioToggle.OnValueChanged += value => BasisNetworkModeration.SetGlobalHeadlessAudio(value);
 
             PanelToggle disallowHeadlessToggle = PanelToggle.CreateNewEntry(lockGroup.ContentParent);
-            disallowHeadlessToggle.Descriptor.SetTitle("Disallow headless");
+            disallowHeadlessToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.disallowHeadless"));
             disallowHeadlessToggle.Descriptor.SetDescription("Disconnects connected headless clients and blocks new headless clients while enabled.");
             disallowHeadlessToggle.SetValueWithoutNotify(BasisNetworkModeration.GlobalHeadlessDisallowed);
             disallowHeadlessToggle.OnValueChanged += value => BasisNetworkModeration.SetGlobalHeadlessDisallow(value);
@@ -81,22 +92,32 @@ namespace Basis.BasisUI
             // GlobalToggleThirdPerson; the server flips, persists, and broadcasts the new
             // GlobalGetLockState payload back to every connected client.
             PanelToggle thirdPersonLock = PanelToggle.CreateNewEntry(lockGroup.ContentParent);
-            thirdPersonLock.Descriptor.SetTitle("Disable Third-Person Camera");
+            thirdPersonLock.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.disableThirdPersonCamera"));
             thirdPersonLock.Descriptor.SetDescription("Disables the desktop third-person camera for all connected players. Snaps anyone currently in third-person back to first-person.");
             thirdPersonLock.SetValueWithoutNotify(BasisNetworkModeration.GlobalThirdPersonDisabled);
             thirdPersonLock.OnValueChanged += _ => BasisNetworkModeration.GlobalToggleThirdPerson();
 
             PanelToggle additionalAvatarDataLock = PanelToggle.CreateNewEntry(lockGroup.ContentParent);
-            additionalAvatarDataLock.Descriptor.SetTitle("Strip Additional Avatar Data");
+            additionalAvatarDataLock.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.stripAdditionalAvatarData"));
             additionalAvatarDataLock.Descriptor.SetDescription("Strips additional avatar data (blendshapes, custom-behaviour params) from every player's network broadcast. Muscle, position, and rotation still sync normally.");
             additionalAvatarDataLock.SetValueWithoutNotify(BasisNetworkModeration.GlobalAdditionalAvatarDataLock);
             additionalAvatarDataLock.OnValueChanged += _ => BasisNetworkModeration.GlobalToggleAdditionalAvatarDataLock();
 
             PanelSlider opusPacketLossSlider = PanelSlider.CreateNew(PanelSlider.SliderStyles.Entry, lockGroup.ContentParent);
-            opusPacketLossSlider.SetSliderSettings(PanelSlider.SliderSettings.Percentage("Opus FEC loss %"));
+            opusPacketLossSlider.SetSliderSettings(PanelSlider.SliderSettings.Percentage(BasisLocalization.Get("settings.admin.opusFecLoss")));
             opusPacketLossSlider.Descriptor.SetDescription("Sets OPUS_SET_PACKET_LOSS_PERC on every client's voice encoder. Higher = more bitrate spent on redundant FEC data, better recovery under packet loss.");
             opusPacketLossSlider.SetValueWithoutNotify(BasisNetworkModeration.GlobalOpusPacketLossPercent);
             opusPacketLossSlider.OnValueChanged += value => BasisNetworkModeration.SetGlobalOpusPacketLoss(Mathf.RoundToInt(value));
+
+            PanelSlider maxMicrophoneRangeSlider = PanelSlider.CreateNew(PanelSlider.SliderStyles.Entry, lockGroup.ContentParent);
+            maxMicrophoneRangeSlider.SetSliderSettings(PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("settings.admin.maxMicrophoneRange"), 1f, 200f, true, 0, ValueDisplayMode.Meters));
+            maxMicrophoneRangeSlider.Descriptor.SetDescription("Maximum microphone (voice transmit) range in metres any client may set. Each client's Microphone Range slider and effective range is clamped to this.");
+            maxMicrophoneRangeSlider.SetValueWithoutNotify(BasisNetworkModeration.ServerMaxMicrophoneRangeMeters);
+
+            PanelSlider maxHearingRangeSlider = PanelSlider.CreateNew(PanelSlider.SliderStyles.Entry, lockGroup.ContentParent);
+            maxHearingRangeSlider.SetSliderSettings(PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("settings.admin.maxHearingRange"), 1f, 200f, true, 0, ValueDisplayMode.Meters));
+            maxHearingRangeSlider.Descriptor.SetDescription("Maximum hearing (audio receive) range in metres any client may set. Each client's Hearing Range slider and effective range is clamped to this.");
+            maxHearingRangeSlider.SetValueWithoutNotify(BasisNetworkModeration.ServerMaxHearingRangeMeters);
 
             controller.AvatarLockToggle = avatarLock;
             controller.PropLockToggle = propLock;
@@ -107,26 +128,102 @@ namespace Basis.BasisUI
             controller.HeadlessAudioToggle = headlessAudioToggle;
             controller.HeadlessDisallowToggle = disallowHeadlessToggle;
             controller.OpusPacketLossSlider = opusPacketLossSlider;
+            controller.MaxMicrophoneRangeSlider = maxMicrophoneRangeSlider;
+            controller.MaxHearingRangeSlider = maxHearingRangeSlider;
+            controller.MaxMicrophoneRangeMeters = BasisNetworkModeration.ServerMaxMicrophoneRangeMeters;
+            controller.MaxHearingRangeMeters = BasisNetworkModeration.ServerMaxHearingRangeMeters;
+            maxMicrophoneRangeSlider.OnValueChanged += value =>
+            {
+                controller.MaxMicrophoneRangeMeters = value;
+                BasisNetworkModeration.SetGlobalAudioRangeLimits(controller.MaxMicrophoneRangeMeters, controller.MaxHearingRangeMeters);
+            };
+            maxHearingRangeSlider.OnValueChanged += value =>
+            {
+                controller.MaxHearingRangeMeters = value;
+                BasisNetworkModeration.SetGlobalAudioRangeLimits(controller.MaxMicrophoneRangeMeters, controller.MaxHearingRangeMeters);
+            };
+
+            // --- Camera photo metadata policy (per-category disallow; default allowed) ---
+            PanelElementDescriptor cameraPolicyGroup =
+                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
+            cameraPolicyGroup.SetTitle(BasisLocalization.Get("settings.admin.title.cameraPhotoMetadata"));
+            cameraPolicyGroup.SetDescription("Disallow categories of metadata that players' handheld cameras may embed into saved photos. Off = allowed.");
+
+            PanelToggle camTagPeople = PanelToggle.CreateNewEntry(cameraPolicyGroup.ContentParent);
+            camTagPeople.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.disallowTaggingPeople"));
+            camTagPeople.Descriptor.SetDescription("Blocks embedding the names and boxes of people in photos.");
+
+            PanelToggle camPersonDetails = PanelToggle.CreateNewEntry(cameraPolicyGroup.ContentParent);
+            camPersonDetails.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.disallowPerPersonDetails"));
+            camPersonDetails.Descriptor.SetDescription("Blocks embedding avatar name, UUID, platform, distance and 3D position per person.");
+
+            PanelToggle camExif = PanelToggle.CreateNewEntry(cameraPolicyGroup.ContentParent);
+            camExif.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.disallowCameraSettingsExif"));
+            camExif.Descriptor.SetDescription("Blocks embedding focal length, f-stop, shutter, ISO.");
+
+            PanelToggle camCapture = PanelToggle.CreateNewEntry(cameraPolicyGroup.ContentParent);
+            camCapture.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.disallowCaptureInfo"));
+            camCapture.Descriptor.SetDescription("Blocks embedding app/version and capture date.");
+
+            PanelToggle camPhotographer = PanelToggle.CreateNewEntry(cameraPolicyGroup.ContentParent);
+            camPhotographer.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.disallowPhotographer"));
+            camPhotographer.Descriptor.SetDescription("Blocks embedding the photographer's name and UUID.");
+
+            PanelToggle camWorld = PanelToggle.CreateNewEntry(cameraPolicyGroup.ContentParent);
+            camWorld.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.disallowWorldViewpoint"));
+            camWorld.Descriptor.SetDescription("Blocks embedding the world name and camera position/rotation.");
+
+            byte BuildCameraMask()
+            {
+                byte mask = 0;
+                if (camTagPeople.Value) mask |= BasisNetworkModeration.CameraPolicy_TagPeople;
+                if (camPersonDetails.Value) mask |= BasisNetworkModeration.CameraPolicy_PersonDetails;
+                if (camExif.Value) mask |= BasisNetworkModeration.CameraPolicy_CameraExif;
+                if (camCapture.Value) mask |= BasisNetworkModeration.CameraPolicy_CaptureInfo;
+                if (camPhotographer.Value) mask |= BasisNetworkModeration.CameraPolicy_Photographer;
+                if (camWorld.Value) mask |= BasisNetworkModeration.CameraPolicy_World;
+                return mask;
+            }
+
+            void ApplyCameraMask(byte mask)
+            {
+                camTagPeople.SetValueWithoutNotify((mask & BasisNetworkModeration.CameraPolicy_TagPeople) != 0);
+                camPersonDetails.SetValueWithoutNotify((mask & BasisNetworkModeration.CameraPolicy_PersonDetails) != 0);
+                camExif.SetValueWithoutNotify((mask & BasisNetworkModeration.CameraPolicy_CameraExif) != 0);
+                camCapture.SetValueWithoutNotify((mask & BasisNetworkModeration.CameraPolicy_CaptureInfo) != 0);
+                camPhotographer.SetValueWithoutNotify((mask & BasisNetworkModeration.CameraPolicy_Photographer) != 0);
+                camWorld.SetValueWithoutNotify((mask & BasisNetworkModeration.CameraPolicy_World) != 0);
+            }
+
+            ApplyCameraMask(BasisNetworkModeration.GlobalCameraDisallowMask);
+            camTagPeople.OnValueChanged += _ => BasisNetworkModeration.SetGlobalCameraPolicy(BuildCameraMask());
+            camPersonDetails.OnValueChanged += _ => BasisNetworkModeration.SetGlobalCameraPolicy(BuildCameraMask());
+            camExif.OnValueChanged += _ => BasisNetworkModeration.SetGlobalCameraPolicy(BuildCameraMask());
+            camCapture.OnValueChanged += _ => BasisNetworkModeration.SetGlobalCameraPolicy(BuildCameraMask());
+            camPhotographer.OnValueChanged += _ => BasisNetworkModeration.SetGlobalCameraPolicy(BuildCameraMask());
+            camWorld.OnValueChanged += _ => BasisNetworkModeration.SetGlobalCameraPolicy(BuildCameraMask());
+
+            controller.ApplyCameraMask = ApplyCameraMask;
 
             // --- Server configuration (persisted to config.xml on every change) ---
             PanelElementDescriptor serverGroup =
                 PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
-            serverGroup.SetTitle("Server Configuration");
+            serverGroup.SetTitle(BasisLocalization.Get("settings.admin.title.serverConfiguration"));
             serverGroup.SetDescription("Display name and MOTD returned by the server-info query, plus whitelist controls. Changes are saved to config.xml.");
 
             PanelTextField serverNameField = PanelTextField.CreateNewEntry(serverGroup.ContentParent);
-            serverNameField.Descriptor.SetTitle("Server Name");
+            serverNameField.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.serverName"));
             serverNameField.Descriptor.SetDescription("Public name returned to clients in the server list.");
 
             PanelButton applyServerName = PanelButton.CreateNew(serverGroup.ContentParent);
-            applyServerName.Descriptor.SetTitle("Apply Server Name");
+            applyServerName.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.applyServerName"));
             applyServerName.OnClicked += () =>
             {
                 BasisNetworkModeration.SetServerName(serverNameField.Value ?? string.Empty);
             };
 
             PanelTextField serverMotdField = PanelTextField.CreateNewEntry(serverGroup.ContentParent);
-            serverMotdField.Descriptor.SetTitle("MOTD");
+            serverMotdField.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.motd"));
             serverMotdField.Descriptor.SetDescription("Short message of the day shown next to the server name. Leave blank to clear.");
 
             TMP_InputField motdInput = serverMotdField.GetComponentInChildren<TMP_InputField>(true);
@@ -137,7 +234,7 @@ namespace Basis.BasisUI
             }
 
             PanelButton applyServerMotd = PanelButton.CreateNew(serverGroup.ContentParent);
-            applyServerMotd.Descriptor.SetTitle("Apply MOTD");
+            applyServerMotd.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.applyMotd"));
             applyServerMotd.OnClicked += () =>
             {
                 BasisNetworkModeration.SetServerMotd(serverMotdField.Value ?? string.Empty);
@@ -150,7 +247,7 @@ namespace Basis.BasisUI
             _ = PrefillServerInfoFieldsAsync(serverNameField, serverMotdField);
 
             PanelToggle whitelistToggle = PanelToggle.CreateNewEntry(serverGroup.ContentParent);
-            whitelistToggle.Descriptor.SetTitle("Whitelist Only");
+            whitelistToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.whitelistOnly"));
             whitelistToggle.Descriptor.SetDescription("When on, only UUIDs in BasisWhiteList.txt may connect. Setting persists to config.xml.");
             whitelistToggle.OnValueChanged += value =>
             {
@@ -159,11 +256,11 @@ namespace Basis.BasisUI
             };
 
             PanelTextField whitelistUuidField = PanelTextField.CreateNewEntry(serverGroup.ContentParent);
-            whitelistUuidField.Descriptor.SetTitle("Whitelist UUID");
+            whitelistUuidField.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.whitelistUuid"));
             whitelistUuidField.Descriptor.SetDescription("Player UUID to add or remove from BasisWhiteList.txt.");
 
             PanelButton addWhitelistButton = PanelButton.CreateNew(serverGroup.ContentParent);
-            addWhitelistButton.Descriptor.SetTitle("Add to Whitelist");
+            addWhitelistButton.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.addToWhitelist"));
             addWhitelistButton.OnClicked += () =>
             {
                 string uuid = whitelistUuidField.Value?.Trim();
@@ -172,13 +269,24 @@ namespace Basis.BasisUI
             };
 
             PanelButton removeWhitelistButton = PanelButton.CreateNew(serverGroup.ContentParent);
-            removeWhitelistButton.Descriptor.SetTitle("Remove from Whitelist");
+            removeWhitelistButton.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.removeFromWhitelist"));
             removeWhitelistButton.OnClicked += () =>
             {
                 string uuid = whitelistUuidField.Value?.Trim();
                 if (string.IsNullOrEmpty(uuid)) return;
                 BasisNetworkModeration.RemoveWhitelist(uuid);
             };
+
+            // --- Server logs (admin pulls logs/ + CrashReports/ to disk) ---
+            PanelElementDescriptor logsGroup =
+                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
+            logsGroup.SetTitle(BasisLocalization.Get("settings.admin.title.serverLogs"));
+            logsGroup.SetDescription("Pull the server's logs and crash reports. They are bundled and compressed on the server, sent over the network, and unpacked into a dated folder next to your settings.");
+
+            PanelButton requestLogsButton = PanelButton.CreateNew(logsGroup.ContentParent);
+            requestLogsButton.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.requestAllLogs"));
+            requestLogsButton.Descriptor.SetDescription("Asks the server to bundle and send every log and crash report. Requires the basis.admin.logs permission.");
+            requestLogsButton.OnClicked += () => BasisNetworkModeration.RequestAllLogs();
 
             // --- Default Library (saved to disk on the server, broadcast to all clients) ---
             BuildDefaultLibrarySection(container);
@@ -232,25 +340,25 @@ namespace Basis.BasisUI
         {
             PanelElementDescriptor group =
                 PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
-            group.SetTitle("Default Library");
+            group.SetTitle(BasisLocalization.Get("settings.admin.title.defaultLibrary"));
             group.SetDescription("Add an avatar, world, or prop the server will offer to every player. Saved to defaultlibrary/ on disk and pushed live to connected clients.");
 
             PanelTextField urlField = PanelTextField.CreateNewEntry(group.ContentParent);
-            urlField.Descriptor.SetTitle("BEE URL");
+            urlField.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.beeUrl"));
             urlField.Descriptor.SetDescription("Direct URL to the .bee file the server should hand out. Pasting a url#password share string will be split automatically.");
 
             PanelTextField passwordField = PanelTextField.CreateNewEntry(group.ContentParent);
-            passwordField.Descriptor.SetTitle("Password");
+            passwordField.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.password"));
             passwordField.Descriptor.SetDescription("Optional unlock password for encrypted bundles. Leave blank if none, or if the URL already carries a #password fragment.");
 
             PanelDropdown modeDropdown = PanelDropdown.CreateNewEntry(group.ContentParent);
-            modeDropdown.Descriptor.SetTitle("Type");
+            modeDropdown.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.type"));
             modeDropdown.Descriptor.SetDescription("Which library tab the entry will appear in. Auto-detected from the BEE metadata when possible; this dropdown is only used as a fallback for legacy bundles.");
             modeDropdown.AssignEntries(new List<string>(DefaultLibraryModeNames));
             modeDropdown.SetValueWithoutNotify(DefaultLibraryModeNames[0]);
 
             PanelButton addButton = PanelButton.CreateNew(group.ContentParent);
-            addButton.Descriptor.SetTitle("Add to Server Defaults");
+            addButton.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.addToServerDefaults"));
             addButton.Descriptor.SetDescription("Persist this entry on the server and push it to every connected client.");
             addButton.OnClicked += async () =>
             {
@@ -303,7 +411,7 @@ namespace Basis.BasisUI
             };
 
             PanelButton removeButton = PanelButton.CreateNew(group.ContentParent);
-            removeButton.Descriptor.SetTitle("Remove from Server Defaults");
+            removeButton.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.title.removeFromServerDefaults"));
             removeButton.Descriptor.SetDescription("Drop every default-library entry whose URL matches the BEE URL field above. Entry is deleted on disk and removed from every connected client.");
             removeButton.OnClicked += () =>
             {
@@ -363,9 +471,16 @@ namespace Basis.BasisUI
             public PanelToggle HeadlessAudioToggle;
             public PanelToggle HeadlessDisallowToggle;
             public PanelSlider OpusPacketLossSlider;
+            public PanelSlider MaxMicrophoneRangeSlider;
+            public PanelSlider MaxHearingRangeSlider;
+            public float MaxMicrophoneRangeMeters;
+            public float MaxHearingRangeMeters;
+            public System.Action<byte> ApplyCameraMask;
 
             private void OnEnable()
             {
+                // Admin panel open → route every popup into the notification list.
+                BasisNotificationCenter.BeginForcedScope();
                 BasisNetworkModeration.OnGlobalLockStateChanged -= OnGlobalLockStateChanged;
                 BasisNetworkModeration.OnGlobalLockStateChanged += OnGlobalLockStateChanged;
                 BasisNetworkModeration.OnGlobalThirdPersonDisabledChanged -= OnGlobalThirdPersonDisabledChanged;
@@ -378,16 +493,24 @@ namespace Basis.BasisUI
                 BasisNetworkModeration.OnGlobalHeadlessDisallowStateChanged += OnGlobalHeadlessDisallowStateChanged;
                 BasisNetworkModeration.OnGlobalOpusPacketLossChanged -= OnGlobalOpusPacketLossChanged;
                 BasisNetworkModeration.OnGlobalOpusPacketLossChanged += OnGlobalOpusPacketLossChanged;
+                BasisNetworkModeration.OnAudioRangeLimitsChanged -= OnAudioRangeLimitsChanged;
+                BasisNetworkModeration.OnAudioRangeLimitsChanged += OnAudioRangeLimitsChanged;
+                BasisNetworkModeration.OnGlobalCameraPolicyChanged -= OnGlobalCameraPolicyChanged;
+                BasisNetworkModeration.OnGlobalCameraPolicyChanged += OnGlobalCameraPolicyChanged;
             }
 
             private void OnDisable()
             {
+                // Admin panel closed/hidden → resume normal popup handling.
+                BasisNotificationCenter.EndForcedScope();
                 BasisNetworkModeration.OnGlobalLockStateChanged -= OnGlobalLockStateChanged;
                 BasisNetworkModeration.OnGlobalThirdPersonDisabledChanged -= OnGlobalThirdPersonDisabledChanged;
                 BasisNetworkModeration.OnGlobalAdditionalAvatarDataLockChanged -= OnGlobalAdditionalAvatarDataLockChanged;
                 BasisNetworkModeration.OnGlobalHeadlessAudioStateChanged -= OnGlobalHeadlessAudioStateChanged;
                 BasisNetworkModeration.OnGlobalHeadlessDisallowStateChanged -= OnGlobalHeadlessDisallowStateChanged;
                 BasisNetworkModeration.OnGlobalOpusPacketLossChanged -= OnGlobalOpusPacketLossChanged;
+                BasisNetworkModeration.OnAudioRangeLimitsChanged -= OnAudioRangeLimitsChanged;
+                BasisNetworkModeration.OnGlobalCameraPolicyChanged -= OnGlobalCameraPolicyChanged;
             }
 
             private void OnDestroy()
@@ -398,6 +521,8 @@ namespace Basis.BasisUI
                 BasisNetworkModeration.OnGlobalHeadlessAudioStateChanged -= OnGlobalHeadlessAudioStateChanged;
                 BasisNetworkModeration.OnGlobalHeadlessDisallowStateChanged -= OnGlobalHeadlessDisallowStateChanged;
                 BasisNetworkModeration.OnGlobalOpusPacketLossChanged -= OnGlobalOpusPacketLossChanged;
+                BasisNetworkModeration.OnAudioRangeLimitsChanged -= OnAudioRangeLimitsChanged;
+                BasisNetworkModeration.OnGlobalCameraPolicyChanged -= OnGlobalCameraPolicyChanged;
             }
 
             private void OnGlobalLockStateChanged(bool avatars, bool props, bool worlds, bool servers)
@@ -431,6 +556,19 @@ namespace Basis.BasisUI
             private void OnGlobalOpusPacketLossChanged(int percent)
             {
                 if (OpusPacketLossSlider != null) OpusPacketLossSlider.SetValueWithoutNotify(percent);
+            }
+
+            private void OnAudioRangeLimitsChanged(float microphoneMeters, float hearingMeters)
+            {
+                MaxMicrophoneRangeMeters = microphoneMeters;
+                MaxHearingRangeMeters = hearingMeters;
+                if (MaxMicrophoneRangeSlider != null) MaxMicrophoneRangeSlider.SetValueWithoutNotify(microphoneMeters);
+                if (MaxHearingRangeSlider != null) MaxHearingRangeSlider.SetValueWithoutNotify(hearingMeters);
+            }
+
+            private void OnGlobalCameraPolicyChanged(byte mask)
+            {
+                ApplyCameraMask?.Invoke(mask);
             }
         }
     }

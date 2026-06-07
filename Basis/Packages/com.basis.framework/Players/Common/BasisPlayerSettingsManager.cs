@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Threading;
@@ -54,18 +55,34 @@ public static class BasisPlayerSettingsManager
             else
             {
                 var json = await File.ReadAllTextAsync(path);
-                data = JsonUtility.FromJson<BasisPlayerSettingsData>(json);
 
-                // Version==0 after deserialize signals a zero-initialised struct —
-                // either the JSON was empty/corrupt or predates the Version field.
-                if (data.Version == 0)
+                BasisPlayerSettingsData loaded = default;
+                bool valid = false;
+                if (!string.IsNullOrWhiteSpace(json))
+                {
+                    try
+                    {
+                        loaded = JsonUtility.FromJson<BasisPlayerSettingsData>(json);
+                        valid = loaded.Version != 0;
+                    }
+                    catch (Exception e)
+                    {
+                        BasisDebug.LogWarning($"Player settings at {path} were unreadable ({e.Message}); resetting to defaults.");
+                    }
+                }
+
+                if (valid)
+                {
+                    data = loaded;
+                    if (string.IsNullOrEmpty(data.UUID))
+                    {
+                        data.UUID = uuid;
+                    }
+                }
+                else
                 {
                     data = CreateDefaults(uuid);
                     await SaveInternal(path, data);
-                }
-                else if (string.IsNullOrEmpty(data.UUID))
-                {
-                    data.UUID = uuid;
                 }
             }
 

@@ -10,11 +10,14 @@ namespace Basis.BasisUI
     public class IndividualPlayerPanelUpdater : MonoBehaviour
     {
         public BasisRemotePlayer RemotePlayer;
+        public PanelElementDescriptor PanelDescriptor;
         public PanelElementDescriptor DebugField;
         public PanelElementDescriptor DistanceField;
         public PanelElementDescriptor LodField;
         public PanelElementDescriptor RangesField;
         public PanelElementDescriptor BufferField;
+        public PanelElementDescriptor DirectConnPingField;
+        private bool _pingVisible;
 
         // Audio debug fields
         public PanelElementDescriptor AudioSourceField;
@@ -23,6 +26,15 @@ namespace Basis.BasisUI
         public PanelElementDescriptor EncodedBufferField;
         public PanelElementDescriptor SilenceField;
         public PanelElementDescriptor VisemeField;
+
+        // Avatar data chain debug fields
+        public PanelElementDescriptor AvatarReceiveField;
+        public PanelElementDescriptor AvatarStagingField;
+        public PanelElementDescriptor AvatarInterpField;
+        public PanelElementDescriptor AvatarMetaField;
+
+        private byte _lastHighestSequence;
+        private bool _lastHighestSeqValid;
 
         private float _updateTimer;
         private const float UpdateInterval = 0.2f;
@@ -41,12 +53,17 @@ namespace Basis.BasisUI
             LodField?.DisableRichText();
             RangesField?.DisableRichText();
             BufferField?.DisableRichText();
+            DirectConnPingField?.DisableRichText();
             AudioSourceField?.DisableRichText();
             VolumeChainField?.DisableRichText();
             DecodedBufferField?.DisableRichText();
             EncodedBufferField?.DisableRichText();
             SilenceField?.DisableRichText();
             VisemeField?.DisableRichText();
+            AvatarReceiveField?.DisableRichText();
+            AvatarStagingField?.DisableRichText();
+            AvatarInterpField?.DisableRichText();
+            AvatarMetaField?.DisableRichText();
         }
 
         private void FreezeLayoutOnce()
@@ -61,12 +78,18 @@ namespace Basis.BasisUI
             LodField?.FreezeLayoutSize(90f);
             RangesField?.FreezeLayoutSize(110f);
             BufferField?.FreezeLayoutSize(130f);
+            // DirectConnPingField intentionally not frozen — it toggles SetActive
+            // based on P2P connection state, and freezing pins height even when hidden.
             AudioSourceField?.FreezeLayoutSize(140f);
             VolumeChainField?.FreezeLayoutSize(130f);
             DecodedBufferField?.FreezeLayoutSize(120f);
             EncodedBufferField?.FreezeLayoutSize(140f);
             SilenceField?.FreezeLayoutSize(90f);
             VisemeField?.FreezeLayoutSize(90f);
+            AvatarReceiveField?.FreezeLayoutSize(120f);
+            AvatarStagingField?.FreezeLayoutSize(140f);
+            AvatarInterpField?.FreezeLayoutSize(140f);
+            AvatarMetaField?.FreezeLayoutSize(170f);
         }
 
         private void Update()
@@ -76,6 +99,10 @@ namespace Basis.BasisUI
             _updateTimer = 0f;
 
             DisableRichTextOnce();
+
+            // P2P ping is independent of the receiver/transmitter pipeline — refresh
+            // it on every tick, before any of the early-returns below kick us out.
+            UpdateDirectConnPingField();
 
             if (RemotePlayer == null)
             {
@@ -117,6 +144,7 @@ namespace Basis.BasisUI
                 if (RangesField != null) RangesField.SetDescription("No data");
                 UpdateBufferField();
                 UpdateAudioDebugFields();
+                UpdateAvatarDataDebugFields();
                 return;
             }
 
@@ -128,6 +156,7 @@ namespace Basis.BasisUI
                 if (RangesField != null) RangesField.SetDescription("Player not found");
                 UpdateBufferField();
                 UpdateAudioDebugFields();
+                UpdateAvatarDataDebugFields();
                 return;
             }
 
@@ -152,6 +181,7 @@ namespace Basis.BasisUI
                 if (RangesField != null) RangesField.SetDescription("Not in snapshot");
                 UpdateBufferField();
                 UpdateAudioDebugFields();
+                UpdateAvatarDataDebugFields();
                 return;
             }
 
@@ -161,7 +191,7 @@ namespace Basis.BasisUI
                 Vector3 localPos = BasisLocalCameraDriver.Position;
                 Vector3 remotePos = RemotePlayer.MouthTransform != null
                     ? RemotePlayer.MouthTransform.position
-                    : RemotePlayer.transform.position;
+                    : RemotePlayer.Transform.position;
                 float dist = Vector3.Distance(localPos, remotePos);
                 DistanceField.SetDescription($"{dist:F2}m");
             }
@@ -209,6 +239,7 @@ namespace Basis.BasisUI
 
             UpdateBufferField();
             UpdateAudioDebugFields();
+            UpdateAvatarDataDebugFields();
 
             // Only count ticks that reached the full-data path — early-returns
             // above set fields to "N/A"/"No data" which would lock at a too-small
@@ -220,6 +251,32 @@ namespace Basis.BasisUI
                 {
                     FreezeLayoutOnce();
                 }
+            }
+        }
+
+        private void UpdateDirectConnPingField()
+        {
+            if (DirectConnPingField == null) return;
+
+            bool shouldShow = false;
+            int rttMs = 0;
+            if (RemotePlayer != null &&
+                BasisNetworkPlayers.PlayerToNetworkedPlayer(RemotePlayer, out var net))
+            {
+                shouldShow = BasisP2PManager.TryGetP2PRoundTripTime(net.playerId, out rttMs);
+            }
+
+            if (shouldShow)
+            {
+                DirectConnPingField.SetDescription(
+                    BasisLocalization.Get("menu.individualPlayer.directConnection.ping.value", rttMs));
+            }
+
+            if (shouldShow != _pingVisible)
+            {
+                _pingVisible = shouldShow;
+                DirectConnPingField.SetActive(shouldShow);
+                PanelDescriptor?.ForceRebuild();
             }
         }
 
@@ -351,7 +408,7 @@ namespace Basis.BasisUI
             if (VisemeField != null && BasisSettingsDefaults.AudioDebugShowViseme.RawValue)
             {
                 bool hasDriver = audio.BasisRemoteVisemeAudioDriver != null;
-                bool init = hasDriver && audio.BasisRemoteVisemeAudioDriver.Initalized;
+                bool init = hasDriver && audio.BasisRemoteVisemeAudioDriver.Initialized;
 
                 VisemeField.SetDescription(
                     $"Driver: {(hasDriver ? "Active" : "None")} | Initialized: {(init ? "Yes" : "No")}");
@@ -368,6 +425,75 @@ namespace Basis.BasisUI
             if (VisemeField != null) VisemeField.SetDescription(message);
         }
 
+        private void UpdateAvatarDataDebugFields()
+        {
+            if (RemotePlayer == null || RemotePlayer.NetworkReceiver == null)
+            {
+                SetAvatarDataDebugAll("No receiver");
+                return;
+            }
+
+            var receiver = RemotePlayer.NetworkReceiver;
+
+            if (AvatarReceiveField != null && BasisSettingsDefaults.AvatarDataDebugShowReceive.RawValue)
+            {
+                byte highest = receiver.HighestSequence;
+                int seen = receiver.SeenPackets;
+                int queued = receiver.PayloadQueue.Count;
+                int newThisTick = _lastHighestSeqValid ? unchecked((byte)(highest - _lastHighestSequence)) : 0;
+                _lastHighestSequence = highest;
+                _lastHighestSeqValid = true;
+                string state = seen == 0 ? "None" : seen == 1 ? "Initial" : "Streaming";
+
+                AvatarReceiveField.SetDescription(
+                    $"State: {state} | Queued: {queued}\n" +
+                    $"Highest Seq: {highest} | New this tick: +{newThisTick}");
+            }
+
+            if (AvatarStagingField != null && BasisSettingsDefaults.AvatarDataDebugShowStaging.RawValue)
+            {
+                var cur = receiver.Current;
+                var nxt = receiver.Next;
+                bool hasCur = receiver.HasCurrentBuffer && cur != null;
+                bool hasNxt = receiver.HasNextBuffer && nxt != null;
+                double windowMs = (hasCur && hasNxt) ? (nxt.ServerTimeSeconds - cur.ServerTimeSeconds) * 1000.0 : 0.0;
+
+                AvatarStagingField.SetDescription(
+                    $"Staged: {receiver.StagedCount} | Data Ready: {(receiver.IsDataReady ? "Yes" : "No")}\n" +
+                    $"Cur Seq: {(hasCur ? cur.Sequence.ToString() : "-")} | Next Seq: {(hasNxt ? nxt.Sequence.ToString() : "-")}\n" +
+                    $"Window: {windowMs:F1}ms");
+            }
+
+            if (AvatarInterpField != null && BasisSettingsDefaults.AvatarDataDebugShowInterp.RawValue)
+            {
+                AvatarInterpField.SetDescription(
+                    $"t: {receiver.InterpolationTimeDebug:F3} | Rate: {receiver.LastPlaybackRate:F3}x (0.85-1.35)\n" +
+                    $"Jitter Depth: {receiver.DynamicJitterDepth:F2} (min {BasisNetworkReceiver.MinJitterDepth} / max {BasisNetworkReceiver.MaxJitterDepth})\n" +
+                    $"Buffer Holds: {(receiver.HasBufferHolds ? "Yes" : "No")}");
+            }
+
+            if (AvatarMetaField != null && BasisSettingsDefaults.AvatarDataDebugShowMeta.RawValue)
+            {
+                receiver.GetLatestNetworkPose(out var pos, out _, out var scale);
+                float[] eom = receiver.EyesAndMouth;
+                float mouth = eom != null && eom.Length > 4 ? eom[4] : 0f;
+
+                AvatarMetaField.SetDescription(
+                    $"Scale: {receiver.ApplyingScale.x:F2} | Human: {receiver.CachedHumanScaleDebug:F2} | Net: {scale.x:F2}\n" +
+                    $"Hips: ({pos.x:F1}, {pos.y:F1}, {pos.z:F1})\n" +
+                    $"LOD: {RemotePlayer.CurrentLodLevel} | PoseSkip: {RemotePlayer.PoseSkipCounter}\n" +
+                    $"InAvatar: {(RemotePlayer.InAvatarRange ? "Y" : "N")} | OutOfRange: {(RemotePlayer.OutOfRangeFromLocal ? "Y" : "N")} | Mouth: {mouth:F2}");
+            }
+        }
+
+        private void SetAvatarDataDebugAll(string message)
+        {
+            if (AvatarReceiveField != null) AvatarReceiveField.SetDescription(message);
+            if (AvatarStagingField != null) AvatarStagingField.SetDescription(message);
+            if (AvatarInterpField != null) AvatarInterpField.SetDescription(message);
+            if (AvatarMetaField != null) AvatarMetaField.SetDescription(message);
+        }
+
         private void SetAll(string message)
         {
             if (DebugField != null) DebugField.SetDescription(message);
@@ -376,6 +502,7 @@ namespace Basis.BasisUI
             if (RangesField != null) RangesField.SetDescription(message);
             if (BufferField != null) BufferField.SetDescription(message);
             SetAudioDebugAll(message);
+            SetAvatarDataDebugAll(message);
         }
     }
 }

@@ -73,7 +73,7 @@ namespace Basis.Scripts.Networking
         public static bool HostThirdPersonDisabled = false;
 
         /// <summary>
-        /// True once <see cref="BasisNetworkLifeCycle.Initalize"/> has completed.
+        /// True once <see cref="BasisNetworkLifeCycle.Initialize"/> has completed.
         /// Replaces the old <c>Instance != null</c> singleton-presence check.
         /// </summary>
         public static bool IsInitialized;
@@ -172,21 +172,44 @@ namespace Basis.Scripts.Networking
         {
             MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2)
         };
+        // Indices of receivers that decoded audio this tick. Filled during compute so the
+        // main-thread AudioSource apply scales with active talkers, not total player count.
+        static int[] s_decodedIndices = Array.Empty<int>();
+        static int s_decodedCount;
+        // Pipelined compute: Phase 2 runs as a background task started at the tail of the frame
+        // and joined at the top of the next Update (overlaps jiggle CompletePose + the render gap).
+        static Task s_computeTask;
+        static BasisNetworkReceiver[] s_finishSnapshot;
+        static int s_parallelCount;
+        static bool s_computePending;
+        static readonly Action s_runParallelCompute = RunParallelCompute;
+        static void RunParallelCompute() => Parallel.For(0, s_parallelCount, s_parallelOptions, s_parallelComputeBody);
         static void ParallelComputeBody(int i)
         {
-            s_parallelSnapshot[i].ComputeData(s_parallelDeltaTime);
+            var rec = s_parallelSnapshot[i];
+            rec.ComputeData(s_parallelDeltaTime);
+            var audio = rec.AudioReceiverModule;
+            if (audio._lastDrainDecoded && audio.HasAudioSource)
+            {
+                s_decodedIndices[Interlocked.Increment(ref s_decodedCount) - 1] = i;
+            }
         }
 
         // Parameters for Euro filter (defaults; overridden at runtime by settings bindings)
         public static float MinCutoff = 0.05f;
         public static float Beta = 2;
         public static float DerivativeCutoff = 2;
+
         /// <summary>
-        /// Simulates network computation step (state updates, bone drivers, profiler update).
+        /// Phase 1 (main thread) then kicks off the parallel per-receiver compute (Phase 2) on a
+        /// background task. Pair with <see cref="CompleteNetworkCompute"/> at the very top of the
+        /// next Update — before any receiver mutation (main-thread action drain, join/leave,
+        /// avatar calibration) — so the async pass can never race those writes.
         /// </summary>
         /// <param name="UnscaledDeltaTime">Delta time since last tick (unscaled).</param>
-        public static void SimulateNetworkCompute(double UnscaledDeltaTime)
+        public static void BeginNetworkCompute(double UnscaledDeltaTime)
         {
+            s_computePending = false;
             if (!NetworkRunning)
             {
                 return;
@@ -205,8 +228,6 @@ namespace Basis.Scripts.Networking
                 return;
             }
 
-            BasisRemoteNetworkDriver.BeginWrite();
-
             int receiverCount = BasisNetworkPlayers.ReceiverCount;
             var snapshot = BasisNetworkPlayers.ReceiversSnapshot;
 
@@ -222,38 +243,74 @@ namespace Basis.Scripts.Networking
             }
             BasisNetworkPlayers.LargestNetworkReceiverID = largestId;
 
-            // Phase 2 (parallel): Audio decode + packet processing + window management +
-            // interpolation + SoA writes. All per-receiver state, no shared-state conflicts.
-            // Threshold is low because Opus decode dominates per-receiver cost; Parallel.For
-            // overhead (~50us) pays for itself well before 16 receivers.
+            BasisRemoteNetworkDriver.BeginWrite();
+
+            // Phase 2 (parallel): per-receiver audio decode + packet processing + interpolation +
+            // SoA writes. All per-receiver state, no shared-state conflicts. Kicked off here and
+            // joined in CompleteNetworkCompute so it overlaps jiggle CompletePose + the render gap.
+            s_decodedCount = 0;
+            if (s_decodedIndices.Length < receiverCount)
+            {
+                s_decodedIndices = new int[receiverCount];
+            }
+            s_finishSnapshot = snapshot;
+            s_parallelCount = receiverCount;
+            s_computePending = true;
+
             if (receiverCount > 4)
             {
                 s_parallelSnapshot = snapshot;
                 s_parallelDeltaTime = UnscaledDeltaTime;
-                Parallel.For(0, receiverCount, s_parallelOptions, s_parallelComputeBody);
+                s_computeTask = Task.Run(s_runParallelCompute);
             }
             else
             {
                 for (int i = 0; i < receiverCount; i++)
                 {
-                    snapshot[i].ComputeData(UnscaledDeltaTime);
+                    var rec = snapshot[i];
+                    rec.ComputeData(UnscaledDeltaTime);
+                    var audio = rec.AudioReceiverModule;
+                    if (audio._lastDrainDecoded && audio.HasAudioSource)
+                    {
+                        s_decodedIndices[s_decodedCount++] = i;
+                    }
                 }
+                s_computeTask = null;
             }
+        }
 
-            // Phase 3 (main thread, lightweight): Apply AudioSource state changes.
-            // Just checks a bool per receiver — only receivers that decoded audio do work.
-            for (int i = 0; i < receiverCount; i++)
+        /// <summary>
+        /// Joins the background compute from <see cref="BeginNetworkCompute"/>, then runs the
+        /// main-thread finish: Phase 3 AudioSource apply, interpolation job schedule, shout drain,
+        /// and profiler update. Must run before any receiver state is mutated this frame.
+        /// </summary>
+        public static void CompleteNetworkCompute(float DeltaTime)
+        {
+            if (!s_computePending)
             {
-                snapshot[i].PostCompute();
+                return;
+            }
+            JoinPendingCompute();
+
+            var snapshot = s_finishSnapshot;
+
+            // Phase 3 (main thread): apply AudioSource state only for receivers that decoded
+            // audio this tick. Recorded in phase 2, so this no longer scans every player.
+            for (int Index = 0; Index < s_decodedCount; Index++)
+            {
+                snapshot[s_decodedIndices[Index]].PostCompute();
             }
 
             BasisRemoteNetworkDriver.Compute();
             Basis.Scripts.Networking.Receivers.BasisShoutAudioDriver.DrainAll();
+#if UNITY_EDITOR
+            // Editor-only: counters are fed by AddToCounter, which is [Conditional("UNITY_EDITOR")].
             BasisNetworkProfiler.Update();
+#endif
 
             if (HasRequested)
             {
-                _timer += Time.deltaTime;
+                _timer += DeltaTime;
                 if (_timer >= 0.1f)
                 {
                     _timer = 0f;
@@ -262,10 +319,31 @@ namespace Basis.Scripts.Networking
                 }
             }
         }
+
+        /// <summary>
+        /// Joins any in-flight background compute without running the main-thread finish. Call at
+        /// teardown before native buffers are disposed so the async pass can't use-after-free.
+        /// </summary>
+        public static void JoinPendingCompute()
+        {
+            if (s_computeTask != null)
+            {
+                try
+                {
+                    s_computeTask.Wait();
+                }
+                catch (Exception ex)
+                {
+                    BasisDebug.LogError($"Network compute task failed: {ex}", BasisDebug.LogTag.Networking);
+                }
+                s_computeTask = null;
+            }
+            s_computePending = false;
+        }
         /// <summary>
         /// Applies networked state changes to receivers.
         /// </summary>
-        public static void SimulateNetworkApply()
+        public static unsafe void SimulateNetworkApply()
         {
             if (!NetworkRunning)
             {
@@ -301,6 +379,8 @@ namespace Basis.Scripts.Networking
             int _lod0 = 0, _lod1 = 0, _lod2 = 0, _lod3 = 0;
 #endif
 
+            byte* skipPtr = BasisRemoteNetworkDriver.SkipBonesPtr();
+
             for (int Index = 0; Index < count; Index++)
             {
                 var receiver = snapshot[Index];
@@ -323,15 +403,15 @@ namespace Basis.Scripts.Networking
                 if (poseLodEnabled && remote.PoseSkipCounter > 0)
                 {
                     remote.PoseSkipCounter--;
-                    BasisRemoteNetworkDriver.SetSkipMuscles(receiver.playerId, true);
+                    if (skipPtr != null && receiver.playerId < BasisRemoteNetworkDriver.FixedCapacity) skipPtr[receiver.playerId] = 1;
 #if UNITY_EDITOR
                     _skipped++;
 #endif
                     continue;
                 }
-                if (receiver.HasOverridenDestination)
+                if (receiver.HasOverriddenDestination)
                 {
-                    BasisRemoteNetworkDriver.SetFilteredHipsOverride(receiver.playerId, receiver.OverridenPosition, (quaternion)receiver.OverridenRotation);
+                    BasisRemoteNetworkDriver.SetFilteredHipsOverride(receiver.playerId, receiver.OverriddenPosition, (quaternion)receiver.OverriddenRotation);
                 }
 #if UNITY_EDITOR
                 _applied++;
@@ -342,7 +422,7 @@ namespace Basis.Scripts.Networking
                     int lod = math.clamp(remote.CurrentLodLevel, 0, 3);
                     remote.PoseSkipCounter = SMModuleDistanceBasedReductions.PoseSkipByLod[lod];
                 }
-                BasisRemoteNetworkDriver.SetSkipMuscles(receiver.playerId, false);
+                if (skipPtr != null && receiver.playerId < BasisRemoteNetworkDriver.FixedCapacity) skipPtr[receiver.playerId] = 0;
             }
 #if UNITY_EDITOR
             if (p)

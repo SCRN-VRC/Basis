@@ -43,7 +43,12 @@ public static class BasisBundleLoadAsset
                             ChecksRequired.RemoveColliders = DestroyColliders;
                             ChecksRequired.ChangeCollidersToCorrectLayer = ChangeColidersToCorrectLayer;
                             ChecksRequired.ScrubPersistentUnityEvents = true;
-                            GameObject CreatedCopy = ContentPoliceControl.ContentControl(DisabledGameobject,loadedObject, ChecksRequired, Position, Rotation, ModifyScale, Scale, Selector, Parent, LayerMask.NameToLayer("IgnoredByInteractable"), HarvestedHeadChop);
+                            BasisContentHarvest harvest = BasisAvatar != null ? new BasisContentHarvest() : null;
+                            GameObject CreatedCopy = ContentPoliceControl.ContentControl(DisabledGameobject,loadedObject, ChecksRequired, Position, Rotation, ModifyScale, Scale, Selector, Parent, LayerMask.NameToLayer("IgnoredByInteractable"), HarvestedHeadChop, harvest);
+                            if (harvest != null && CreatedCopy != null && CreatedCopy.TryGetComponent(out Basis.Scripts.BasisSdk.BasisAvatar createdAvatar))
+                            {
+                                createdAvatar.Harvest = harvest;
+                            }
                             Incremented = BasisLoadableBundle.Increment();
                             string InstanceID = BasisGenerateUniqueID.GenerateUniqueID();
                             CreatedCopy.name = InstanceID + Incremented;
@@ -56,7 +61,7 @@ public static class BasisBundleLoadAsset
             }
             else
             {
-                BasisDebug.LogError("Missing Platform Bundle! cant find : " + Application.platform);
+                BasisDebug.LogError("Missing Platform Bundle! can't find : " + Application.platform);
             }
         }
         else
@@ -84,13 +89,13 @@ public static class BasisBundleLoadAsset
 
         if (!string.IsNullOrEmpty(scenePaths[0]))
         {
+            string sceneName = System.IO.Path.GetFileNameWithoutExtension(scenePaths[0]);
             // Load the scene asynchronously
             AsyncOperation asyncLoad = SceneManager.LoadSceneAsync(scenePaths[0], LoadSceneMode.Additive);
             asyncLoad.allowSceneActivation = true;
-            // Track scene loading progress
             while (!asyncLoad.isDone)
             {
-                progressCallback.ReportProgress(UniqueID, 50 + asyncLoad.progress * 50, "loading scene"); // Progress from 50 to 100 during scene load
+                progressCallback.ReportProgress(UniqueID, 50 + asyncLoad.progress * 50, $"Activating scene {sceneName}");
                 await Task.Yield();
             }
 
@@ -114,7 +119,7 @@ public static class BasisBundleLoadAsset
 #if UNITY_BUNDLEUNLOAD
                 bundle.ReleaseBundleBackingStore();
 #endif
-                progressCallback.ReportProgress(UniqueID, 100, "loading scene"); // Set progress to 100 when done
+                progressCallback.ReportProgress(UniqueID, 100, $"Loaded scene {sceneName}");
                 return loadedScene;
             }
             else

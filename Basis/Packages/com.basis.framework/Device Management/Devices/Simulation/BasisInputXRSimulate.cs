@@ -37,7 +37,7 @@ namespace Basis.Scripts.Device_Management.Devices.Simulation
         public float LerpAmount = 0.1f;
 
         /// <summary>
-        /// turning this on will mean that the positions get scaled relative to the overriden height.
+        /// turning this on will mean that the positions get scaled relative to the overridden height.
         /// </summary>
         public bool AccountForScale = false;
         /// <summary>
@@ -99,8 +99,7 @@ namespace Basis.Scripts.Device_Management.Devices.Simulation
 
             if (hasRoleAssigned && Control.HasTracked != BasisHasTracked.HasNoTracker)
             {
-                Control.IncomingData.position = ScaledDeviceCoord.position;
-                Control.IncomingData.rotation = ScaledDeviceCoord.rotation;
+                Control.SetIncoming(ScaledDeviceCoord.position, ScaledDeviceCoord.rotation);
                 this.transform.name = Control.name;
                 this.FollowMovement.name = $"{Control.name} Moveable transform";
             }

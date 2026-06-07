@@ -1,6 +1,7 @@
 using Basis.BasisUI;
 using Basis.Scripts.BasisSdk.Players;
 using Basis.Scripts.Device_Management;
+using Basis.Scripts.Networking;
 using System.Collections.Generic;
 using TMPro;
 using Unity.Burst;
@@ -15,11 +16,25 @@ namespace Basis.Scripts.UI.NamePlate
 {
     public static class BasisRemoteNamePlateDriver
     {
+        public const string CombinedNameplateMeshName = "CombinedNameplateMesh";
+
         // Defaults baked from the original BasisFramework.prefab values.
         public static Color NormalColor = new Color(0.25490198f, 0.25490198f, 0.25490198f, 0.4509804f);
         public static Color IsTalkingColor = new Color(0.3529412f, 0.72156864f, 0.90588236f, 0.7490196f);
         public static Color OutOfRangeColor = new Color(0.105882354f, 0.23137255f, 0.29411766f, 0.7490196f);
         public static Color FailedLoadColor = new Color(1f, 0.2f, 0.2f, 1f);
+
+        // Per-talk-mode nameplate colors (resting + lighter "talking" variant). Alpha is
+        // replaced by NamePlateTransparency in UpdateCachedColors, so RGB is what matters.
+        public static Color PrivateColor = new Color(0.6078432f, 0.1882353f, 1f, 1f);
+        public static Color PrivateTalkColor = new Color(0.8156863f, 0.627451f, 1f, 1f);
+        public static Color DirectColor = new Color(0.12156863f, 0.7490196f, 0.3529412f, 1f);
+        public static Color DirectTalkColor = new Color(0.49803922f, 0.92156863f, 0.6509804f, 1f);
+        public static Color ThisPersonColor = new Color(1f, 0.3098039f, 0.627451f, 1f);
+        public static Color ThisPersonTalkColor = new Color(1f, 0.6588235f, 0.8156863f, 1f);
+        public static Color ShoutColor = new Color(1f, 0.5490196f, 0f, 1f);
+        public static Color ShoutTalkColor = new Color(1f, 0.7215686f, 0.3764706f, 1f);
+        public static Color MutedColor = new Color(0.12f, 0.14f, 0.18f, 1f);
 
         public static float transitionDuration = 0.3f;
         public static float returnDelay = 0.4f;
@@ -28,6 +43,15 @@ namespace Basis.Scripts.UI.NamePlate
         public static Color StaticIsTalkingColor;
         public static Color StaticOutOfRangeColor;
         public static Color StaticFailedLoadColor;
+        public static Color StaticPrivateColor;
+        public static Color StaticPrivateTalkColor;
+        public static Color StaticDirectColor;
+        public static Color StaticDirectTalkColor;
+        public static Color StaticThisPersonColor;
+        public static Color StaticThisPersonTalkColor;
+        public static Color StaticShoutColor;
+        public static Color StaticShoutTalkColor;
+        public static Color StaticMutedColor;
         public static float4 NormalColorFloat4;
 
         // Lazy-created at runtime — replaces the prefab's TMP child used for baking.
@@ -53,6 +77,9 @@ namespace Basis.Scripts.UI.NamePlate
         public static bool NamePlateHoverMenuOnly = false;
         public static float NamePlateSize = 1f;
         public static float NamePlateTransparency = 0.45f;
+        public static float ChatSize = 1f;
+        private const float ChatNameClearance = 4.5f;
+        private const float ChatBubbleGap = 1.5f;
         private static bool lastMenuOpenState;
         private static bool _initialized;
 
@@ -92,6 +119,7 @@ namespace Basis.Scripts.UI.NamePlate
             NamePlateHoverMenuOnly = BasisSettingsDefaults.NPHoverMenuOnly.RawValue;
             NamePlateSize = BasisSettingsDefaults.NPSize.RawValue;
             NamePlateTransparency = BasisSettingsDefaults.NPTransparency.RawValue;
+            ChatSize = BasisSettingsDefaults.ChatSize.RawValue;
             lastMenuOpenState = BasisMainMenu.Instance != null;
 
             UpdateCachedColors(NamePlateTransparency);
@@ -124,14 +152,12 @@ namespace Basis.Scripts.UI.NamePlate
 
                 Text = bakingGO.AddComponent<TextMeshPro>();
                 Text.font = font;
-                Text.fontSize = 71.4f;
-                Text.enableAutoSizing = true;
-                Text.fontSizeMin = 1;
-                Text.fontSizeMax = 72;
+                Text.fontSize = BakeFontSize;
+                Text.enableAutoSizing = false;
                 Text.alignment = TextAlignmentOptions.Center;
                 Text.color = Color.white;
                 Text.enableVertexGradient = false;
-                Text.textWrappingMode = TextWrappingModes.Normal;
+                Text.textWrappingMode = TextWrappingModes.NoWrap;
                 Text.overflowMode = TextOverflowModes.Overflow;
             }
         }
@@ -277,7 +303,40 @@ namespace Basis.Scripts.UI.NamePlate
                 ? new Color(1f, 0.2f, 0.2f, 1f)
                 : FailedLoadColor;
             StaticFailedLoadColor = new Color(failedSource.r, failedSource.g, failedSource.b, transparency);
+            StaticPrivateColor = new Color(PrivateColor.r, PrivateColor.g, PrivateColor.b, transparency);
+            StaticPrivateTalkColor = new Color(PrivateTalkColor.r, PrivateTalkColor.g, PrivateTalkColor.b, transparency);
+            StaticDirectColor = new Color(DirectColor.r, DirectColor.g, DirectColor.b, transparency);
+            StaticDirectTalkColor = new Color(DirectTalkColor.r, DirectTalkColor.g, DirectTalkColor.b, transparency);
+            StaticThisPersonColor = new Color(ThisPersonColor.r, ThisPersonColor.g, ThisPersonColor.b, transparency);
+            StaticThisPersonTalkColor = new Color(ThisPersonTalkColor.r, ThisPersonTalkColor.g, ThisPersonTalkColor.b, transparency);
+            StaticShoutColor = new Color(ShoutColor.r, ShoutColor.g, ShoutColor.b, transparency);
+            StaticShoutTalkColor = new Color(ShoutTalkColor.r, ShoutTalkColor.g, ShoutTalkColor.b, transparency);
+            StaticMutedColor = new Color(MutedColor.r, MutedColor.g, MutedColor.b, transparency);
             NormalColorFloat4 = new float4(StaticNormalColor.r, StaticNormalColor.g, StaticNormalColor.b, StaticNormalColor.a);
+        }
+
+        public static Color GetModeRestingColor(BasisTalkMode mode)
+        {
+            switch (mode)
+            {
+                case BasisTalkMode.Private: return StaticPrivateColor;
+                case BasisTalkMode.Direct: return StaticDirectColor;
+                case BasisTalkMode.ThisPerson: return StaticThisPersonColor;
+                case BasisTalkMode.Shout: return StaticShoutColor;
+                default: return StaticNormalColor;
+            }
+        }
+
+        public static Color GetModeTalkColor(BasisTalkMode mode)
+        {
+            switch (mode)
+            {
+                case BasisTalkMode.Private: return StaticPrivateTalkColor;
+                case BasisTalkMode.Direct: return StaticDirectTalkColor;
+                case BasisTalkMode.ThisPerson: return StaticThisPersonTalkColor;
+                case BasisTalkMode.Shout: return StaticShoutTalkColor;
+                default: return StaticIsTalkingColor;
+            }
         }
 
         /// <summary>
@@ -367,8 +426,11 @@ namespace Basis.Scripts.UI.NamePlate
             NamePlateHoverMenuOnly = hoverMenuOnly;
             NamePlateSize = newSize;
             NamePlateTransparency = newTransparency;
+            ChatSize = BasisSettingsDefaults.ChatSize.RawValue;
 
             UpdateCachedColors(newTransparency);
+
+            FlushPendingStructuralChanges();
 
             Vector3 scale = new Vector3(0.02f, 0.02f, 0.02f) * newSize;
             var arr = plates;
@@ -383,7 +445,8 @@ namespace Basis.Scripts.UI.NamePlate
                     plate.Self.localScale = scale;
                 }
 
-                plate.ApplyColorFromJob(StaticNormalColor);
+                plate.ApplyTalkModeColors();
+                plate.RefreshChatLayout();
             }
 
             SetAllPlateVisibility();
@@ -393,24 +456,77 @@ namespace Basis.Scripts.UI.NamePlate
         // Text bake path
         // ===========================
 
+        private struct BakeRequest
+        {
+            public BasisRemotePlayer player;
+            public BasisRemoteNamePlate plate;
+        }
+
+        private static readonly Queue<BakeRequest> bakeQueue = new(64);
+        public static int MaxBakesPerFrame = 2;
+        public static float MaxPlateHalfWidth = 40f;
+        private const float BakeFontSize = 72f;
+
+        private static readonly Matrix4x4 FlipX = Matrix4x4.Scale(new Vector3(-1f, 1f, 1f));
+
+        public static void QueueTextBake(BasisRemotePlayer remotePlayer, BasisRemoteNamePlate namePlate)
+        {
+            if (remotePlayer == null || namePlate == null) return;
+            bakeQueue.Enqueue(new BakeRequest { player = remotePlayer, plate = namePlate });
+        }
+
+        private static void ProcessBakeQueue()
+        {
+            if (Text == null) return;
+
+            int budget = MaxBakesPerFrame;
+            while (budget > 0 && bakeQueue.Count > 0)
+            {
+                BakeRequest req = bakeQueue.Dequeue();
+                if (req.plate == null || req.player == null) continue;
+                GenerateTextFactory(req.player, req.plate);
+                budget--;
+            }
+        }
+
         public static void GenerateTextFactory(BasisRemotePlayer remotePlayer, BasisRemoteNamePlate namePlate)
         {
+            BakeNameMesh(remotePlayer.DisplayName, namePlate.Filter, namePlate.Renderer);
+        }
+
+        /// <summary>
+        /// Bakes a display name into a combined rounded-quad + text mesh and assigns it to
+        /// the given filter/renderer. Shared by the remote player nameplate and any other
+        /// consumer that wants a standalone name label. Returns false if the baking assets
+        /// aren't loaded yet so the caller can retry.
+        /// </summary>
+        public static bool BakeNameMesh(string displayName, MeshFilter filter, MeshRenderer renderer)
+        {
+            if (Text == null || filter == null || renderer == null) return false;
+
             Text.gameObject.SetActive(true);
-            Text.text = remotePlayer.DisplayName;
+            Text.fontSize = BakeFontSize;
+            Text.text = displayName;
             Text.ForceMeshUpdate();
 
-            // Measure the baked text so the background fits its actual content.
-            Vector2 textSize = Text.GetRenderedValues(true);
             const float horizontalPadding = 2f;
+            Vector2 textSize = Text.GetRenderedValues(true);
             float halfWidth = (textSize.x * 0.5f) + horizontalPadding;
+
+            float textScale = 1f;
+            if (halfWidth > MaxPlateHalfWidth && textSize.x > 0.001f)
+            {
+                float maxTextWidth = (MaxPlateHalfWidth - horizontalPadding) * 2f;
+                textScale = maxTextWidth / textSize.x;
+                halfWidth = MaxPlateHalfWidth;
+            }
+
+            Matrix4x4 textTransform = textScale == 1f
+                ? FlipX
+                : Matrix4x4.Scale(new Vector3(-textScale, textScale, 1f));
 
             Mesh plateMesh = GenerateRoundedQuad(halfWidth, 4.5f, "Rounded NamePlate Quad");
 
-            // Walk textInfo.meshInfo for every populated sub-mesh — index 0 is the
-            // primary font, indices 1+ are fallback font atlases used when characters
-            // (e.g., kanji) aren't present in the primary font. Cloning only Text.mesh
-            // would silently drop those fallback glyphs because TMP places them on
-            // auto-generated TMP_SubMesh children, not on the main Text mesh.
             var textInfo = Text.textInfo;
             int subMeshLimit = 0;
             int textPartCount = 0;
@@ -431,51 +547,26 @@ namespace Basis.Scripts.UI.NamePlate
             combine[0] = new CombineInstance { mesh = plateMesh, transform = Matrix4x4.identity };
             materials[0] = SelectedNamePlateMaterial;
 
-            Mesh primaryFlipped = null;
             int writeIdx = 1;
             for (int i = 0; i < subMeshLimit; i++)
             {
                 var info = textInfo.meshInfo[i];
                 if (info.vertexCount == 0 || info.mesh == null) continue;
 
-                Mesh subClone = Object.Instantiate(info.mesh);
-                FlipMesh(subClone);
-
-                combine[writeIdx] = new CombineInstance { mesh = subClone, transform = Matrix4x4.identity };
+                combine[writeIdx] = new CombineInstance { mesh = info.mesh, transform = textTransform };
                 materials[writeIdx] = info.material;
-                if (primaryFlipped == null) primaryFlipped = subClone;
                 writeIdx++;
             }
 
-            Mesh combinedMesh = new Mesh { name = "CombinedNameplateMesh" };
+            Mesh combinedMesh = new Mesh { name = CombinedNameplateMeshName };
             combinedMesh.CombineMeshes(combine, false);
 
-            namePlate.bakedMesh = primaryFlipped;
-            namePlate.Filter.sharedMesh = combinedMesh;
-            namePlate.Renderer.materials = materials;
+            filter.sharedMesh = combinedMesh;
+            renderer.sharedMaterials = materials;
 
+            Object.Destroy(plateMesh);
             Text.gameObject.SetActive(false);
-        }
-
-        private static void FlipMesh(Mesh mesh)
-        {
-            // Mirror vertices along X axis so text reads correctly from the opposite side.
-            // Negating X implicitly reverses triangle winding, which makes the mesh
-            // face the opposite direction - no explicit winding reversal needed.
-            Vector3[] vertices = mesh.vertices;
-            for (int i = 0; i < vertices.Length; i++)
-            {
-                vertices[i].x = -vertices[i].x;
-            }
-            mesh.vertices = vertices;
-
-            // Flip normals to match the new facing direction
-            Vector3[] normals = mesh.normals;
-            for (int i = 0; i < normals.Length; i++)
-            {
-                normals[i] = -normals[i];
-            }
-            mesh.normals = normals;
+            return true;
         }
 
         /// <summary>
@@ -546,21 +637,41 @@ namespace Basis.Scripts.UI.NamePlate
         /// </summary>
         public static void GenerateChatBubble(BasisRemoteNamePlate namePlate)
         {
-            if (namePlate.ChatText == null || namePlate.ChatBubbleFilter == null) return;
+            if (namePlate.ChatBubbleFilter == null) return;
 
-            namePlate.ChatText.ForceMeshUpdate();
-            Vector2 textSize = namePlate.ChatText.GetRenderedValues(true);
+            TextMeshPro bubbleText = namePlate.GetBubbleSourceText();
+            if (bubbleText == null) return;
+
+            bubbleText.ForceMeshUpdate();
+            Vector2 textSize = bubbleText.GetRenderedValues(true);
 
             float padding = 2f;
             float halfWidth = Mathf.Max((textSize.x / 2f) + padding, 6f);
             float halfHeight = Mathf.Max((textSize.y / 2f) + padding, 3f);
 
+            if (namePlate.ChatBubbleFilter.sharedMesh != null)
+            {
+                Object.Destroy(namePlate.ChatBubbleFilter.sharedMesh);
+            }
             namePlate.ChatBubbleFilter.sharedMesh = GenerateRoundedQuad(halfWidth, halfHeight, "Chat Bubble Quad");
 
             if (namePlate.ChatBubbleRenderer.sharedMaterial == null)
             {
                 namePlate.ChatBubbleRenderer.material = SelectedNamePlateMaterial;
             }
+
+            float chatScale = NamePlateSize > 0.0001f ? (ChatSize / NamePlateSize) : ChatSize;
+            float localY = ChatNameClearance + ChatBubbleGap + (halfHeight * chatScale);
+            ApplyChatObjectTransform(namePlate.ChatText.transform, chatScale, localY);
+            ApplyChatObjectTransform(namePlate.ChatBubbleFilter.transform, chatScale, localY);
+        }
+
+        private static void ApplyChatObjectTransform(Transform t, float scale, float localY)
+        {
+            t.localScale = new Vector3(scale, scale, scale);
+            Vector3 p = t.localPosition;
+            p.y = localY;
+            t.localPosition = p;
         }
 
         // =========================================================
@@ -620,6 +731,7 @@ namespace Basis.Scripts.UI.NamePlate
             indexOf.Clear();
             pendingAdd.Clear();
             pendingRemove.Clear();
+            bakeQueue.Clear();
 
             allocated = false;
             capacity = 0;
@@ -642,8 +754,12 @@ namespace Basis.Scripts.UI.NamePlate
         /// </summary>
         public static void ScheduleSimulate(double now)
         {
+            ProcessBakeQueue();
+
             if (!ShouldRunJobs())
+            {
                 return;
+            }
 
             ScheduleSimulate(now, returnDelay, transitionDuration, NormalColorFloat4);
         }
@@ -659,7 +775,9 @@ namespace Basis.Scripts.UI.NamePlate
         {
             // If a job is still running, don't stomp buffers.
             if (jobScheduled && !handle.IsCompleted)
+            {
                 return;
+            }
 
             // If it finished, complete it now so we can apply structural changes/resizes safely.
             if (jobScheduled)
@@ -669,10 +787,14 @@ namespace Basis.Scripts.UI.NamePlate
             }
 
             if (pendingRemove.Count > 0 || pendingAdd.Count > 0)
+            {
                 ApplyPendingStructuralChanges();
+            }
 
             if (count == 0)
+            {
                 return;
+            }
 
             EnsureCapacity(count);
 
@@ -700,12 +822,14 @@ namespace Basis.Scripts.UI.NamePlate
                     // instead of letting the 0.7s hold+fade finish the transition.
                     if (pulsing && !p.CanCurrentlyBeHeard())
                     {
-                        p.ApplyColorFromJob(StaticNormalColor);
+                        float4 rc = p.GetRestingColorFloat4ForJob();
+                        p.ApplyColorFromJob(new Color(rc.x, rc.y, rc.z, rc.w));
                         p.StopPulseFromJob();
                         pulsing = false;
                     }
 
                     var input = new PlateInput { isVisible = (ushort)p.IsVisibleRaw };
+                    input.restingColor = p.GetRestingColorFloat4ForJob();
                     if (pulsing)
                     {
                         input.isPulsing = 1;
@@ -784,7 +908,26 @@ namespace Basis.Scripts.UI.NamePlate
                     }
 
                     p.UpdateChatTimeout();
+                    p.RefreshTypingIndicatorAnimation();
                 }
+            }
+        }
+
+        /// <summary>
+        /// Completes any in-flight pulse job and flushes queued plate add/removes into
+        /// the live array. Safe to call off the per-frame path (e.g. on settings changes).
+        /// </summary>
+        private static void FlushPendingStructuralChanges()
+        {
+            if (jobScheduled)
+            {
+                handle.Complete();
+                jobScheduled = false;
+            }
+
+            if (pendingAdd.Count > 0 || pendingRemove.Count > 0)
+            {
+                ApplyPendingStructuralChanges();
             }
         }
 
@@ -875,6 +1018,7 @@ namespace Basis.Scripts.UI.NamePlate
             public ushort isVisible; // 0/1
             public double startTime;
             public float4 talkColor;
+            public float4 restingColor;
         }
 
         public struct PlateOutput
@@ -933,7 +1077,7 @@ namespace Basis.Scripts.UI.NamePlate
 
                 if (t >= 1f)
                 {
-                    o.color = normalColor;
+                    o.color = st.restingColor;
                     o.hasChange = 1;
                     o.stopPulsing = 1;
                     outputs[i] = o;
@@ -941,7 +1085,7 @@ namespace Basis.Scripts.UI.NamePlate
                 }
 
                 t = math.saturate(t);
-                o.color = math.lerp(st.talkColor, normalColor, t);
+                o.color = math.lerp(st.talkColor, st.restingColor, t);
                 o.hasChange = 1;
                 outputs[i] = o;
             }

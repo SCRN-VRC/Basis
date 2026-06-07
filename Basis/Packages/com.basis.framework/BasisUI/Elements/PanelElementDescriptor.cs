@@ -135,7 +135,6 @@ namespace Basis.BasisUI
         public override void OnReleaseEvent()
         {
             base.OnReleaseEvent();
-            if (_iconIsAddressable) AddressableAssets.Release(_iconSprite);
         }
 
         public void SetIcon(Sprite value)
@@ -191,6 +190,22 @@ namespace Basis.BasisUI
             _description = value;
             _descriptionSet = true;
             DescriptionLabel.gameObject.SetActive(!string.IsNullOrEmpty(value));
+            DescriptionLabel.SetText(value);
+        }
+
+        /// <summary>
+        /// Sets the description with rich-text parsing left enabled, for trusted
+        /// code-built markup (colors, sizes, b/i). Only pass strings assembled in
+        /// code — never raw user or remote text — and wrap any interpolated payload
+        /// in &lt;noparse&gt; so its angle brackets aren't read as tags.
+        /// </summary>
+        public void SetRichDescription(string value)
+        {
+            if (!HasDescription) return;
+            _description = value;
+            _descriptionSet = true;
+            DescriptionLabel.gameObject.SetActive(!string.IsNullOrEmpty(value));
+            DescriptionLabel.richText = true;
             DescriptionLabel.SetText(value);
         }
 

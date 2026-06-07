@@ -1,5 +1,7 @@
 using Basis.Scripts.Device_Management;
+using Basis.Scripts.Drivers;
 using Basis.Scripts.Networking;
+using Basis.Network.Core;
 using BasisNetworkClient;
 using BasisPermissions;
 using System;
@@ -13,8 +15,14 @@ namespace Basis.BasisUI
 {
     public partial class SettingsProvider : BasisMenuActionProvider<BasisMainMenu>
     {
+        private const string ChatTabKey = "settings.tab.chat";
         private static string _pendingTabKey;
         private static string _lastSelectedTabKey;
+        private static PanelTextField _chatTextField;
+        private static string _pendingChatComposerText;
+        private static bool _pendingChatComposerFocus;
+        private static bool _pendingChatComposerPlaySound;
+        private static bool _chatComposerPlayNotificationSound = true;
 
         /// <summary>
         /// Maps a tab localization key to the index of its button inside
@@ -46,6 +54,13 @@ namespace Basis.BasisUI
 
         public static Action<RectTransform> AvatarCustomizationBuilder;
 
+        /// <summary>
+        /// External hook to append extra sections to the Tracker Settings tab. Packages
+        /// (e.g. com.basis.mediapipe) register a builder here that populates the passed-in
+        /// tab content with their own controls.
+        /// </summary>
+        public static Action<RectTransform> TrackerSettingsExtraBuilder;
+
         public static Action<RectTransform> LicensesBuilder;
 
         [RuntimeInitializeOnLoadMethod]
@@ -70,7 +85,7 @@ namespace Basis.BasisUI
         public static string StaticTitle => BasisLocalization.Get(StaticTitleKey);
         public override string Title => StaticTitle;
         public override string IconAddress => AddressableAssets.Sprites.Settings;
-        public override int Order => 0;
+        public override int Order => 10;
         public override bool Hidden => false;
 
         /// <summary>
@@ -93,6 +108,14 @@ namespace Basis.BasisUI
             OpenToTab("settings.tab.bodytracking");
         }
 
+        public static void OpenChatComposer(string presetText, bool focusInput, bool playSound)
+        {
+            _pendingChatComposerText = BasisChatSanitizer.Sanitize(presetText);
+            _pendingChatComposerFocus = focusInput;
+            _pendingChatComposerPlaySound = playSound;
+            OpenToTab(ChatTabKey);
+        }
+
         private static void NavigateToTab(PanelTabGroup tabGroup, string tabKey)
         {
             if (string.IsNullOrEmpty(tabKey))
@@ -105,6 +128,11 @@ namespace Basis.BasisUI
             {
                 PanelButton button = tabGroup.SelectionButtons[index];
                 button?.OnClicked?.Invoke();
+
+                if (tabKey == ChatTabKey)
+                {
+                    ApplyPendingChatComposerRequest();
+                }
             }
         }
 
@@ -114,7 +142,8 @@ namespace Basis.BasisUI
 
             BasisMenuPanel panel = BasisMainMenu.CreateActiveMenu(
                 BasisMenuPanel.PanelData.Standard(Title),
-                BasisMenuPanel.PanelStyles.Page);
+                BasisMenuPanel.PanelStyles.Page,
+                this);
 
             TextMeshProUGUI TitleLabel = panel.Descriptor.TitleLabel;
             BasisFrameRateVisualization FRV = TitleLabel.gameObject.AddComponent<BasisFrameRateVisualization>();
@@ -136,7 +165,7 @@ namespace Basis.BasisUI
             AddLazyTab(tabGroup, "settings.tab.graphics", () => GraphicsTab(tabGroup));
             AddLazyTab(tabGroup, "settings.tab.myavatar", () => SettingsProviderAvatarStats.AvatarStatsTab(tabGroup));
             AddLazyTab(tabGroup, "settings.tab.controls", () => SettingsProviderControllerConfig.OpenControllerConfig(tabGroup));
-            AddLazyTab(tabGroup, "settings.tab.chat", () => ChatTab(tabGroup));
+            AddLazyTab(tabGroup, ChatTabKey, () => ChatTab(tabGroup));
             AddLazyTab(tabGroup, "settings.tab.bodytracking", () => SettingsProviderIK.IKTab(tabGroup));
             AddLazyTab(tabGroup, "settings.tab.trackerlinking", () => SettingsProviderTrackerSettings.TrackerSettingsTab(tabGroup));
             AddLazyTab(tabGroup, "settings.tab.downloadsurls", () => SettingsProviderStorage.DownloadsUrlsTab(tabGroup));
@@ -188,6 +217,11 @@ namespace Basis.BasisUI
             }
 
             panel.Descriptor.ForceRebuild();
+        }
+
+        public override void OnReleaseEvent()
+        {
+            ClearChatComposerReference();
         }
 
         /// <summary>
@@ -261,12 +295,12 @@ namespace Basis.BasisUI
         private static void BuildSettingsSearch(RectTransform container, PanelTabGroup tabGroup)
         {
             PanelTextField searchField = PanelTextField.CreateNewEntry(container);
-            searchField.Descriptor.SetTitle("Search Menus");
+            searchField.Descriptor.SetTitle(BasisLocalization.Get("settings.main.title.searchMenus"));
             searchField.Descriptor.SetDescription("Type to find a settings menu, then click a result to open it.");
 
             PanelElementDescriptor resultsGroup = PanelElementDescriptor.CreateNew(
                 PanelElementDescriptor.ElementStyles.Group, container);
-            resultsGroup.SetTitle("Results");
+            resultsGroup.SetTitle(BasisLocalization.Get("settings.main.title.results"));
             resultsGroup.SetActive(false);
 
             List<PanelButton> resultButtons = new List<PanelButton>();
@@ -357,6 +391,19 @@ namespace Basis.BasisUI
             toggleAvatarPreview.Descriptor.SetTitle(BasisLocalization.Get("settings.general.avatarPreview"));
             toggleAvatarPreview.Descriptor.SetDescription(BasisLocalization.Get("settings.general.avatarPreview.description"));
 
+            PanelToggle toggleAvatarPreviewMirror = PanelToggle.CreateNewEntry(hudGroup);
+            toggleAvatarPreviewMirror.AssignBinding(BasisSettingsDefaults.AvatarPreviewMirror);
+            toggleAvatarPreviewMirror.Descriptor.SetTitle(BasisLocalization.Get("settings.general.avatarPreviewMirror"));
+            toggleAvatarPreviewMirror.Descriptor.SetDescription(BasisLocalization.Get("settings.general.avatarPreviewMirror.description"));
+
+            toggleAvatarPreviewMirror.Descriptor.SetActive(toggleAvatarPreview.Value);
+            toggleAvatarPreview.OnValueChanged += (val) =>
+            {
+                toggleAvatarPreviewMirror.Descriptor.SetActive(val);
+                hudGroup.ForceRebuild();
+                descriptor.ForceRebuild();
+            };
+
             // Third-person camera is desktop-only; hide the entire group in VR/XR.
             if (BasisDeviceManagement.IsUserInDesktop())
             {
@@ -369,13 +416,18 @@ namespace Basis.BasisUI
                 toggleThirdPerson.Descriptor.SetTitle(BasisLocalization.Get("settings.general.thirdPerson"));
                 toggleThirdPerson.Descriptor.SetDescription(BasisLocalization.Get("settings.general.thirdPerson.description"));
 
-                // Audio source toggle is only meaningful while third-person is active, but we
-                // leave it visible alongside the parent toggle so the user can pre-configure
-                // their preference before flipping into third-person.
                 PanelToggle toggleAudioFromHead = PanelToggle.CreateNewEntry(cameraGroup);
                 toggleAudioFromHead.AssignBinding(BasisSettingsDefaults.AudioListenerFollowsHead);
                 toggleAudioFromHead.Descriptor.SetTitle(BasisLocalization.Get("settings.general.thirdPerson.audioFromHead"));
                 toggleAudioFromHead.Descriptor.SetDescription(BasisLocalization.Get("settings.general.thirdPerson.audioFromHead.description"));
+
+                toggleAudioFromHead.Descriptor.SetActive(toggleThirdPerson.Value);
+                toggleThirdPerson.OnValueChanged += (val) =>
+                {
+                    toggleAudioFromHead.Descriptor.SetActive(val);
+                    cameraGroup.ForceRebuild();
+                    descriptor.ForceRebuild();
+                };
             }
 
             // One reset button for this whole page
@@ -444,55 +496,139 @@ namespace Basis.BasisUI
             networkingGroup.SetTitle(BasisLocalization.Get("settings.general.networking.title"));
             networkingGroup.SetDescription(BasisLocalization.Get("settings.general.networking.description"));
 
-            PanelDropdown dropdownP2PRate = PanelDropdown.CreateNewEntry(networkingGroup.ContentParent);
-            dropdownP2PRate.Descriptor.SetTitle(BasisLocalization.Get("settings.general.networking.p2pAvatarRate"));
-            dropdownP2PRate.Descriptor.SetDescription(BasisLocalization.Get("settings.general.networking.p2pAvatarRate.description"));
-            dropdownP2PRate.AssignEntries(new List<string>
-            {
-                BasisP2PManager.P2PRate_144Hz,
-                BasisP2PManager.P2PRate_120Hz,
-                BasisP2PManager.P2PRate_90Hz,
-                BasisP2PManager.P2PRate_72Hz,
-                BasisP2PManager.P2PRate_60Hz,
-                BasisP2PManager.P2PRate_30Hz,
-                BasisP2PManager.P2PRate_20Hz,
-            });
-            dropdownP2PRate.AssignBinding(BasisSettingsDefaults.P2PAvatarSyncRate);
+            PanelToggle toggleDirectConnections = PanelToggle.CreateNewEntry(networkingGroup.ContentParent);
+            toggleDirectConnections.Descriptor.SetTitle(BasisLocalization.Get("settings.general.networking.directConnections"));
+            toggleDirectConnections.Descriptor.SetDescription(BasisLocalization.Get("settings.general.networking.directConnections.description"));
+            toggleDirectConnections.SetValueWithoutNotify(!BasisSettingsDefaults.DisableDirectConnections.RawValue);
 
-            PanelToggle toggleJitterBufferOverride = PanelToggle.CreateNewEntry(networkingGroup.ContentParent);
-            toggleJitterBufferOverride.AssignBinding(BasisSettingsDefaults.NetworkJitterBufferOverride);
-            toggleJitterBufferOverride.Descriptor.SetTitle(BasisLocalization.Get("settings.general.networking.jitterBufferOverride"));
-            toggleJitterBufferOverride.Descriptor.SetDescription(BasisLocalization.Get("settings.general.networking.jitterBufferOverride.description"));
-
-            PanelSlider sliderJitterBuffer = PanelSlider.CreateEntryAndBind(
+            PanelSlider sliderP2PRate = PanelSlider.CreateEntryAndBind(
                 networkingGroup.ContentParent,
                 new PanelSlider.SliderSettings(
-                    BasisLocalization.Get("settings.general.networking.jitterBuffer"),
-                    BasisLocalization.Get("settings.general.networking.jitterBuffer.description"),
-                    0, 6, true, 0, ValueDisplayMode.Raw),
-                BasisSettingsDefaults.NetworkJitterBufferDepth);
+                    BasisLocalization.Get("settings.general.networking.p2pAvatarRate"),
+                    BasisLocalization.Get("settings.general.networking.p2pAvatarRate.description"),
+                    BasisP2PManager.MinAvatarSyncHz, BasisP2PManager.MaxAvatarSyncHz, true, 0, ValueDisplayMode.Hz),
+                BasisSettingsDefaults.P2PAvatarSyncRate);
 
-            sliderJitterBuffer.Descriptor.SetActive(toggleJitterBufferOverride.Value);
-            toggleJitterBufferOverride.OnValueChanged += (val) =>
+            PanelElementDescriptor p2pRateWarning = PanelElementDescriptor.CreateNew(
+                PanelElementDescriptor.ElementStyles.Group, networkingGroup.ContentParent);
+            p2pRateWarning.SetTitle(string.Empty);
+            if (p2pRateWarning.HasDescription)
             {
-                sliderJitterBuffer.Descriptor.SetActive(val);
-                networkingGroup.ForceRebuild();
-            };
+                p2pRateWarning.DescriptionLabel.color = new Color(1f, 0.78f, 0.28f);
+            }
+            p2pRateWarning.SetActive(false);
 
-            PanelToggle toggleDisableDirectConn = PanelToggle.CreateNewEntry(networkingGroup.ContentParent);
-            toggleDisableDirectConn.AssignBinding(BasisSettingsDefaults.DisableDirectConnections);
-            toggleDisableDirectConn.Descriptor.SetTitle(BasisLocalization.Get("settings.general.networking.disableDirectConnections"));
-            toggleDisableDirectConn.Descriptor.SetDescription(BasisLocalization.Get("settings.general.networking.disableDirectConnections.description"));
+            _avatarRateSlider = sliderP2PRate;
+            _avatarRateWarning = p2pRateWarning;
+            _avatarRateLastFps = -1;
+            _avatarRateLastRate = -1;
+            _avatarRateWarnShown = false;
+            if (!_avatarRateTickSubscribed)
+            {
+                BasisFrameClock.OnTick += UpdateAvatarRateWarning;
+                BasisFrameClock.AddRequest();
+                _avatarRateTickSubscribed = true;
+            }
+
+            PanelElementDescriptor encryptionInfo = PanelElementDescriptor.CreateNew(
+                PanelElementDescriptor.ElementStyles.Group, networkingGroup.ContentParent);
+            encryptionInfo.SetTitle(BasisLocalization.Get("settings.general.networking.encryption.title"));
+            encryptionInfo.SetDescription(BuildEncryptionStatusText());
+
+            void RefreshDirectConnectionVisibility(bool directOn)
+            {
+                sliderP2PRate.Descriptor.SetActive(directOn);
+                encryptionInfo.SetActive(directOn);
+                if (!directOn)
+                {
+                    _avatarRateWarnShown = false;
+                    p2pRateWarning.SetActive(false);
+                }
+                networkingGroup.ForceRebuild();
+            }
+            RefreshDirectConnectionVisibility(toggleDirectConnections.Value);
+            toggleDirectConnections.OnValueChanged += (directOn) =>
+            {
+                BasisSettingsDefaults.DisableDirectConnections.SetValue(!directOn);
+                encryptionInfo.SetDescription(BuildEncryptionStatusText());
+                RefreshDirectConnectionVisibility(directOn);
+            };
+        }
+
+        private static string BuildEncryptionStatusText()
+        {
+            string serverStatus = BasisLocalization.Get("settings.general.networking.encryption.serverOff");
+            string p2pStatus = BasisSettingsDefaults.DisableDirectConnections.RawValue
+                ? BasisLocalization.Get("settings.general.networking.encryption.p2pDisabled")
+                : BasisLocalization.Get("settings.general.networking.encryption.p2pOn");
+
+            return BasisLocalization.Get("settings.general.networking.encryption.serverLabel") + ": " + serverStatus + "\n"
+                 + BasisLocalization.Get("settings.general.networking.encryption.p2pLabel") + ": " + p2pStatus;
         }
 
         private static void ResetGeneralDefaults()
         {
             BasisSettingsDefaults.AvatarPreview.ResetToDefault();
+            BasisSettingsDefaults.AvatarPreviewMirror.ResetToDefault();
             BasisSettingsDefaults.DisableSeats.ResetToDefault();
             BasisSettingsDefaults.DesktopReticle.ResetToDefault();
             BasisSettingsDefaults.EnableThirdPersonCamera.ResetToDefault();
             BasisSettingsDefaults.AudioListenerFollowsHead.ResetToDefault();
             BasisSettingsDefaults.DisableDirectConnections.ResetToDefault();
+        }
+
+        private static PanelSlider _avatarRateSlider;
+        private static PanelElementDescriptor _avatarRateWarning;
+        private static bool _avatarRateTickSubscribed;
+        private static int _avatarRateLastFps = -1;
+        private static int _avatarRateLastRate = -1;
+        private static bool _avatarRateWarnShown;
+        private const int AvatarRateWarningPollInterval = 15;
+
+        private static void UpdateAvatarRateWarning()
+        {
+            PanelElementDescriptor warning = _avatarRateWarning;
+            if (warning == null)
+            {
+                BasisFrameClock.OnTick -= UpdateAvatarRateWarning;
+                BasisFrameClock.RemoveRequest();
+                _avatarRateTickSubscribed = false;
+                return;
+            }
+
+            if (_avatarRateSlider == null || !_avatarRateSlider.gameObject.activeInHierarchy)
+            {
+                return;
+            }
+
+            if (Time.frameCount % AvatarRateWarningPollInterval != 0)
+            {
+                return;
+            }
+
+            int fps = Mathf.RoundToInt(BasisFrameClock.SmoothedFramesPerSecond);
+            int rate = Mathf.RoundToInt(BasisSettingsDefaults.P2PAvatarSyncRate.RawValue);
+            bool insufficient = fps > 0 && rate > Mathf.RoundToInt(fps * 1.02f);
+
+            if (!insufficient)
+            {
+                if (_avatarRateWarnShown)
+                {
+                    _avatarRateWarnShown = false;
+                    warning.SetActive(false);
+                }
+                return;
+            }
+
+            if (_avatarRateWarnShown && fps == _avatarRateLastFps && rate == _avatarRateLastRate)
+            {
+                return;
+            }
+            _avatarRateWarnShown = true;
+            _avatarRateLastFps = fps;
+            _avatarRateLastRate = rate;
+            warning.SetActive(true);
+            warning.SetDescription(BasisLocalization.Get("settings.general.networking.p2pAvatarRate.fpsWarning", fps, rate));
         }
 
         // ------------------
@@ -532,12 +668,6 @@ namespace Basis.BasisUI
                 BasisSettingsDefaults.WorldVolume);
             sliderWorldVolume.SliderComponent.onValueChanged.AddListener(SMModuleAudio.ApplyWorldVolume);
 
-            PanelSlider sliderVideoVolume = PanelSlider.CreateEntryAndBind(
-                mixerGroup,
-                PanelSlider.SliderSettings.Percentage(BasisLocalization.Get("settings.audio.mediaVolume")),
-                BasisSettingsDefaults.MediaVolume);
-            sliderVideoVolume.SliderComponent.onValueChanged.AddListener(SMModuleAudio.ApplyMediaVolume);
-
             PanelSlider sliderVoiceVolume = PanelSlider.CreateEntryAndBind(
                 mixerGroup,
                 PanelSlider.SliderSettings.Percentage(BasisLocalization.Get("settings.audio.voiceVolume")),
@@ -571,7 +701,6 @@ namespace Basis.BasisUI
             BasisSettingsDefaults.MainVolume.ResetToDefault();
             BasisSettingsDefaults.MenuVolume.ResetToDefault();
             BasisSettingsDefaults.WorldVolume.ResetToDefault();
-            BasisSettingsDefaults.MediaVolume.ResetToDefault();
             BasisSettingsDefaults.VoiceVolume.ResetToDefault();
             BasisSettingsDefaults.AvatarVolume.ResetToDefault();
             BasisSettingsDefaults.PropVolume.ResetToDefault();
@@ -647,7 +776,7 @@ namespace Basis.BasisUI
             // Microphone broadcast range (relocated from General).
             PanelSlider sliderMicrophoneRange = PanelSlider.CreateEntryAndBind(
                 microphoneGroup,
-                PanelSlider.SliderSettings.Distance(BasisLocalization.Get("settings.general.microphoneRange"), 25),
+                PanelSlider.SliderSettings.Distance(BasisLocalization.Get("settings.general.microphoneRange"), BasisNetworkModeration.ServerMaxMicrophoneRangeMeters),
                 BasisSettingsDefaults.MicrophoneRange);
 
             PanelToggle toggleMicrophoneDenoiser = PanelToggle.CreateNewEntry(microphoneGroup);
@@ -660,31 +789,28 @@ namespace Basis.BasisUI
 
             PanelDropdown dropdownMicrophoneMode = PanelDropdown.CreateNewEntry(microphoneGroup);
             dropdownMicrophoneMode.Descriptor.SetTitle(BasisLocalization.Get("settings.microphone.mode"));
-            dropdownMicrophoneMode.AssignEntries(new List<string>
-            {
-                "On Activation",
-                "Push To Talk"
-            });
+            dropdownMicrophoneMode.AssignLocalizedEntries(
+                new List<string> { "On Activation", "Push To Talk" },
+                new List<string> { "settings.microphone.mode.onActivation", "settings.microphone.mode.pushToTalk" });
             dropdownMicrophoneMode.AssignBinding(BasisSettingsDefaults.MicrophoneMode);
 
             PanelDropdown dropdownMicrophoneIcon = PanelDropdown.CreateNewEntry(microphoneGroup);
             dropdownMicrophoneIcon.Descriptor.SetTitle(BasisLocalization.Get("settings.microphone.icon"));
-            dropdownMicrophoneIcon.AssignEntries(new List<string>
-            {
-                "AlwaysVisible",
-                "ActivityDetection",
-                "Hidden"
-            });
+            dropdownMicrophoneIcon.AssignLocalizedEntries(
+                new List<string> { "AlwaysVisible", "ActivityDetection", "Hidden" },
+                new List<string> { "settings.microphone.icon.alwaysVisible", "settings.microphone.icon.activityDetection", "settings.microphone.icon.hidden" });
             dropdownMicrophoneIcon.AssignBinding(BasisSettingsDefaults.MicrophoneIcon);
 
             PanelDropdown dropdownMicStartBehavior = PanelDropdown.CreateNewEntry(microphoneGroup);
             dropdownMicStartBehavior.Descriptor.SetTitle(BasisLocalization.Get("settings.microphone.startBehavior"));
-            dropdownMicStartBehavior.AssignEntries(new List<string>
-            {
-                BasisLocalMicrophoneDriver.SettingStartOff,
-                BasisLocalMicrophoneDriver.SettingStartOn,
-                BasisLocalMicrophoneDriver.SettingStartRememberLast,
-            });
+            dropdownMicStartBehavior.AssignLocalizedEntries(
+                new List<string>
+                {
+                    BasisLocalMicrophoneDriver.SettingStartOff,
+                    BasisLocalMicrophoneDriver.SettingStartOn,
+                    BasisLocalMicrophoneDriver.SettingStartRememberLast,
+                },
+                new List<string> { "settings.microphone.start.muted", "settings.microphone.start.unmuted", "settings.microphone.start.rememberLast" });
             dropdownMicStartBehavior.AssignBinding(BasisSettingsDefaults.MicStartBehavior);
 
             PanelElementDescriptor muteBehaviorGroup =
@@ -694,11 +820,13 @@ namespace Basis.BasisUI
 
             PanelDropdown dropdownMicMuteBehavior = PanelDropdown.CreateNewEntry(muteBehaviorGroup);
             dropdownMicMuteBehavior.Descriptor.SetTitle(BasisLocalization.Get("settings.microphone.muteBehavior"));
-            dropdownMicMuteBehavior.AssignEntries(new List<string>
-            {
-                BasisLocalMicrophoneDriver.SettingMuteShutdown,
-                BasisLocalMicrophoneDriver.SettingMuteSuppress,
-            });
+            dropdownMicMuteBehavior.AssignLocalizedEntries(
+                new List<string>
+                {
+                    BasisLocalMicrophoneDriver.SettingMuteShutdown,
+                    BasisLocalMicrophoneDriver.SettingMuteSuppress,
+                },
+                new List<string> { "settings.microphone.mute.shutdown", "settings.microphone.mute.keepOpen" });
             dropdownMicMuteBehavior.AssignBinding(BasisSettingsDefaults.MicMuteBehavior);
 
             // -------------------- DSP SETTINGS --------------------
@@ -1061,6 +1189,16 @@ namespace Basis.BasisUI
                 PanelSlider.SliderSettings.Distance(BasisLocalization.Get("settings.general.avatarRange"), 100),
                 BasisSettingsDefaults.AvatarRange);
 
+            PanelToggle toggleAvatarDistance = PanelToggle.CreateNewEntry(qualityGroup);
+            toggleAvatarDistance.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.avatarDistance"));
+            toggleAvatarDistance.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.avatarDistance.description"));
+            bool avatarDistOn = !string.Equals(BasisSettingsDefaults.VisualState.RawValue, "off", StringComparison.OrdinalIgnoreCase);
+            toggleAvatarDistance.SetValueWithoutNotify(avatarDistOn);
+            toggleAvatarDistance.OnValueChanged += (val) =>
+            {
+                BasisSettingsDefaults.VisualState.SetValue(val ? "only avatar distance" : "off");
+            };
+
             PanelToggle toggleLimitAvatars = PanelToggle.CreateNewEntry(qualityGroup);
             toggleLimitAvatars.AssignBinding(BasisSettingsDefaults.UseMaxVisibleAvatars);
             toggleLimitAvatars.Descriptor.SetTitle(BasisLocalization.Get("settings.general.limitAvatars"));
@@ -1096,26 +1234,31 @@ namespace Basis.BasisUI
 
             PanelDropdown dropdownQualityLevel = PanelDropdown.CreateNewEntry(qualityGroup.ContentParent);
             dropdownQualityLevel.Descriptor.SetTitle(BasisLocalization.Get("settings.graphics.qualityLevel"));
-            dropdownQualityLevel.AssignEntries(new List<string> { "Very Low", "Low", "Medium", "High", "Ultra" });
+            dropdownQualityLevel.AssignLocalizedEntries(
+                new List<string> { "Very Low", "Low", "Medium", "High", "Ultra" },
+                new List<string> { "settings.graphics.quality.veryLow", "settings.graphics.quality.low", "settings.graphics.quality.medium", "settings.graphics.quality.high", "settings.graphics.quality.ultra" });
             dropdownQualityLevel.AssignBinding(BasisSettingsDefaults.QualityLevel);
 
             PanelDropdown dropdownShadowQuality = PanelDropdown.CreateNewEntry(qualityGroup.ContentParent);
             dropdownShadowQuality.Descriptor.SetTitle(BasisLocalization.Get("settings.graphics.shadowQuality"));
-            dropdownShadowQuality.AssignEntries(new List<string> { "Very Low", "Low", "Medium", "High", "Ultra" });
+            dropdownShadowQuality.AssignLocalizedEntries(
+                new List<string> { "Very Low", "Low", "Medium", "High", "Ultra" },
+                new List<string> { "settings.graphics.quality.veryLow", "settings.graphics.quality.low", "settings.graphics.quality.medium", "settings.graphics.quality.high", "settings.graphics.quality.ultra" });
             dropdownShadowQuality.AssignBinding(BasisSettingsDefaults.ShadowQuality);
 
             PanelDropdown dropdownAntialiasing = PanelDropdown.CreateNewEntry(qualityGroup.ContentParent);
             dropdownAntialiasing.Descriptor.SetTitle(BasisLocalization.Get("settings.graphics.antialiasing"));
-            dropdownAntialiasing.AssignEntries(new List<string>
-            {
-                "Off","MSAA 2X","MSAA 4X","MSAA 8X","Linear","Point","FSR"//,"STP"
-            });
+            dropdownAntialiasing.AssignLocalizedEntries(
+                new List<string> { "Off","MSAA 2X","MSAA 4X","MSAA 8X","Linear","Point","FSR"/*,"STP"*/ },
+                new List<string> { "ui.option.off", "settings.graphics.aa.msaa2x", "settings.graphics.aa.msaa4x", "settings.graphics.aa.msaa8x", "settings.graphics.aa.linear", "settings.graphics.aa.point", "settings.graphics.aa.fsr" });
             dropdownAntialiasing.AssignBinding(BasisSettingsDefaults.Antialiasing);
 
             PanelDropdown dropdownVSync = PanelDropdown.CreateNewEntry(qualityGroup.ContentParent);
             dropdownVSync.Descriptor.SetTitle(BasisLocalization.Get("settings.graphics.verticalSync"));
             dropdownVSync.Descriptor.SetDescription(BasisLocalization.Get("settings.graphics.verticalSync.description"));
-            dropdownVSync.AssignEntries(new List<string> { "On", "Capped", "Off", "Half" });
+            dropdownVSync.AssignLocalizedEntries(
+                new List<string> { "On", "Capped", "Off", "Half" },
+                new List<string> { "ui.option.on", "settings.graphics.vsync.capped", "ui.option.off", "settings.graphics.vsync.half" });
             dropdownVSync.AssignBinding(BasisSettingsDefaults.VSync);
 
             PanelTextField fpsCapField = PanelTextField.CreateNewEntry(qualityGroup.ContentParent);
@@ -1175,7 +1318,9 @@ namespace Basis.BasisUI
             List<string> screenModeOptions = new List<string> { "Fullscreen", "Borderless Window", "Windowed" };
 
             dropdownScreenMode.Descriptor.SetTitle(BasisLocalization.Get("settings.graphics.screenMode"));
-            dropdownScreenMode.AssignEntries(screenModeOptions);
+            dropdownScreenMode.AssignLocalizedEntries(
+                screenModeOptions,
+                new List<string> { "settings.graphics.screenMode.fullscreen", "settings.graphics.screenMode.borderless", "settings.graphics.screenMode.windowed" });
             dropdownScreenMode.DropdownComponent.onValueChanged.AddListener(ScreenMode);
             dropdownScreenMode.DropdownComponent.SetValueWithoutNotify(GetIndexFromScreenMode(Screen.fullScreenMode));
 
@@ -1285,7 +1430,9 @@ namespace Basis.BasisUI
 
             PanelDropdown dropdownHDR = PanelDropdown.CreateNewEntry(advancedGroup.ContentParent);
             dropdownHDR.Descriptor.SetTitle(BasisLocalization.Get("settings.graphics.hdrSupport"));
-            dropdownHDR.AssignEntries(new List<string> { "Off", "32bit", "64bit" });
+            dropdownHDR.AssignLocalizedEntries(
+                new List<string> { "Off", "32bit", "64bit" },
+                new List<string> { "ui.option.off", "settings.graphics.hdr.32bit", "settings.graphics.hdr.64bit" });
             dropdownHDR.AssignBinding(BasisSettingsDefaults.HDRSupport);
 
             PanelSlider sliderFoveatedRendering = PanelSlider.CreateEntryAndBind(
@@ -1470,29 +1617,106 @@ namespace Basis.BasisUI
             toggleChatDisabled.AssignBinding(BasisSettingsDefaults.ChatDisabled);
 
             PanelTextField chatTextField = PanelTextField.CreateNewEntry(chatGroup);
+            _chatTextField = chatTextField;
             chatTextField.Descriptor.SetTitle(BasisLocalization.Get("settings.chat.message"));
             chatTextField.SetValueWithoutNotify(string.Empty);
+            chatTextField._inputField.characterLimit = BasisChatSanitizer.MaxMessageCharacters;
             chatTextField._inputField.onEndEdit.AddListener(OnEndEndit);
+            chatTextField._inputField.onSubmit.AddListener(OnChatSubmitted);
+            chatTextField._inputField.onValueChanged.AddListener(OnChatMessageChanged);
+            ApplyPendingChatComposerRequest();
 
-            chatTextField.Descriptor.SetActive(!BasisSettingsDefaults.ChatDisabled.RawValue);
+            PanelSlider sliderChatSize = PanelSlider.CreateEntryAndBind(
+                chatGroup,
+                PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("settings.chat.textSize"), 0.5f, 3f, false, 2, ValueDisplayMode.Raw),
+                BasisSettingsDefaults.ChatSize);
+
+            bool chatEnabled = !BasisSettingsDefaults.ChatDisabled.RawValue;
+            chatTextField.Descriptor.SetActive(chatEnabled);
+            sliderChatSize.Descriptor.SetActive(chatEnabled);
             toggleChatDisabled.OnValueChanged += (val) =>
             {
                 chatTextField.Descriptor.SetActive(!val);
+                if (val)
+                {
+                    BasisNetworkHandleChatTyping.SendTypingState(false);
+                }
+                sliderChatSize.Descriptor.SetActive(!val);
                 chatGroup.ForceRebuild();
             };
 
             void OnEndEndit(string message)
             {
+                BasisNetworkHandleChatTyping.SendTypingState(false);
+            }
+
+            void OnChatSubmitted(string message)
+            {
+                BasisNetworkHandleChatTyping.SendTypingState(false);
                 if (!string.IsNullOrEmpty(message))
                 {
-                    BasisNetworkHandleChat.SendChatMessage(message);
+                    BasisNetworkHandleChat.SendChatMessage(message, _chatComposerPlayNotificationSound);
                     chatTextField.SetValueWithoutNotify(string.Empty);
+                    _chatComposerPlayNotificationSound = true;
                 }
             }
+
+            void OnChatMessageChanged(string message)
+            {
+                BasisNetworkHandleChatTyping.SendTypingState(!string.IsNullOrEmpty(message));
+                if (string.IsNullOrEmpty(message))
+                {
+                    _chatComposerPlayNotificationSound = true;
+                }
+            }
+
+            PanelElementDescriptor cameraGroup = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
+            cameraGroup.SetTitle(BasisLocalization.Get("settings.chat.camera.title"));
+            cameraGroup.SetDescription(BasisLocalization.Get("settings.chat.camera.description"));
+
+            PanelDropdown dropdownPhotoMetadata = PanelDropdown.CreateNewEntry(cameraGroup);
+            dropdownPhotoMetadata.Descriptor.SetTitle(BasisLocalization.Get("settings.chat.camera.photoMetadata"));
+            dropdownPhotoMetadata.Descriptor.SetDescription(BasisLocalization.Get("settings.chat.camera.photoMetadata.description"));
+            dropdownPhotoMetadata.AssignLocalizedEntries(
+                new List<string>
+                {
+                    BasisSettingsDefaults.PhotoTagging_NoOne,
+                    BasisSettingsDefaults.PhotoTagging_EveryoneInPhoto,
+                    BasisSettingsDefaults.PhotoTagging_JustMe
+                },
+                new List<string> { "settings.chat.camera.photoMetadata.noOne", "settings.chat.camera.photoMetadata.everyone", "settings.chat.camera.photoMetadata.justMe" });
+            dropdownPhotoMetadata.AssignBinding(BasisSettingsDefaults.PhotoMetadataTagging);
+
+            PanelToggle togglePhotoPersonDetails = PanelToggle.CreateNewEntry(cameraGroup);
+            togglePhotoPersonDetails.Descriptor.SetTitle(BasisLocalization.Get("settings.chat.camera.personDetails"));
+            togglePhotoPersonDetails.Descriptor.SetDescription(BasisLocalization.Get("settings.chat.camera.personDetails.description"));
+            togglePhotoPersonDetails.AssignBinding(BasisSettingsDefaults.PhotoEmbedPersonDetails);
+
+            PanelToggle togglePhotoCameraSettings = PanelToggle.CreateNewEntry(cameraGroup);
+            togglePhotoCameraSettings.Descriptor.SetTitle(BasisLocalization.Get("settings.chat.camera.cameraSettings"));
+            togglePhotoCameraSettings.Descriptor.SetDescription(BasisLocalization.Get("settings.chat.camera.cameraSettings.description"));
+            togglePhotoCameraSettings.AssignBinding(BasisSettingsDefaults.PhotoEmbedCameraSettings);
+
+            PanelToggle togglePhotoCaptureInfo = PanelToggle.CreateNewEntry(cameraGroup);
+            togglePhotoCaptureInfo.Descriptor.SetTitle(BasisLocalization.Get("settings.chat.camera.captureInfo"));
+            togglePhotoCaptureInfo.Descriptor.SetDescription(BasisLocalization.Get("settings.chat.camera.captureInfo.description"));
+            togglePhotoCaptureInfo.AssignBinding(BasisSettingsDefaults.PhotoEmbedCaptureInfo);
+
+            PanelToggle togglePhotoPhotographer = PanelToggle.CreateNewEntry(cameraGroup);
+            togglePhotoPhotographer.Descriptor.SetTitle(BasisLocalization.Get("settings.chat.camera.photographer"));
+            togglePhotoPhotographer.Descriptor.SetDescription(BasisLocalization.Get("settings.chat.camera.photographer.description"));
+            togglePhotoPhotographer.AssignBinding(BasisSettingsDefaults.PhotoEmbedPhotographer);
+
+            PanelToggle togglePhotoWorld = PanelToggle.CreateNewEntry(cameraGroup);
+            togglePhotoWorld.Descriptor.SetTitle(BasisLocalization.Get("settings.chat.camera.world"));
+            togglePhotoWorld.Descriptor.SetDescription(BasisLocalization.Get("settings.chat.camera.world.description"));
+            togglePhotoWorld.AssignBinding(BasisSettingsDefaults.PhotoEmbedWorld);
 
             // Nameplates live in the same tab — formerly its own page, merged here so
             // chat-adjacent presence settings (notifications, name visibility) are colocated.
             SettingsProviderNamePlate.BuildNamePlateContent(container);
+
+            BuildAppearanceContent(container);
 
             AddResetPageButton(container, "settings.tab.chat", ResetChatDefaults);
 
@@ -1500,12 +1724,96 @@ namespace Basis.BasisUI
             return tab;
         }
 
+        private static void BuildAppearanceContent(RectTransform container)
+        {
+            PanelElementDescriptor raycastGroup = PanelElementDescriptor.CreateNew(
+                PanelElementDescriptor.ElementStyles.Group, container);
+            raycastGroup.SetTitle(BasisLocalization.Get("settings.chat.raycast.title"));
+            raycastGroup.SetDescription(BasisLocalization.Get("settings.chat.raycast.description"));
+
+            PanelSlider sliderRaycastSize = PanelSlider.CreateEntryAndBind(
+                raycastGroup,
+                PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("settings.chat.raycast.size"), 0.25f, 4f, false, 2, ValueDisplayMode.Raw),
+                BasisSettingsDefaults.RaycastLineWidth);
+            sliderRaycastSize.SliderComponent.onValueChanged.AddListener(Basis.Scripts.UI.BasisRaycastLineCustomization.PreviewWidth);
+
+            Color raycastColorInit = Basis.Scripts.UI.BasisRaycastLineCustomization.ParseColor(BasisSettingsDefaults.RaycastLineColor.RawValue)
+                ?? new Color(0.3019608f, 0.09411766f, 0.2980392f);
+            SettingsProviderUIStyle.AddBindingColorPicker(container,
+                BasisLocalization.Get("settings.chat.raycast.color"),
+                BasisSettingsDefaults.RaycastLineColor, raycastColorInit,
+                c => Basis.Scripts.UI.BasisRaycastLineCustomization.PreviewUiLineColor(c));
+
+            Color highlightColorInit = Basis.Scripts.BasisSdk.Interactions.BasisPickupHighlightColor.ParseColor(BasisSettingsDefaults.PickupHighlightColor.RawValue)
+                ?? new Color(0.050980344f, 0.737255f, 0.92156863f, 0.4745098f);
+            SettingsProviderUIStyle.AddBindingColorPicker(container,
+                BasisLocalization.Get("settings.chat.pickup.highlightColor"),
+                BasisSettingsDefaults.PickupHighlightColor, highlightColorInit,
+                c => Basis.Scripts.BasisSdk.Interactions.BasisPickupHighlightColor.PreviewColor(c));
+
+            Color pickupLineColorInit = Basis.Scripts.UI.BasisRaycastLineCustomization.ParseColor(BasisSettingsDefaults.PickupLineColor.RawValue)
+                ?? new Color(0.48365337f, 0.33490568f, 1f, 1f);
+            SettingsProviderUIStyle.AddBindingColorPicker(container,
+                BasisLocalization.Get("settings.chat.pickup.lineColor"),
+                BasisSettingsDefaults.PickupLineColor, pickupLineColorInit,
+                c => Basis.Scripts.UI.BasisRaycastLineCustomization.PreviewInteractionLineColor(c));
+        }
+
         private static void ResetChatDefaults()
         {
             BasisSettingsDefaults.JoinNotifications.ResetToDefault();
             BasisSettingsDefaults.LeaveNotifications.ResetToDefault();
             BasisSettingsDefaults.ChatDisabled.ResetToDefault();
+            BasisSettingsDefaults.ChatSize.ResetToDefault();
+            BasisSettingsDefaults.PhotoMetadataTagging.ResetToDefault();
+            BasisSettingsDefaults.PhotoEmbedPersonDetails.ResetToDefault();
+            BasisSettingsDefaults.PhotoEmbedCameraSettings.ResetToDefault();
+            BasisSettingsDefaults.PhotoEmbedCaptureInfo.ResetToDefault();
+            BasisSettingsDefaults.PhotoEmbedPhotographer.ResetToDefault();
+            BasisSettingsDefaults.PhotoEmbedWorld.ResetToDefault();
+            BasisSettingsDefaults.RaycastLineWidth.ResetToDefault();
+            BasisSettingsDefaults.RaycastLineColor.ResetToDefault();
+            BasisSettingsDefaults.PickupHighlightColor.ResetToDefault();
+            BasisSettingsDefaults.PickupLineColor.ResetToDefault();
+            SettingsProviderUIStyle.ResetUIStyleDefaults();
             SettingsProviderNamePlate.ResetNamePlateDefaults();
+        }
+
+        private static void ApplyPendingChatComposerRequest()
+        {
+            if (_chatTextField == null || _chatTextField._inputField == null)
+            {
+                return;
+            }
+
+            if (_pendingChatComposerText != null)
+            {
+                _chatTextField.SetValueWithoutNotify(_pendingChatComposerText);
+                _pendingChatComposerText = null;
+                _chatComposerPlayNotificationSound = _pendingChatComposerPlaySound;
+                BasisNetworkHandleChatTyping.SendTypingState(!string.IsNullOrEmpty(_chatTextField._inputField.text));
+            }
+
+            if (_pendingChatComposerPlaySound)
+            {
+                BasisNetworkHandleChat.PlayChatNotification();
+                _pendingChatComposerPlaySound = false;
+            }
+
+            if (_pendingChatComposerFocus)
+            {
+                TMP_InputField input = _chatTextField._inputField;
+                input.Select();
+                input.ActivateInputField();
+                _pendingChatComposerFocus = false;
+            }
+        }
+
+        private static void ClearChatComposerReference()
+        {
+            BasisNetworkHandleChatTyping.SendTypingState(false);
+            _chatComposerPlayNotificationSound = true;
+            _chatTextField = null;
         }
 
         // ------------------
@@ -1582,6 +1890,123 @@ namespace Basis.BasisUI
             RefreshGizmoSubVisibility(toggleShowGizmos.Value);
             toggleShowGizmos.OnValueChanged += RefreshGizmoSubVisibility;
 
+            // ---- Networking (advanced) ----
+            PanelElementDescriptor networkGroup =
+                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
+            networkGroup.SetTitle(BasisLocalization.Get("settings.general.networking.title"));
+
+            PanelToggle toggleJitterBufferOverride = PanelToggle.CreateNewEntry(networkGroup.ContentParent);
+            toggleJitterBufferOverride.AssignBinding(BasisSettingsDefaults.NetworkJitterBufferOverride);
+            toggleJitterBufferOverride.Descriptor.SetTitle(BasisLocalization.Get("settings.general.networking.jitterBufferOverride"));
+            toggleJitterBufferOverride.Descriptor.SetDescription(BasisLocalization.Get("settings.general.networking.jitterBufferOverride.description"));
+
+            PanelSlider sliderJitterBuffer = PanelSlider.CreateEntryAndBind(
+                networkGroup.ContentParent,
+                new PanelSlider.SliderSettings(
+                    BasisLocalization.Get("settings.general.networking.jitterBuffer"),
+                    BasisLocalization.Get("settings.general.networking.jitterBuffer.description"),
+                    0, 6, true, 0, ValueDisplayMode.Raw),
+                BasisSettingsDefaults.NetworkJitterBufferDepth);
+
+            sliderJitterBuffer.Descriptor.SetActive(toggleJitterBufferOverride.Value);
+            toggleJitterBufferOverride.OnValueChanged += (val) =>
+            {
+                sliderJitterBuffer.Descriptor.SetActive(val);
+                networkGroup.ForceRebuild();
+            };
+
+            // ---- Avatar Recorder ----
+            PanelElementDescriptor recorderGroup =
+                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
+            recorderGroup.SetTitle(BasisLocalization.Get("settings.developer.recorder.title"));
+            recorderGroup.SetDescription(BasisLocalization.Get("settings.developer.recorder.description"));
+
+            PanelTextField recorderCountdownField = PanelTextField.CreateNewEntry(recorderGroup.ContentParent);
+            recorderCountdownField.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.recorder.countdown"));
+            recorderCountdownField.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.recorder.countdown.description"));
+            recorderCountdownField.AssignBinding(BasisSettingsDefaults.RecorderCountdownSeconds);
+            if (recorderCountdownField._inputField != null)
+            {
+                recorderCountdownField._inputField.contentType = TMP_InputField.ContentType.IntegerNumber;
+                recorderCountdownField._inputField.lineType = TMP_InputField.LineType.SingleLine;
+                recorderCountdownField._inputField.characterLimit = 4;
+            }
+
+            PanelToggle recorderAutoStopToggle = PanelToggle.CreateNewEntry(recorderGroup.ContentParent);
+            recorderAutoStopToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.recorder.autoStop"));
+            recorderAutoStopToggle.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.recorder.autoStop.description"));
+            recorderAutoStopToggle.AssignBinding(BasisSettingsDefaults.RecorderAutoStop);
+
+            PanelTextField recorderDurationField = PanelTextField.CreateNewEntry(recorderGroup.ContentParent);
+            recorderDurationField.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.recorder.maxDuration"));
+            recorderDurationField.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.recorder.maxDuration.description"));
+            recorderDurationField.AssignBinding(BasisSettingsDefaults.RecorderMaxDurationSeconds);
+            if (recorderDurationField._inputField != null)
+            {
+                recorderDurationField._inputField.contentType = TMP_InputField.ContentType.IntegerNumber;
+                recorderDurationField._inputField.lineType = TMP_InputField.LineType.SingleLine;
+                recorderDurationField._inputField.characterLimit = 5;
+            }
+            recorderDurationField.Descriptor.SetActive(recorderAutoStopToggle.Value);
+            recorderAutoStopToggle.OnValueChanged += enabled =>
+            {
+                recorderDurationField.Descriptor.SetActive(enabled);
+                recorderGroup.ForceRebuild();
+            };
+
+            PanelElementDescriptor recorderStatusField =
+                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, recorderGroup.ContentParent);
+            recorderStatusField.SetTitle(BasisLocalization.Get("settings.developer.recorder.status.title"));
+            recorderStatusField.SetDescription(BasisLocalization.Get("settings.developer.recorder.status.idle"));
+
+            PanelButton recorderButton = PanelButton.CreateNew(recorderGroup.ContentParent);
+            recorderButton.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.recorder.start"));
+            recorderButton.OnClicked += () =>
+            {
+                if (BasisAvatarRecorderDriver.IsBusy)
+                {
+                    BasisAvatarRecorderDriver.RequestStop();
+                }
+                else
+                {
+                    float countdown = ParseSeconds(BasisSettingsDefaults.RecorderCountdownSeconds.RawValue);
+                    bool autoStop = BasisSettingsDefaults.RecorderAutoStop.RawValue;
+                    float maxDuration = ParseSeconds(BasisSettingsDefaults.RecorderMaxDurationSeconds.RawValue);
+                    BasisAvatarRecorderDriver.RequestStart(countdown, autoStop, maxDuration);
+                }
+            };
+
+            GameObject recorderUpdaterGO = new GameObject("RecorderPanelUpdater");
+            recorderUpdaterGO.transform.SetParent(recorderGroup.transform, false);
+            recorderUpdaterGO.AddComponent<BasisRecorderPanelUpdater>()
+                .Initialize(recorderStatusField, recorderButton);
+
+            // ---- Local Voice Range ----
+            PanelElementDescriptor voiceRangeGroup =
+                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
+            voiceRangeGroup.SetTitle(BasisLocalization.Get("settings.developer.voiceRange.title"));
+            voiceRangeGroup.SetDescription(BasisLocalization.Get("settings.developer.voiceRange.description"));
+
+            PanelToggle voiceRangeToggle = PanelToggle.CreateNewEntry(voiceRangeGroup.ContentParent);
+            voiceRangeToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.voiceRange.enable"));
+            voiceRangeToggle.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.voiceRange.enable.description"));
+            voiceRangeToggle.AssignBinding(BasisSettingsDefaults.ShowVoiceRange);
+
+            PanelElementDescriptor voiceRangeStatusField =
+                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, voiceRangeGroup.ContentParent);
+            voiceRangeStatusField.SetTitle(BasisLocalization.Get("settings.developer.voiceRange.status.title"));
+            voiceRangeStatusField.SetDescription(BasisLocalization.Get("settings.developer.voiceRange.empty"));
+
+            void RefreshVoiceRangeVisibility(bool on)
+            {
+                voiceRangeStatusField.SetActive(on);
+                if (on) BasisVoiceRangePanelUpdater.Attach(voiceRangeStatusField);
+                else BasisVoiceRangePanelUpdater.Detach();
+                voiceRangeGroup.ForceRebuild();
+            }
+            RefreshVoiceRangeVisibility(voiceRangeToggle.Value);
+            voiceRangeToggle.OnValueChanged += RefreshVoiceRangeVisibility;
+
             // ---- Identity (DID) ----
             // The user's DID/UUID is the long-lived id the server keys ban,
             // permission, and content-share entries against. We render it through
@@ -1611,16 +2036,6 @@ namespace Basis.BasisUI
                 PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
             debugGroup.SetTitle(BasisLocalization.Get("settings.developer.visualHelpers.title"));
             debugGroup.SetDescription(BasisLocalization.Get("settings.developer.visualHelpers.description"));
-
-            PanelToggle toggleAvatarDistance = PanelToggle.CreateNewEntry(debugGroup.ContentParent);
-            toggleAvatarDistance.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.avatarDistance"));
-            toggleAvatarDistance.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.avatarDistance.description"));
-            bool avatarDistOn = !string.Equals(BasisSettingsDefaults.VisualState.RawValue, "off", StringComparison.OrdinalIgnoreCase);
-            toggleAvatarDistance.SetValueWithoutNotify(avatarDistOn);
-            toggleAvatarDistance.OnValueChanged += (val) =>
-            {
-                BasisSettingsDefaults.VisualState.SetValue(val ? "only avatar distance" : "off");
-            };
 
             PanelToggle toggleStatistics = PanelToggle.CreateNewEntry(debugGroup.ContentParent);
             toggleStatistics.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.enableStatistics"));
@@ -1668,13 +2083,30 @@ namespace Basis.BasisUI
             PanelDropdown dropdownLogLevelFilter = PanelDropdown.CreateNewEntry(debugGroup.ContentParent);
             dropdownLogLevelFilter.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.logLevelFilter"));
             dropdownLogLevelFilter.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.logLevelFilter.description"));
-            dropdownLogLevelFilter.AssignEntries(new List<string>
-            {
-                BasisSettingsDefaults.DebugLogFilterAll,
-                BasisSettingsDefaults.DebugLogLevelWarningsAndErrors,
-                BasisSettingsDefaults.DebugLogLevelErrorsOnly,
-            });
+            dropdownLogLevelFilter.AssignLocalizedEntries(
+                new List<string>
+                {
+                    BasisSettingsDefaults.DebugLogFilterAll,
+                    BasisSettingsDefaults.DebugLogLevelWarningsAndErrors,
+                    BasisSettingsDefaults.DebugLogLevelErrorsOnly,
+                },
+                new List<string> { "settings.developer.logLevel.all", "settings.developer.logLevel.warningsErrors", "settings.developer.logLevel.errorsOnly" });
             dropdownLogLevelFilter.AssignBinding(BasisSettingsDefaults.DebugLogLevelFilter);
+
+            PanelElementDescriptor shaderGroup =
+                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
+            shaderGroup.SetTitle(BasisLocalization.Get("settings.developer.shaders.title"));
+            shaderGroup.SetDescription(BasisLocalization.Get("settings.developer.shaders.description"));
+
+            PanelToggle togglePrewarm = PanelToggle.CreateNewEntry(shaderGroup.ContentParent);
+            togglePrewarm.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.shaderPrewarm"));
+            togglePrewarm.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.shaderPrewarm.description"));
+            togglePrewarm.AssignBinding(BasisSettingsDefaults.EnableShaderPrewarm);
+
+            PanelToggle toggleMaterialCorrection = PanelToggle.CreateNewEntry(shaderGroup.ContentParent);
+            toggleMaterialCorrection.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.materialCorrection"));
+            toggleMaterialCorrection.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.materialCorrection.description"));
+            toggleMaterialCorrection.AssignBinding(BasisSettingsDefaults.EnableMaterialCorrection);
 
             // ---- Section Visibility Toggles ----
             PanelElementDescriptor sectionTogglesGroup =
@@ -1701,6 +2133,11 @@ namespace Basis.BasisUI
             toggleNetStats.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.netStats"));
             toggleNetStats.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.netStats.description"));
             toggleNetStats.AssignBinding(BasisSettingsDefaults.DevShowNetStats);
+
+            PanelToggle toggleFaceTrackLipSync = PanelToggle.CreateNewEntry(sectionTogglesGroup.ContentParent);
+            toggleFaceTrackLipSync.Descriptor.SetTitle(BasisLocalization.Get("settings.main.title.disableLipSyncForFaceTrackedPlayers"));
+            toggleFaceTrackLipSync.Descriptor.SetDescription("On: remote players using face tracking stop audio lip sync (visemes), so only their tracked mouth shows. Off: both combined.");
+            toggleFaceTrackLipSync.AssignBinding(BasisSettingsDefaults.DisableLipSyncForFaceTracking);
 
             // ---- Remote Audio Debug ----
             PanelElementDescriptor audioDebugGroup =
@@ -1759,6 +2196,48 @@ namespace Basis.BasisUI
             }
             RefreshAudioDebugSubVisibility(toggleAudioDebug.Value);
             toggleAudioDebug.OnValueChanged += RefreshAudioDebugSubVisibility;
+
+            // ---- Remote Avatar Data Debug ----
+            PanelElementDescriptor avatarDataDebugGroup =
+                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
+            avatarDataDebugGroup.SetTitle(BasisLocalization.Get("settings.developer.remoteAvatarDebug.title"));
+            avatarDataDebugGroup.SetDescription(BasisLocalization.Get("settings.developer.remoteAvatarDebug.description"));
+
+            PanelToggle toggleAvatarDataDebug = PanelToggle.CreateNewEntry(avatarDataDebugGroup.ContentParent);
+            toggleAvatarDataDebug.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.avatarDataDebug.enable"));
+            toggleAvatarDataDebug.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.avatarDataDebug.enable.description"));
+            toggleAvatarDataDebug.AssignBinding(BasisSettingsDefaults.AvatarDataDebugEnabled);
+
+            PanelToggle toggleAvatarReceive = PanelToggle.CreateNewEntry(avatarDataDebugGroup.ContentParent);
+            toggleAvatarReceive.Descriptor.SetTitle(BasisLocalization.Get("menu.individualPlayer.avatarDataDebug.receive"));
+            toggleAvatarReceive.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.avatarDataDebug.receive.description"));
+            toggleAvatarReceive.AssignBinding(BasisSettingsDefaults.AvatarDataDebugShowReceive);
+
+            PanelToggle toggleAvatarStaging = PanelToggle.CreateNewEntry(avatarDataDebugGroup.ContentParent);
+            toggleAvatarStaging.Descriptor.SetTitle(BasisLocalization.Get("menu.individualPlayer.avatarDataDebug.staging"));
+            toggleAvatarStaging.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.avatarDataDebug.staging.description"));
+            toggleAvatarStaging.AssignBinding(BasisSettingsDefaults.AvatarDataDebugShowStaging);
+
+            PanelToggle toggleAvatarInterp = PanelToggle.CreateNewEntry(avatarDataDebugGroup.ContentParent);
+            toggleAvatarInterp.Descriptor.SetTitle(BasisLocalization.Get("menu.individualPlayer.avatarDataDebug.interp"));
+            toggleAvatarInterp.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.avatarDataDebug.interp.description"));
+            toggleAvatarInterp.AssignBinding(BasisSettingsDefaults.AvatarDataDebugShowInterp);
+
+            PanelToggle toggleAvatarMeta = PanelToggle.CreateNewEntry(avatarDataDebugGroup.ContentParent);
+            toggleAvatarMeta.Descriptor.SetTitle(BasisLocalization.Get("menu.individualPlayer.avatarDataDebug.meta"));
+            toggleAvatarMeta.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.avatarDataDebug.meta.description"));
+            toggleAvatarMeta.AssignBinding(BasisSettingsDefaults.AvatarDataDebugShowMeta);
+
+            void RefreshAvatarDataDebugSubVisibility(bool masterOn)
+            {
+                toggleAvatarReceive.Descriptor.SetActive(masterOn);
+                toggleAvatarStaging.Descriptor.SetActive(masterOn);
+                toggleAvatarInterp.Descriptor.SetActive(masterOn);
+                toggleAvatarMeta.Descriptor.SetActive(masterOn);
+                avatarDataDebugGroup.ForceRebuild();
+            }
+            RefreshAvatarDataDebugSubVisibility(toggleAvatarDataDebug.Value);
+            toggleAvatarDataDebug.OnValueChanged += RefreshAvatarDataDebugSubVisibility;
 
             // ---- Avatar Debug (face/eye tracking diagnostics + texture and tracker info) ----
             // The face / eye tracking section builders are owned by the comms
@@ -1928,6 +2407,22 @@ namespace Basis.BasisUI
 
             SettingsProviderPlatform.BuildAutoSwapUI(container);
 
+            // ---- Diagnostic Notifications ----
+            PanelElementDescriptor notificationGroup =
+                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
+            notificationGroup.SetTitle(BasisLocalization.Get("settings.developer.notifications.title"));
+            notificationGroup.SetDescription(BasisLocalization.Get("settings.developer.notifications.description"));
+
+            PanelToggle toggleExceptionNotifications = PanelToggle.CreateNewEntry(notificationGroup.ContentParent);
+            toggleExceptionNotifications.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.exceptionNotifications"));
+            toggleExceptionNotifications.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.exceptionNotifications.description"));
+            toggleExceptionNotifications.AssignBinding(BasisSettingsDefaults.ExceptionNotifications);
+
+            PanelToggle toggleErrorNotifications = PanelToggle.CreateNewEntry(notificationGroup.ContentParent);
+            toggleErrorNotifications.Descriptor.SetTitle(BasisLocalization.Get("settings.developer.errorNotifications"));
+            toggleErrorNotifications.Descriptor.SetDescription(BasisLocalization.Get("settings.developer.errorNotifications.description"));
+            toggleErrorNotifications.AssignBinding(BasisSettingsDefaults.ErrorNotifications);
+
             // One reset button for this whole page
             AddResetPageButton(container, "settings.tab.developer", ResetDeveloperDefaults);
 
@@ -1952,6 +2447,8 @@ namespace Basis.BasisUI
 
         private static void ResetDeveloperDefaults()
         {
+            BasisSettingsDefaults.ExceptionNotifications.ResetToDefault();
+            BasisSettingsDefaults.ErrorNotifications.ResetToDefault();
             BasisSettingsDefaults.ShowGizmos.ResetToDefault();
             BasisSettingsDefaults.GizmoSkeletonLines.ResetToDefault();
             BasisSettingsDefaults.GizmoCalibrationSpheres.ResetToDefault();
@@ -1962,6 +2459,7 @@ namespace Basis.BasisUI
             BasisSettingsDefaults.GizmoIKColliders.ResetToDefault();
             BasisSettingsDefaults.VisualState.SetValue("off");
             BasisSettingsDefaults.EnableStatistics.ResetToDefault();
+            BasisSettingsDefaults.ShowVoiceRange.ResetToDefault();
             BasisSettingsDefaults.EnableStreamingMeta.ResetToDefault();
             BasisSettingsDefaults.StreamingMetaPort.ResetToDefault();
             BasisSettingsDefaults.DisableLogging.ResetToDefault();
@@ -1969,10 +2467,13 @@ namespace Basis.BasisUI
             BasisSettingsDefaults.DevShowConsole.ResetToDefault();
             BasisSettingsDefaults.DevShowEuroFilter.ResetToDefault();
             BasisSettingsDefaults.DevShowNetStats.ResetToDefault();
+            BasisSettingsDefaults.EnableShaderPrewarm.ResetToDefault();
+            BasisSettingsDefaults.EnableMaterialCorrection.ResetToDefault();
             BasisSettingsDefaults.NetEuroMinCutoff.ResetToDefault();
             BasisSettingsDefaults.NetEuroBeta.ResetToDefault();
             BasisSettingsDefaults.NetEuroDerivativeCutoff.ResetToDefault();
             BasisSettingsDefaults.AudioDebugEnabled.ResetToDefault();
+            BasisSettingsDefaults.DisableLipSyncForFaceTracking.ResetToDefault();
             BasisSettingsDefaults.AudioDebugShowSource.ResetToDefault();
             BasisSettingsDefaults.AudioDebugShowVolume.ResetToDefault();
             BasisSettingsDefaults.AudioDebugShowRingBuffer.ResetToDefault();
@@ -1984,12 +2485,22 @@ namespace Basis.BasisUI
             BasisSettingsDefaults.AvatarShowTextureStats.ResetToDefault();
             BasisSettingsDefaults.AvatarShowTrackerRoles.ResetToDefault();
             BasisSettingsDefaults.SwapMode.ResetToDefault();
+            BasisSettingsDefaults.RecorderCountdownSeconds.ResetToDefault();
+            BasisSettingsDefaults.RecorderAutoStop.ResetToDefault();
+            BasisSettingsDefaults.RecorderMaxDurationSeconds.ResetToDefault();
+        }
+
+        private static float ParseSeconds(string raw)
+        {
+            if (float.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float value) && value > 0f)
+                return value;
+            return 0f;
         }
 
         private static void CreateBuildInfoSection(RectTransform parent)
         {
             PanelButton copyAll = PanelButton.CreateNew(parent);
-            copyAll.Descriptor.SetTitle("Copy Build Info");
+            copyAll.Descriptor.SetTitle(BasisLocalization.Get("settings.main.title.copyBuildInfo"));
             copyAll.Descriptor.SetDescription("Copies all fields to clipboard.");
             copyAll.OnClicked += () =>
             {

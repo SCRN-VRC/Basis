@@ -47,6 +47,9 @@ public class BasisLocalEyeDriver
     public static JobHandle handle;
     public static bool HasEyeSchedule = false;
 
+    private static quaternion _overrideLeftOffset = quaternion.identity;
+    private static quaternion _overrideRightOffset = quaternion.identity;
+
     // Personality is owned by BasisLocalEyeDriverData (SDK). Simulate()
     // checks the dirty flag every frame and recomputes _personality only when
     // the SDK side flips it. In normal runtime it never flips after init.
@@ -119,7 +122,7 @@ public class BasisLocalEyeDriver
     }
 
     #region Init
-    public static void Initalize()
+    public static void Initialize()
     {
         Dispose();
 
@@ -223,11 +226,40 @@ public class BasisLocalEyeDriver
 
     #region Simulate / Apply
 
+    public static void SetOverrideEyeOffsets(quaternion leftOffset, quaternion rightOffset)
+    {
+        _overrideLeftOffset = leftOffset;
+        _overrideRightOffset = rightOffset;
+    }
+
+    private static void ScheduleOverrideApply()
+    {
+        BasisEyeState s = _state[0];
+        s.leftOffset = _overrideLeftOffset;
+        s.rightOffset = _overrideRightOffset;
+        _state[0] = s;
+
+        BasisEyeApplyJob applyJob = new BasisEyeApplyJob
+        {
+            state = _state,
+            calLeftInitial = calLeft.initialRotation,
+            calRightInitial = calRight.initialRotation
+        };
+        handle = applyJob.Schedule(_eyeTransforms);
+
+        HasEyeSchedule = true;
+    }
+
     public void Simulate(float dt)
     {
-        if (!IsEnabled || Override != false || HasEyeSchedule != false)
+        if (!IsEnabled || HasEyeSchedule != false)
         {
-            //   BasisDebug.Log("Not RUnning EYes");
+            return;
+        }
+
+        if (Override)
+        {
+            ScheduleOverrideApply();
             return;
         }
 
@@ -345,6 +377,12 @@ public class BasisLocalEyeDriver
         float* pTargetPriority = (float*)_jobTargetPriority.GetUnsafePtr();
         byte* pTargetIsCurrent = (byte*)_jobTargetIsCurrent.GetUnsafePtr();
 
+        // Fetch the playerId→sOut index map once and resolve inline below, instead of a
+        // TryGetSOutIndex call per receiver. sOutMapLen is 0 when the map is null, so the
+        // ternary returns -1 without ever indexing a null array.
+        int[] sOutIndexMap = RemoteBoneJobSystem.GetSOutIndexMap();
+        int sOutMapLen = sOutIndexMap != null ? sOutIndexMap.Length : 0;
+
         int playerSlots = 0;
         for (int i = 0; i < receiverCount; i++)
         {
@@ -361,10 +399,12 @@ public class BasisLocalEyeDriver
             if (!receiver._player.FaceIsVisible)
                 continue;
 
-            if (!RemoteBoneJobSystem.TryGetSOutIndex(receiver.playerId, out int idx))
+            int playerId = receiver.playerId;
+            int idx = (uint)playerId < (uint)sOutMapLen ? sOutIndexMap[playerId] : -1;
+            if (idx < 0)
                 continue;
 
-            pPlayerIds[playerSlots] = receiver.playerId;
+            pPlayerIds[playerSlots] = playerId;
             pPlayerSOutIdx[playerSlots] = idx;
             playerSlots++;
         }
@@ -388,31 +428,39 @@ public class BasisLocalEyeDriver
             targetSlots++;
         }
 
-        // ── Phase 2: schedule + complete the Burst job ───────────────────────
-        // Fall back to a 1-element placeholder when sOut hasn't initialized yet,
-        // so the job's safety validation passes. playerSlots will be 0 in that
-        // state because TryGetSOutIndex returned false for every receiver.
-        var remoteFrames = RemoteBoneJobSystem.GetRemoteFrameArray();
-        if (!remoteFrames.IsCreated) remoteFrames = _jobFramesPlaceholder;
-
-        var job = new BasisGazeSelectionJob
+        // ── Phase 2: run the Burst job inline (.Run, not Schedule().Complete) ─
+        GazeJobResult r;
+        if (playerSlots == 0 && targetSlots == 0)
         {
-            localHeadPos = localHeadPos,
-            localHeadFwd = localHeadFwd,
-            currentTargetId = _currentTargetId,
-            playerCount = playerSlots,
-            targetCount = targetSlots,
-            playerIds = _jobPlayerIds,
-            playerSOutIdx = _jobPlayerSOutIdx,
-            remoteFrames = remoteFrames,
-            targetFocus = _jobTargetFocus,
-            targetPriority = _jobTargetPriority,
-            targetIsCurrent = _jobTargetIsCurrent,
-            result = _jobResult,
-        };
-        job.Schedule().Complete();
+            r = new GazeJobResult { bestPlayerId = -1, bestTargetIdx = -1 };
+        }
+        else
+        {
+            // Fall back to a 1-element placeholder when sOut hasn't initialized yet,
+            // so the job's safety validation passes. playerSlots will be 0 in that
+            // state because TryGetSOutIndex returned false for every receiver.
+            var remoteFrames = RemoteBoneJobSystem.GetRemoteFrameArray();
+            if (!remoteFrames.IsCreated) remoteFrames = _jobFramesPlaceholder;
 
-        GazeJobResult r = _jobResult[0];
+            var job = new BasisGazeSelectionJob
+            {
+                localHeadPos = localHeadPos,
+                localHeadFwd = localHeadFwd,
+                currentTargetId = _currentTargetId,
+                playerCount = playerSlots,
+                targetCount = targetSlots,
+                playerIds = _jobPlayerIds,
+                playerSOutIdx = _jobPlayerSOutIdx,
+                remoteFrames = remoteFrames,
+                targetFocus = _jobTargetFocus,
+                targetPriority = _jobTargetPriority,
+                targetIsCurrent = _jobTargetIsCurrent,
+                result = _jobResult,
+            };
+            job.Run();
+
+            r = _jobResult[0];
+        }
 
         // ── Phase 3: post-pass — managed bookkeeping + social triangle math ──
         BasisGazeTarget bestGazeTarget = (r.bestTargetIdx >= 0)

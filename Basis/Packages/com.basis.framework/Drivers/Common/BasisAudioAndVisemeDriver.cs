@@ -25,7 +25,7 @@ namespace Basis.Scripts.Drivers
         /// <summary>
         /// Player whose avatar/renderer provide the viseme mesh and visibility state.
         /// </summary>
-        public BasisPlayer Player;
+        public IBasisPlayer Player;
 
         /// <summary>
         /// Avatar containing the viseme mesh and movement indices.
@@ -72,21 +72,27 @@ namespace Basis.Scripts.Drivers
         public AudioSource TrackedAudioSource;
 
         /// <summary>
+        /// True when <see cref="TrackedAudioSource"/> is disabled (player not speaking).
+        /// Maintained by BasisAudioReceiver so Simulate doesn't poll the native enabled flag.
+        /// </summary>
+        public bool AudioSourceInactive;
+
+        /// <summary>
         /// Tracks whether initialization completed successfully.
         /// </summary>
         public bool WasSuccessful;
 
         /// <summary>
-        /// Cached instance ID of the face renderer used to safely bind/unbind events.
+        /// Cached entity id of the face renderer used to safely bind/unbind events.
         /// </summary>
-        public int HashInstanceID = -1;
+        public EntityId HashInstanceID = EntityId.None;
 
         /// <summary>
         /// Configures lip-sync for the given player and avatar. Records eligibility
         /// for OpenLipSync but defers context creation until the player is within
         /// viseme range (lazy allocation for 1000+ player scaling).
         /// </summary>
-        public bool TryInitialize(BasisPlayer BasisPlayer)
+        public bool TryInitialize(IBasisPlayer BasisPlayer)
         {
             WasSuccessful = false;
             Avatar = BasisPlayer.BasisAvatar;
@@ -110,12 +116,13 @@ namespace Basis.Scripts.Drivers
             }
 
             // Cache entity ID on the main thread — needed later for lazy slot
-            // acquisition which can be triggered from the audio thread.
-            _cachedEntityId = BasisPlayer.GetEntityId();
+            // acquisition which can be triggered from the audio thread. The remote player
+            // is a plain object, so key off its owned GameObject's entity id.
+            BasisOpenLipSyncDriver.UnregisterSlotRevokedCallback(_cachedEntityId);
+            _cachedEntityId = BasisPlayer.GameObject.GetEntityId();
 
             // Listen for slot evictions (e.g. MaxSlots lowered at runtime)
-            BasisOpenLipSyncDriver.OnSlotRevoked -= OnOpenLipSyncSlotRevoked;
-            BasisOpenLipSyncDriver.OnSlotRevoked += OnOpenLipSyncSlotRevoked;
+            BasisOpenLipSyncDriver.RegisterSlotRevokedCallback(_cachedEntityId, OnOpenLipSyncSlotRevoked);
 
             // Release any previous context.
             ReleaseOpenLipSyncContext();
@@ -124,10 +131,6 @@ namespace Basis.Scripts.Drivers
             // Context will be created when the player enters viseme range.
             UseOpenLipSync = false;
             EligibleForOpenLipSync = false;
-            if (!BasisOpenLipSyncDriver.IsInitialized)
-            {
-                BasisOpenLipSyncDriver.Initialize();
-            }
             EligibleForOpenLipSync = BasisOpenLipSyncDriver.IsInitialized;
 
             BlendShapeCount = Avatar.FaceVisemeMovement.Length;
@@ -189,9 +192,9 @@ namespace Basis.Scripts.Drivers
         /// Called by BasisOpenLipSyncDriver when this player's slot is forcefully revoked.
         /// The backend context is already destroyed — just clean up the local state.
         /// </summary>
-        private void OnOpenLipSyncSlotRevoked(EntityId entityId)
+        private void OnOpenLipSyncSlotRevoked()
         {
-            if (!entityId.Equals(_cachedEntityId) || openLipSyncContext == null) return;
+            if (openLipSyncContext == null) return;
 
             openLipSyncContext.ZeroVisemes();
             openLipSyncContext.Dispose();
@@ -201,7 +204,7 @@ namespace Basis.Scripts.Drivers
 
         public void OnDestroy()
         {
-            BasisOpenLipSyncDriver.OnSlotRevoked -= OnOpenLipSyncSlotRevoked;
+            BasisOpenLipSyncDriver.UnregisterSlotRevokedCallback(_cachedEntityId);
             ReleaseOpenLipSyncContext();
         }
         public void Simulate(float DeltaTime)
@@ -218,7 +221,7 @@ namespace Basis.Scripts.Drivers
             }
 
             // Release context back to pool when audio source is inactive (player not speaking)
-            if (UseOpenLipSync && openLipSyncContext != null && TrackedAudioSource != null && !TrackedAudioSource.enabled)
+            if (UseOpenLipSync && openLipSyncContext != null && TrackedAudioSource != null && AudioSourceInactive)
             {
                 ReleaseOpenLipSyncContext();
             }
@@ -237,8 +240,24 @@ namespace Basis.Scripts.Drivers
                 openLipSyncContext.Simulate(DeltaTime);
             }
         }
+        private bool _overrideZeroed;
+
         public void Apply()
         {
+            if (Basis.BasisUI.BasisSettingsDefaults.DisableLipSyncForFaceTracking.RawValue
+                && Player is BasisRemotePlayer remote && remote.RemoteFaceDriver != null && remote.RemoteFaceDriver.OverrideViseme)
+            {
+                // Developer option (default off): a face-tracked remote drives the mouth via comms,
+                // so suppress the audio-reconstructed visemes. Off = both run combined.
+                if (!_overrideZeroed)
+                {
+                    openLipSyncContext?.ZeroVisemes();
+                    _overrideZeroed = true;
+                }
+                return;
+            }
+            _overrideZeroed = false;
+
             if (UseOpenLipSync && openLipSyncContext != null)
             {
                 openLipSyncContext.Apply();
@@ -250,7 +269,7 @@ namespace Basis.Scripts.Drivers
         public void TryShutdown()
         {
             WasSuccessful = false;
-            OnDeInitalize();
+            OnDeInitialize();
         }
 
         /// <summary>
@@ -285,7 +304,7 @@ namespace Basis.Scripts.Drivers
         /// <summary>
         /// Unbinds face renderer callbacks if the same renderer instance is still present.
         /// </summary>
-        public void OnDeInitalize()
+        public void OnDeInitialize()
         {
             if (Player != null)
             {

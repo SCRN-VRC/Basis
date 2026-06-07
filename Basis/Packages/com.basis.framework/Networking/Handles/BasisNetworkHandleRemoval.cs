@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using Basis.Scripts.Avatar;
-using Basis.Scripts.Device_Management;
 using Basis.Scripts.Networking;
 using Basis.Scripts.Networking.NetworkedAvatar;
 using Basis.Scripts.Networking.Receivers;
@@ -108,6 +107,16 @@ public static class BasisNetworkHandleRemoval
                 BasisAvatarFactory.CancelPlayerLoad(network.Player);
             }
 
+            // Tear the remote player down BEFORE its avatar is unloaded, while the avatar's
+            // FaceRenderer is still alive: OnDestroy unregisters from the bone job, fires
+            // OnRemotePlayerDestroying (the nameplate unsubscribes from the renderer-visibility
+            // callback and releases itself) and drops the mouth marker. If this ran after
+            // DeleteLastAvatar, the avatar's OnBecameInvisible could fire into a released nameplate.
+            if (network.Player is Basis.Scripts.BasisSdk.Players.BasisRemotePlayer remoteToDestroy)
+            {
+                remoteToDestroy.OnDestroy();
+            }
+
             if (network.Player != null)
             {
                 BasisAvatarFactory.DeleteLastAvatar(network.Player);
@@ -115,12 +124,6 @@ public static class BasisNetworkHandleRemoval
             else
             {
                 BasisDebug.LogError($"B Missing Player for removing ID {disconnectedID}");
-            }
-
-            // Destroy the player GameObject
-            if (network.Player != null)
-            {
-                GameObject.Destroy(network.Player.gameObject);
             }
         }
         else

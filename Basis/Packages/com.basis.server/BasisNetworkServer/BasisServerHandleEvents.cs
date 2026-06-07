@@ -72,6 +72,9 @@ namespace BasisServerHandle
             if (NetworkServer.AuthIdentity.NetIDToUUID(peer, out string uuid))
             {
                 PermissionIntegration.RemovePlayerMeta(uuid);
+                PermissionIntegration.EvictPermissionCache(uuid);
+                BasisNetworkHandleErrorReport.RemoveUser(uuid);
+                BasisNetworkResourceManagement.RemovePeerResources(uuid);
             }
 
             NetworkServer.AuthIdentity.RemoveConnection(id);
@@ -83,6 +86,7 @@ namespace BasisServerHandle
             BasisNetworkPreloadResourceManagement.RemovePeer(id);
             BasisNetworkServer.Security.BasisUserOpusBitrateStateManager.ClearForPeer(id);
             BasisServerP2PBroker.RemovePeer(id);
+            BasisNetworkMessageProcessor.ClearPeerErrors(id);
 
             return NetworkServer.AuthenticatedPeers.TryRemove(id, out _);
         }
@@ -299,11 +303,12 @@ namespace BasisServerHandle
 
             if (added)
             {
+                newPeer.Tag = NetworkServer.AuthenticatedPeerTag;
                 NetworkServer.RebuildPeerSnapshot();
                 BNL.Log($"Peer connected: {newPeer.Id}");
                 //never ever assume the UUID provided by the user is good always recalc on the server.
                 //this means that as long as they pass auth but locally have a bad UUID that only they locally are effected.
-                //there is no way to force a user locally to be a certain UUID, thats not how the internet works.
+                //there is no way to force a user locally to be a certain UUID, that's not how the internet works.
                 //instead we can make sure all additional clients have them correct.
                 //this only occurs if the server is doing Auth checks.
                 ReadyMessage.playerMetaDataMessage.playerUUID = UUID;
@@ -338,10 +343,6 @@ namespace BasisServerHandle
                     //BNL.Log($"Sending out Network Id Count " + ServerUniqueIDMessageArray.Messages.Length);
                     NetworkServer.TrySend(newPeer, Writer, BasisNetworkCommons.NetIDAssignsChannel, DeliveryMethod.ReliableOrdered);
                 }
-                else
-                {
-                    BNL.Log($"No Network Ids Not Sending out");
-                }
 
                 NetworkServer.ReturnWriter(Writer);
 
@@ -358,6 +359,8 @@ namespace BasisServerHandle
                 BasisNetworkServer.Security.BasisOpusPacketLossStateManager.SendStateToPeer(newPeer);
                 BasisNetworkServer.Security.BasisOpusFrameDurationStateManager.SendStateToPeer(newPeer);
                 BasisNetworkServer.Security.BasisUserOpusBitrateStateManager.SendStateToPeer(newPeer);
+                BasisNetworkServer.Security.BasisCrashReportStateManager.SendStateToPeer(newPeer);
+                BasisNetworkServer.Security.BasisAudioRangeLimitManager.SendStateToPeer(newPeer);
                 SendShoutStateToPeer(newPeer);
             }
             else
@@ -487,12 +490,13 @@ namespace BasisServerHandle
         /// <summary>
         /// Broadcasts a shout mode state change to all clients via the AdminChannel.
         /// </summary>
-        public static void BroadcastShoutModeState(ushort targetPlayerId, bool enabled)
+        public static void BroadcastShoutModeState(ushort targetPlayerId, bool enabled, ushort initiatorPlayerId)
         {
             var writer = NetworkServer.RentWriter();
             AdminRequestMode mode = enabled ? AdminRequestMode.EnableShoutMode : AdminRequestMode.DisableShoutMode;
             new AdminRequest().Serialize(writer, mode);
             writer.Put(targetPlayerId);
+            writer.Put(initiatorPlayerId);
 
             NetPeer[] peers = NetworkServer.PeerSnapshot;
             foreach (var client in peers)
@@ -517,6 +521,7 @@ namespace BasisServerHandle
             {
                 writer.Reset();
                 new AdminRequest().Serialize(writer, AdminRequestMode.EnableShoutMode);
+                writer.Put((ushort)peerId);
                 writer.Put((ushort)peerId);
                 BasisNetworkStatistics.RecordOutbound(BasisNetworkCommons.AdminChannel, writer.Length);
                 newPeer.Send(writer, BasisNetworkCommons.AdminChannel, DeliveryMethod.ReliableOrdered);
@@ -884,7 +889,7 @@ namespace BasisServerHandle
                     break;
                 default:
                     BNL.LogError($"Missing Mode {LocalLoadResource.Mode}");
-                    break;
+                    return;
             }
             // Route based on load strategy
             switch (LocalLoadResource.LoadStrategy)
@@ -896,7 +901,7 @@ namespace BasisServerHandle
                     BasisNetworkPreloadResourceManagement.StartSynchronizedLoad(LocalLoadResource);
                     break;
                 default:
-                    BNL.LogError("Falling Back to Resource Load, Unsupport Load Strategy");
+                    BNL.LogError("Falling Back to Resource Load, Unsupported Load Strategy");
                     BasisNetworkResourceManagement.LoadResource(LocalLoadResource);
                     break;
             }
@@ -930,7 +935,7 @@ namespace BasisServerHandle
                     break;
                 default:
                     BNL.LogError($"Missing Mode {UnLoadResource.Mode}");
-                    break;
+                    return;
             }
 
             //returns a message with the ushort back to the client, or it sends it to everyone if its new.
@@ -942,7 +947,7 @@ namespace BasisServerHandle
         {
             if (NetworkServer.Configuration.DisableWriteUnlessAdminPersistentFlag)
             {
-                if (PermissionIntegration.HasValidRequirement(peer, PermNodes.ConfigurationEditor))
+                if (!PermissionIntegration.HasValidRequirement(peer, PermNodes.ConfigurationEditor))
                 {
                     return;
                 }

@@ -84,6 +84,20 @@
       "source": "embedded",
       "dependencies": {}
     },
+    "com.basis.mediapipe": {
+      "version": "file:com.basis.mediapipe",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
+    "com.basis.mediaplayer": {
+      "version": "file:com.basis.mediaplayer",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.unity.addressables": "2.9.1"
+      }
+    },
     "com.basis.openlipsync": {
       "version": "file:com.basis.openlipsync",
       "depth": 0,
@@ -121,6 +135,12 @@
       "dependencies": {
         "com.unity.profiling.core": "1.0.3"
       }
+    },
+    "com.basis.provider.servers": {
+      "version": "file:com.basis.provider.servers",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
     },
     "com.basis.sdk": {
       "version": "file:com.basis.sdk",
@@ -192,6 +212,15 @@
       "dependencies": {
         "com.unity.mathematics": "1.0.0",
         "com.unity.collections": "2.0.0"
+      }
+    },
+    "com.github.homuler.mediapipe": {
+      "version": "file:com.github.homuler.mediapipe",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.unity.ugui": "1.0.0",
+        "com.unity.test-framework": "1.0.0"
       }
     },
     "com.llealloo.audiolink": {
@@ -294,7 +323,7 @@
       "dependencies": {}
     },
     "com.unity.ide.rider": {
-      "version": "3.0.39",
+      "version": "3.0.40",
       "depth": 0,
       "source": "registry",
       "dependencies": {
@@ -403,11 +432,11 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.sdk.linux-x86_64": {
-      "version": "1.0.2",
+      "version": "1.1.0",
       "depth": 0,
       "source": "registry",
       "dependencies": {
-        "com.unity.sysroot.base": "1.0.2"
+        "com.unity.sysroot.base": "1.1.0"
       },
       "url": "https://packages.unity.com"
     },
@@ -440,12 +469,12 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.services.core": {
-      "version": "1.16.0",
+      "version": "1.17.0",
       "depth": 1,
       "source": "registry",
       "dependencies": {
         "com.unity.modules.androidjni": "1.0.0",
-        "com.unity.nuget.newtonsoft-json": "3.2.1",
+        "com.unity.nuget.newtonsoft-json": "3.2.2",
         "com.unity.modules.unitywebrequest": "1.0.0"
       },
       "url": "https://packages.unity.com"
@@ -460,7 +489,7 @@
       }
     },
     "com.unity.sysroot.base": {
-      "version": "1.0.2",
+      "version": "1.1.0",
       "depth": 1,
       "source": "registry",
       "dependencies": {},
@@ -499,20 +528,20 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.toolchain.linux-x86_64-linux": {
-      "version": "1.0.2",
+      "version": "1.1.0",
       "depth": 0,
       "source": "registry",
       "dependencies": {
-        "com.unity.sysroot.base": "1.0.2"
+        "com.unity.sysroot.base": "1.1.0"
       },
       "url": "https://packages.unity.com"
     },
     "com.unity.toolchain.win-x86_64-linux": {
-      "version": "1.0.2",
+      "version": "1.1.0",
       "depth": 0,
       "source": "registry",
       "dependencies": {
-        "com.unity.sysroot.base": "1.0.2"
+        "com.unity.sysroot.base": "1.1.0"
       },
       "url": "https://packages.unity.com"
     },

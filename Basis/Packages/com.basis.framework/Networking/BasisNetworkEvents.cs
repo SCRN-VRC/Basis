@@ -345,6 +345,10 @@ public static class BasisNetworkEvents
                 BasisNetworkManagement.ServerMetaDataMessage = SMDM;
                 BasisNetworkManagement.LocalPermissions = SMDM.GetPermissions();
                 BasisNetworkManagement.OnlocalPermissionsChanged?.Invoke();
+                if (BasisNetworkConnection.LocalPlayerIsConnected == false)
+                {
+                    BasisNetworkConnection.SetupLocalPlayer(peer);
+                }
                 break;
             case BasisNetworkCommons.StoreDatabaseChannel:
                 if (ValidateSize(Reader, peer, channel) == false)
@@ -464,6 +468,33 @@ public static class BasisNetworkEvents
                             ushort rateIntervalMs = Reader.GetUShort();
                             Reader.Recycle();
                             Basis.Scripts.Networking.BasisAvatarRateRegistry.UpdateRemoteRate(rateSenderId, rateIntervalMs);
+                            break;
+                        case BasisNetworkCommons.EventType_PlayerChatTyping:
+                            ushort typingSenderId = Reader.GetUShort();
+                            bool isTyping = Reader.GetBool();
+                            Reader.Recycle();
+                            BasisDeviceManagement.EnqueueOnMainThread(() =>
+                            {
+                                BasisNetworkHandleChatTyping.OnRemoteTypingStateReceived(typingSenderId, isTyping);
+                            });
+                            break;
+                        case BasisNetworkCommons.EventType_TalkModeChanged:
+                            ushort talkModeSenderId = Reader.GetUShort();
+                            byte talkModeValue = Reader.GetByte();
+                            Reader.Recycle();
+                            BasisDeviceManagement.EnqueueOnMainThread(() =>
+                            {
+                                Basis.Scripts.Networking.BasisTalkModeManager.OnRemoteTalkModeReceived(talkModeSenderId, talkModeValue);
+                            });
+                            break;
+                        case BasisNetworkCommons.EventType_MuteStateChanged:
+                            ushort muteSenderId = Reader.GetUShort();
+                            byte muteValue = Reader.GetByte();
+                            Reader.Recycle();
+                            BasisDeviceManagement.EnqueueOnMainThread(() =>
+                            {
+                                Basis.Scripts.Networking.BasisTalkModeManager.OnRemoteMuteReceived(muteSenderId, muteValue != 0);
+                            });
                             break;
                         default:
                             BNL.LogError($"Unknown EventsChannel event type: {eventType}");

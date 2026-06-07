@@ -1,14 +1,12 @@
 using Basis.Network.Core.Compression;
 using Basis.Scripts.Networking;
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
-using UnityEngine;
 
 /// <summary>
 /// Remote network driver that:
@@ -143,13 +141,12 @@ public static class BasisRemoteNetworkDriver
     public static float PoseBeta = 0.15f;
     public static float PoseDerivativeCutoff = 1.5f;
 
-    public static void Initialize(Allocator allocator = Allocator.Persistent)
-    {
-        if (_initialized) return;
-        _allocator = allocator;
-        AllocateAll(FixedCapacity);
+    static int _initializedCount;
 
-        for (int i = 0; i < FixedCapacity; i++)
+    static void EnsureInitialized(int count)
+    {
+        if (count <= _initializedCount) return;
+        for (int i = _initializedCount; i < count; i++)
         {
             _prevPositions[i] = float3.zero;
             _targetPositions[i] = float3.zero;
@@ -183,8 +180,9 @@ public static class BasisRemoteNetworkDriver
             _scaledBodyPositions[i] = float3.zero;
         }
 
-        int flat = FixedCapacity * BoneCount;
-        for (int c = 0; c < flat; c++)
+        int boneStart = _initializedCount * BoneCount;
+        int boneEnd = count * BoneCount;
+        for (int c = boneStart; c < boneEnd; c++)
         {
             _prevBoneRotations[c] = quaternion.identity;
             _targetBoneRotations[c] = quaternion.identity;
@@ -195,6 +193,15 @@ public static class BasisRemoteNetworkDriver
             _boneDerivFilter[c] = float2.zero;
         }
 
+        _initializedCount = count;
+    }
+
+    public static void Initialize(Allocator allocator = Allocator.Persistent)
+    {
+        if (_initialized) return;
+        _allocator = allocator;
+        AllocateAll(FixedCapacity);
+        _initializedCount = 0;
         _initialized = true;
     }
 
@@ -209,6 +216,7 @@ public static class BasisRemoteNetworkDriver
     public static unsafe void BeginWrite()
     {
         if (!_initialized) return;
+        EnsureInitialized(math.clamp(BasisNetworkPlayers.LargestNetworkReceiverID + 1, 0, FixedCapacity));
         _ptrInterpolationTimes = (IntPtr)_interpolationTimes.GetUnsafePtr();
         _ptrDeltaTimes = (IntPtr)_deltaTimes.GetUnsafePtr();
         _ptrHumanScales = (IntPtr)_humanScales.GetUnsafePtr();
@@ -225,6 +233,25 @@ public static class BasisRemoteNetworkDriver
         _ptrPrevHipsRotDelta = (IntPtr)_prevHipsRotDelta.GetUnsafePtr();
         _ptrTargetHipsRotDelta = (IntPtr)_targetHipsRotDelta.GetUnsafePtr();
         _ptrPoseFilterSeeded = (IntPtr)_poseFilterSeeded.GetUnsafePtr();
+    }
+
+    /// <summary>
+    /// Grows the lazily-initialized region to include <paramref name="playerId"/> on the
+    /// main thread. BeginWrite only covers [0, LargestNetworkReceiverID+1), and that
+    /// high-water is recomputed at the tail of LateUpdate — AFTER RemoteBoneJobSystem.Schedule()
+    /// reads these slots earlier in the same LateUpdate. A remote whose avatar calibrates within
+    /// a frame of joining (cached/fallback avatars) registers a key the driver hasn't covered
+    /// yet, so the bone-copy jobs read uninitialized NativeArray memory and emit a NaN pose.
+    /// Call this at calibration, before the player is registered with RemoteBoneJobSystem.
+    /// Completes any in-flight oneEuroJob first (same reason as SeedScaleState): EnsureInitialized
+    /// writes arrays the job touches.
+    /// </summary>
+    public static void EnsureSlotInitialized(int playerId)
+    {
+        if (!_initialized) return;
+        if ((uint)playerId >= FixedCapacity) return;
+        oneEuroJob.Complete();
+        EnsureInitialized(playerId + 1);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -333,8 +360,15 @@ public static class BasisRemoteNetworkDriver
     /// <summary>Schedule jobs for the current frame (does not complete them).</summary>
     public static void Compute()
     {
-        if (!_initialized) return;
-        if (BasisNetworkPlayers.ReceiverCount == 0) return;
+        if (!_initialized)
+        {
+            return;
+        }
+
+        if (BasisNetworkPlayers.ReceiverCount == 0)
+        {
+            return;
+        }
 
         oneEuroJob.Complete();
 
@@ -441,6 +475,10 @@ public static class BasisRemoteNetworkDriver
         _ptrOutScales = (IntPtr)_outScales.GetUnsafeReadOnlyPtr();
         _ptrSkipBones = (IntPtr)_skipBones.GetUnsafePtr();
     }
+
+    /// <summary>Base pointer to the per-player skip flags (valid after BeginRead); null if uninitialized.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static unsafe byte* SkipBonesPtr() => _initialized ? (byte*)(void*)_ptrSkipBones : null;
 
     // ─── OUTPUT GETTERS ───
 

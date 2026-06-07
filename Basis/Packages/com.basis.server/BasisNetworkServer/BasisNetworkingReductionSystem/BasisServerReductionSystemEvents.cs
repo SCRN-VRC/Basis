@@ -9,6 +9,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using static SerializableBasis;
@@ -141,10 +142,10 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
             MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1)
         };
 
-        public static ConcurrentDictionary<int, PlayerState> playerStates = new();
+        public static ShardedConcurrentDictionary<PlayerState> playerStates = new();
         // Double-buffered message dictionaries: swap and clear instead of allocating per tick.
-        private static ConcurrentDictionary<int, QueuedMessage> currentMessages = new();
-        private static ConcurrentDictionary<int, QueuedMessage> _backMessages = new();
+        private static ShardedConcurrentDictionary<QueuedMessage> currentMessages = new();
+        private static ShardedConcurrentDictionary<QueuedMessage> _backMessages = new();
 
         public static float BSRBaseMultiplier = 1.0f;
         public static float BSRSIncreaseRate = 0.01f;
@@ -173,6 +174,12 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
 
         private static readonly ConcurrentQueue<int> playersToRemove = new();
 
+        // Lets the tick loop park (~0% CPU) when the server is empty instead of
+        // polling at 250Hz. Set() the moment the first packet arrives so there is
+        // no join latency. Same approach LiteNetLib's logic thread already uses.
+        private static readonly AutoResetEvent _tickWake = new(false);
+        private static int _activePlayerCount;
+
         // Reusable snapshot list for draining currentMessages each tick  avoids allocation per tick.
         private static readonly List<QueuedMessage> _messagesSnapshot = new(1024);
 
@@ -195,6 +202,15 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
         public static float LowDistanceSq = 2500f;      // 50m
 
         public static long intervalMs = 4;
+        // Fallback wake while the server is empty; _tickWake.Set() does the real wake.
+        private const int IdleWaitMs = 250;
+        // Load-adaptive inter-tick wait: if the tick left more than this much of its budget
+        // unused (light load), block on WaitOne (~0% CPU); if less (heavy load, near the
+        // budget), busy-spin the small remainder to hit the rate precisely. Doubles as the
+        // spin cap — the loop never spins more than this per tick. Set to 0 for pure WaitOne
+        // (lowest CPU, looser rate under load); raise toward intervalMs to favor a tight
+        // rate at higher load. Saturated ticks (no slack) never wait or spin regardless.
+        public static double MaxSpinMs = 2.5;
         // Tick slicing: only process a subset of receivers each tick to spread the O(NÂ²) work.
         // Adaptive: increases when ticks take too long, decreases when under budget.
         private static int _sliceCount = 1;
@@ -223,8 +239,22 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
 
 
 
+        [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+        private static extern uint timeBeginPeriod(uint uMilliseconds);
+
         static BasisServerReductionSystemEvents()
         {
+            // Raise the OS timer to 1ms so WaitOne keeps ~4ms accuracy on Windows (default
+            // ~15ms). Windows-only: the winmm P/Invoke is never resolved on Linux/macOS
+            // because the call is skipped there (those already resolve to ~1ms). try/catch so
+            // a missing winmm (minimal Windows containers) degrades instead of faulting the
+            // static ctor and taking the whole reduction system down with it.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                try { timeBeginPeriod(1); }
+                catch (Exception ex) { BNL.LogError($"[BSR] timeBeginPeriod unavailable, tick timing falls back to OS default: {ex.Message}"); }
+            }
+
             var thread = new Thread(BackgroundTickLoop)
             {
                 IsBackground = true,
@@ -267,6 +297,10 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
             // The orphaned prev (if any) is collected by the GC; this only occurs when two
             // messages for the same peer arrive within the same tick — negligible cost.
             currentMessages[fromPeer.Id] = message;
+
+            // Wake the loop only while it is parked (empty server). Once a player is
+            // registered the loop is running, so this read short-circuits with no syscall.
+            if (Volatile.Read(ref _activePlayerCount) == 0) _tickWake.Set();
         }
 
         public static void AddMessage(NetPeer fromPeer, LocalAvatarSyncMessage localMessage, byte sequence)
@@ -278,13 +312,15 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
 
             // Same as HandleAvatarMovement — indexer avoids closure allocation.
             currentMessages[fromPeer.Id] = message;
+
+            if (Volatile.Read(ref _activePlayerCount) == 0) _tickWake.Set();
         }
 
         /// <summary>
-        /// Dedicated tick loop running on its own thread with sub-millisecond precision.
-        /// Replaces the async Task.Delay approach which had ~15ms resolution on Windows,
-        /// limiting tick rate to ~70Hz. This achieves the target tick rate of ~250Hz (4ms).
-        /// Uses coarse Thread.Sleep for long waits + SpinWait for precise final timing.
+        /// Dedicated tick loop on its own thread. Targets ~250Hz (4ms) while players are
+        /// connected and parks (~0% CPU) when the server is empty. The inter-tick wait uses
+        /// AutoResetEvent.WaitOne so an idle or under-budget loop never burns a core; the OS
+        /// timer is raised to 1ms (Windows) so the wait keeps ~4ms accuracy.
         /// </summary>
         private static void BackgroundTickLoop()
         {
@@ -304,21 +340,32 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
                     BNL.LogError($"[BSR Tick] Unhandled exception: {ex}");
                 }
 
-                // Precise timing: coarse sleep for bulk wait, then spin to exact target.
-                // Thread.Sleep(1) has ~1-2ms resolution vs Task.Delay's ~15ms on Windows.
-                long targetTick = startTick + (long)(intervalMs * MsToTick);
-                long nowTick = Stopwatch.GetTimestamp();
-                double remainMs = (targetTick - nowTick) / MsToTick;
-
-                if (remainMs > 2.0)
+                // Empty server: park until work arrives instead of spinning at 250Hz.
+                // _tickWake is signaled by the first inbound packet (and by Shutdown),
+                // so this costs ~0% CPU when idle with no added connect latency.
+                if (Volatile.Read(ref _activePlayerCount) == 0)
                 {
-                    Thread.Sleep(Math.Max(1, (int)(remainMs - 1)));
+                    _tickWake.WaitOne(IdleWaitMs);
+                    continue;
                 }
 
-                // Spin-wait for sub-millisecond precision to hit the exact target
-                while (Stopwatch.GetTimestamp() < targetTick)
+                // Load-adaptive wait. remainMs is the unused budget = a direct load signal:
+                // large (light load) -> block on WaitOne (~0% CPU); small (heavy load, near
+                // budget) -> spin the remainder to hit the rate precisely, since the scheduler
+                // wakes a yielded thread late under load and the core is busy anyway. remainMs
+                // <= 0 (saturated) falls through both branches: no wait, no spin.
+                long targetTick = startTick + (long)(intervalMs * MsToTick);
+                double remainMs = (targetTick - Stopwatch.GetTimestamp()) / MsToTick;
+                if (remainMs > MaxSpinMs)
                 {
-                    Thread.SpinWait(20);
+                    _tickWake.WaitOne((int)Math.Round(remainMs));
+                }
+                else
+                {
+                    while (Stopwatch.GetTimestamp() < targetTick)
+                    {
+                        Thread.SpinWait(20);
+                    }
                 }
             }
         }
@@ -406,6 +453,16 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
                     // Return pooled arrays to ArrayPool
                     if (removedState.AvatarHigh.array != null)
                         ArrayPool<byte>.Shared.Return(removedState.AvatarHigh.array);
+                    if (removedState.BundleRawScratch != null)
+                    {
+                        ArrayPool<byte>.Shared.Return(removedState.BundleRawScratch);
+                        removedState.BundleRawScratch = null;
+                    }
+                    if (removedState.BundleCompressedScratch != null)
+                    {
+                        ArrayPool<byte>.Shared.Return(removedState.BundleCompressedScratch);
+                        removedState.BundleCompressedScratch = null;
+                    }
 
                     // Remove from active players list
                     lock (_activePlayersLock)
@@ -416,6 +473,7 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
                             {
                                 _activePlayers.RemoveAt(i);
                                 _activePlayersDirty = true;
+                                Interlocked.Decrement(ref _activePlayerCount);
                                 break;
                             }
                         }
@@ -718,10 +776,17 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
             if (count <= 0) return;
             var pending = stateI.PendingSends;
 
+            // Per-receiver-tick stats accumulators: fold per-send Interlocked into one
+            // RecordOutboundBatch per channel at flush. Stack-only; ~4KB per call.
+            Span<long> tailCounts = stackalloc long[256];
+            Span<long> tailBytes = stackalloc long[256];
+            long bundleCount = 0;
+            long bundleBytes = 0;
+
             int cursor = 0;
             if (bundlingEnabled && count >= AvatarBundleMinMessages)
             {
-                cursor = EmitGreedyBundles(stateI, peer, pending, count);
+                cursor = EmitGreedyBundles(stateI, peer, pending, count, ref bundleCount, ref bundleBytes);
             }
 
             // Send anything not packed into a bundle (the tail < min, or all of pending
@@ -733,8 +798,28 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
                 ref PendingAvatarSend p = ref pending[i];
                 if (p.Length <= p.IntervalOffset) continue;
                 peer.SendUnreliableRawMerge(p.Source, 0, p.Length, p.Channel, p.IntervalOffset, p.Interval);
-                BasisNetworkStatistics.RecordOutbound(p.Channel, p.Length);
+                tailCounts[p.Channel]++;
+                tailBytes[p.Channel] += p.Length;
                 tailSent++;
+            }
+
+            // Flush accumulated stats in one Interlocked.Add per (channel, metric).
+            if (BasisNetworkStatistics.IsRecordingData)
+            {
+                if (bundleCount > 0)
+                {
+                    BasisNetworkStatistics.RecordOutboundBatch(BasisNetworkCommons.CompressedAvatarBundleChannel, bundleCount, bundleBytes);
+                }
+                if (tailSent > 0)
+                {
+                    for (int c = 0; c < 256; c++)
+                    {
+                        if (tailCounts[c] > 0)
+                        {
+                            BasisNetworkStatistics.RecordOutboundBatch((byte)c, tailCounts[c], tailBytes[c]);
+                        }
+                    }
+                }
             }
             // Profiler attribution: distinguish "tail of bundled receiver" (cursor > 0) from
             // "fallback because bundling produced nothing" (cursor == 0 with bundling enabled).
@@ -747,6 +832,19 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
                 }
             }
             stateI.PendingCount = 0;
+
+            // Return tick-scoped scratch buffers to the pool. Without this they'd retain
+            // ~85KB+ per PlayerState forever (LOH at 1k+ players, gen2 pause amplifier).
+            if (stateI.BundleRawScratch != null)
+            {
+                ArrayPool<byte>.Shared.Return(stateI.BundleRawScratch);
+                stateI.BundleRawScratch = null;
+            }
+            if (stateI.BundleCompressedScratch != null)
+            {
+                ArrayPool<byte>.Shared.Return(stateI.BundleCompressedScratch);
+                stateI.BundleCompressedScratch = null;
+            }
         }
 
         /// <summary>
@@ -757,7 +855,7 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
         /// ratio and retry once. Returns the index of the first not-yet-emitted entry —
         /// callers send the [cursor, count) tail uncompressed.
         /// </summary>
-        private static int EmitGreedyBundles(PlayerState stateI, NetPeer peer, PendingAvatarSend[] pending, int count)
+        private static int EmitGreedyBundles(PlayerState stateI, NetPeer peer, PendingAvatarSend[] pending, int count, ref long bundleCount, ref long bundleBytes)
         {
             int budget = peer.Mtu - BundleMtuHeadroom - BundleHeaderSize;
             if (budget <= 0) return 0;
@@ -785,7 +883,7 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
                 int rawLen = BuildRawForRange(stateI, pending, cursor, chunkEnd);
                 if (rawLen < AvatarBundleMinBytes) break;
 
-                if (TryDeflateAndEmit(stateI, peer, cursor, chunkEnd, rawLen, budget, out int compressedLen))
+                if (TryDeflateAndEmit(stateI, peer, cursor, chunkEnd, rawLen, budget, ref bundleCount, ref bundleBytes, out int compressedLen))
                 {
                     UpdateRatioEMA(ref stateI.LastBundleRatio, compressedLen, rawLen, weightOnObserved: 0.3f);
                     cursor = chunkEnd;
@@ -810,7 +908,7 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
                 if (retryRawLen < AvatarBundleMinBytes) break;
 
                 if (BSRProfiler.Enabled) Interlocked.Increment(ref BSRProfiler.bundleRetries);
-                if (!TryDeflateAndEmit(stateI, peer, cursor, retryEnd, retryRawLen, budget, out int retryCompressed))
+                if (!TryDeflateAndEmit(stateI, peer, cursor, retryEnd, retryRawLen, budget, ref bundleCount, ref bundleBytes, out int retryCompressed))
                 {
                     // Two failures in a row — give up on bundling for this receiver this tick;
                     // caller replays cursor..count uncompressed.
@@ -854,7 +952,8 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
             byte[] raw = stateI.BundleRawScratch;
             if (raw == null || raw.Length < upperBound)
             {
-                raw = new byte[Math.Max(upperBound, 4096)];
+                if (raw != null) ArrayPool<byte>.Shared.Return(raw);
+                raw = ArrayPool<byte>.Shared.Rent(Math.Max(upperBound, 4096));
                 stateI.BundleRawScratch = raw;
             }
 
@@ -885,7 +984,7 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
         /// with no allocations and no per-call setup — at high call rates this is ~10× cheaper
         /// than DeflateStream, which allocates an internal window + hashtable on every Write.
         /// </summary>
-        private static bool TryDeflateAndEmit(PlayerState stateI, NetPeer peer, int chunkStart, int chunkEnd, int rawLen, int budget, out int compressedLen)
+        private static bool TryDeflateAndEmit(PlayerState stateI, NetPeer peer, int chunkStart, int chunkEnd, int rawLen, int budget, ref long bundleCount, ref long bundleBytes, out int compressedLen)
         {
             compressedLen = 0;
             byte[] raw = stateI.BundleRawScratch;
@@ -894,7 +993,8 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
             int compCapacityNeeded = BundleHeaderSize + LZ4Codec.MaximumOutputSize(rawLen);
             if (compressed == null || compressed.Length < compCapacityNeeded)
             {
-                compressed = new byte[Math.Max(compCapacityNeeded, 4096)];
+                if (compressed != null) ArrayPool<byte>.Shared.Return(compressed);
+                compressed = ArrayPool<byte>.Shared.Rent(Math.Max(compCapacityNeeded, 4096));
                 stateI.BundleCompressedScratch = compressed;
             }
 
@@ -922,7 +1022,8 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
             BinaryPrimitives.WriteUInt16LittleEndian(compressed.AsSpan(1, 2), (ushort)Math.Min(rawLen, ushort.MaxValue));
 
             peer.SendUnreliableRawMerge(compressed, 0, wireLen, BasisNetworkCommons.CompressedAvatarBundleChannel);
-            BasisNetworkStatistics.RecordOutbound(BasisNetworkCommons.CompressedAvatarBundleChannel, wireLen);
+            bundleCount++;
+            bundleBytes += wireLen;
 
             if (profiling)
             {
@@ -991,7 +1092,11 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
             actualInterval = offsetByte + BSRSMillisecondDefaultInterval;
         }
 
-        public static void Shutdown() => cts.Cancel();
+        public static void Shutdown()
+        {
+            cts.Cancel();
+            _tickWake.Set();
+        }
 
         public static void RemovePlayer(int id)
         {
@@ -1165,6 +1270,7 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
                 {
                     _activePlayers.Add((id, state));
                     _activePlayersDirty = true;
+                    Interlocked.Increment(ref _activePlayerCount);
                 }
             }
             else
@@ -1434,5 +1540,84 @@ namespace BasisNetworkServer.BasisNetworkingReductionSystem
         }
 
         #endregion
+    }
+
+    /// <summary>
+    /// Power-of-two-sharded ConcurrentDictionary&lt;int, TValue&gt; replacement. Splits writes
+    /// across N=NextPow2(ProcessorCount) inner dicts indexed by a scrambled key, so per-bucket
+    /// lock contention drops by ~N× under ingress storms (HandleAvatarMovement → currentMessages
+    /// and ProcessMessage → playerStates upserts at 1k+ players, 250Hz). Reference-swappable —
+    /// preserves the existing Interlocked.Exchange double-buffer pattern. Enumeration walks
+    /// shards sequentially and inherits ConcurrentDictionary's per-shard snapshot semantics.
+    /// </summary>
+    public sealed class ShardedConcurrentDictionary<TValue> : System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<int, TValue>>
+    {
+        private readonly ConcurrentDictionary<int, TValue>[] _shards;
+        private readonly int _mask;
+
+        public ShardedConcurrentDictionary()
+            : this(NextPowerOfTwo(Math.Max(1, Environment.ProcessorCount))) { }
+
+        public ShardedConcurrentDictionary(int shardCount)
+        {
+            if (shardCount <= 0 || (shardCount & (shardCount - 1)) != 0)
+                throw new ArgumentException("shardCount must be a positive power of two", nameof(shardCount));
+            _shards = new ConcurrentDictionary<int, TValue>[shardCount];
+            _mask = shardCount - 1;
+            for (int i = 0; i < shardCount; i++) _shards[i] = new ConcurrentDictionary<int, TValue>();
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        private ConcurrentDictionary<int, TValue> ShardOf(int key) => _shards[Scramble(key) & _mask];
+
+        // 32-bit integer hash mix (Murmur3-style). Player ids are dense small ints assigned by
+        // LiteNetLib; without scrambling, ids 0..N-1 would all hash to shard 0 under low-bit
+        // masking, completely defeating the shard split.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        private static int Scramble(int key)
+        {
+            unchecked
+            {
+                uint x = (uint)key;
+                x ^= x >> 16;
+                x *= 0x7feb352du;
+                x ^= x >> 15;
+                x *= 0x846ca68bu;
+                x ^= x >> 16;
+                return (int)x;
+            }
+        }
+
+        public bool TryGetValue(int key, out TValue value) => ShardOf(key).TryGetValue(key, out value);
+        public bool TryRemove(int key, out TValue value) => ShardOf(key).TryRemove(key, out value);
+
+        public TValue this[int key]
+        {
+            get => ShardOf(key)[key];
+            set => ShardOf(key)[key] = value;
+        }
+
+        public void Clear()
+        {
+            for (int i = 0; i < _shards.Length; i++) _shards[i].Clear();
+        }
+
+        public System.Collections.Generic.IEnumerator<System.Collections.Generic.KeyValuePair<int, TValue>> GetEnumerator()
+        {
+            for (int i = 0; i < _shards.Length; i++)
+            {
+                foreach (var kvp in _shards[i]) yield return kvp;
+            }
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        private static int NextPowerOfTwo(int x)
+        {
+            if (x <= 1) return 1;
+            int p = 1;
+            while (p < x) p <<= 1;
+            return p;
+        }
     }
 }

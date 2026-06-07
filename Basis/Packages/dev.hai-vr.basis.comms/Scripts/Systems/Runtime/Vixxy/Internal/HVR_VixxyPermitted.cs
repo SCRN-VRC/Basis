@@ -18,6 +18,8 @@ namespace HVR.Vixxy
             typeof(GameObject),
             typeof(ParticleSystem),
             typeof(Cloth),
+            // Authored motion
+            typeof(BasisAuthoredMotion),
             // Renderers
             typeof(MeshRenderer), // NOTE: MeshRenderer and SkinnedMeshRenderer have hard-coded leniency on material properties. If a property recursively affects a SkinnedMeshRenderer, then it will also affect a MeshRenderer.
             typeof(SkinnedMeshRenderer),
@@ -75,6 +77,10 @@ namespace HVR.Vixxy
             (
                 new List<string> { typeof(Text).FullName, "TMPro.TextMeshPro", "TMPro.TextMeshProUGUI" },
                 new List<string> { "text" }
+            ),
+            (
+                new List<string> { typeof(Transform).FullName },
+                new List<string> { "rotation", "localRotation", "position", "localPosition", "localScale" }
             )
         };
 
@@ -97,7 +103,7 @@ namespace HVR.Vixxy
                 or HVRVixxyPropertyQuaternion
                 or HVRVixxyPropertyBool
                 or HVRVixxyPropertyColor
-                or HVRVixxyPropertyColor32
+                or HVRVixxyPropertyColorHDR
                 or HVRVixxyPropertyTexture
                 or HVRVixxyPropertyMesh
                 or HVRVixxyPropertyString;

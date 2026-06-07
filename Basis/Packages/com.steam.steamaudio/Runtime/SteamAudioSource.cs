@@ -367,15 +367,32 @@ namespace SteamAudio
             MarkCacheDirty();
         }
 #endif
-
-        private void Update()
-        {
-            if (!mInitialized) return;
-        }
         public void ForceUpdate()
         {
             if (!mInitialized || mAudioEngineSource == null) return;
             mAudioEngineSource.UpdateParameters(this);
+        }
+
+        public void ReapDirect()
+        {
+            if (!mInitialized) return;
+
+            if (IsUnityEngineUsed && !HasSimulatedDirectOutput())
+                return;
+
+            UpdateOutputs(SimulationFlags.Direct);
+            if (mAudioEngineSource != null)
+                mAudioEngineSource.UpdateParameters(this);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool HasSimulatedDirectOutput()
+        {
+            return (distanceAttenuation && distanceAttenuationInput == DistanceAttenuationInput.PhysicsBased)
+                || (airAbsorption && airAbsorptionInput == AirAbsorptionInput.SimulationDefined)
+                || (directivity && directivityInput == DirectivityInput.SimulationDefined)
+                || (occlusion && occlusionInput == OcclusionInput.SimulationDefined)
+                || (transmission && transmissionInput == TransmissionInput.SimulationDefined);
         }
 
         private void OnDrawGizmosSelected()

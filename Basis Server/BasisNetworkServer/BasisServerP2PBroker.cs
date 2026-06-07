@@ -151,7 +151,7 @@ namespace BasisNetworkServer
             TrackPeerSession(msg.otherPlayerId, msg.sessionToken);
 
             BNL.Log($"[P2P] Forwarding Request from peer {sender.Id} to peer {msg.otherPlayerId} (token {msg.sessionToken}).");
-            SendSub(target, BasisNetworkCommons.P2PSub_Request, msg.sessionToken, (ushort)sender.Id);
+            SendSub(target, BasisNetworkCommons.P2PSub_Request, msg.sessionToken, (ushort)sender.Id, msg.ephemeralPublicKey);
 
             // ServerArmed confirms registration before either side starts punching, avoiding a race.
             SendSub(sender, BasisNetworkCommons.P2PSub_ServerArmed, msg.sessionToken, msg.otherPlayerId);
@@ -175,7 +175,7 @@ namespace BasisNetworkServer
             if (NetworkServer.AuthenticatedPeers.TryGetValue(s.InitiatorPeerId, out NetPeer initiator))
             {
                 BNL.Log($"[P2P] Accept from peer {sender.Id} (token {Preview(s.Token)}); session armed, forwarding to initiator {s.InitiatorPeerId}.");
-                SendSub(initiator, BasisNetworkCommons.P2PSub_Accept, s.Token, (ushort)sender.Id);
+                SendSub(initiator, BasisNetworkCommons.P2PSub_Accept, s.Token, (ushort)sender.Id, msg.ephemeralPublicKey);
             }
             else
             {
@@ -246,18 +246,27 @@ namespace BasisNetworkServer
 
                 if (s.HasA && s.HasB)
                 {
+                    bool firstFire = s.State != SessionState.Punched;
                     bool sameNat = s.EndpointA_External != null &&
                                    s.EndpointB_External != null &&
                                    s.EndpointA_External.Address.Equals(s.EndpointB_External.Address);
                     string lanTag = sameNat ? " [SAME-NETWORK]" : "";
-                    BNL.Log($"[P2P] Both NAT endpoints collected for token {Preview(token)}: A={s.EndpointA_External} (int {s.EndpointA_Internal}), B={s.EndpointB_External} (int {s.EndpointB_Internal}). Firing NatIntroduce.{lanTag}");
+
+                    // Spray predicted ports on both sides (A/B are arrival-ordered, not
+                    // mapped to a specific peer), except on a same-network pair where the
+                    // internal punch already handles it.
+                    int spray = (firstFire && !sameNat) ? GetPredictionRange() : 0;
+
+                    BNL.Log($"[P2P] Both NAT endpoints collected for token {Preview(token)}: A={s.EndpointA_External} (int {s.EndpointA_Internal}), B={s.EndpointB_External} (int {s.EndpointB_Internal}). Firing NatIntroduce (spray={spray}).{lanTag}");
                     LiteNetLib.NetManager lnlManager = (NetworkServer.Server as LNLNetManager)?.manager;
                     if (lnlManager == null) return;
                     lnlManager.NatPunchModule.NatIntroduce(
                         s.EndpointA_Internal,
                         s.EndpointA_External,
+                        spray,
                         s.EndpointB_Internal,
                         s.EndpointB_External,
+                        spray,
                         token);
                     s.State = SessionState.Punched;
                 }
@@ -268,6 +277,19 @@ namespace BasisNetworkServer
         {
             if (string.IsNullOrEmpty(token)) return "(empty)";
             return token.Length <= 8 ? token : token.Substring(0, 8);
+        }
+
+        private static int GetPredictionRange()
+        {
+            try
+            {
+                var cfg = BasisTransportConfigStore.Get<LNLTransportConfig>(BasisNetworkStackRegistry.LiteNetLibId);
+                return cfg != null ? cfg.NatPortPredictionRange : 0;
+            }
+            catch
+            {
+                return 0;
+            }
         }
 
         public static void RemovePeer(int peerId)
@@ -310,7 +332,7 @@ namespace BasisNetworkServer
             }
         }
 
-        private static void SendSub(NetPeer to, byte sub, string token, ushort otherPlayerId)
+        private static void SendSub(NetPeer to, byte sub, string token, ushort otherPlayerId, byte[] ephemeralPublicKey = null)
         {
             NetDataWriter writer = NetworkServer.RentWriter();
             writer.Put(sub);
@@ -318,6 +340,7 @@ namespace BasisNetworkServer
             {
                 otherPlayerId = otherPlayerId,
                 sessionToken = token ?? string.Empty,
+                ephemeralPublicKey = ephemeralPublicKey,
             };
             body.Serialize(writer);
             NetworkServer.TrySend(to, writer, BasisNetworkCommons.P2PChannel, DeliveryMethod.ReliableOrdered);

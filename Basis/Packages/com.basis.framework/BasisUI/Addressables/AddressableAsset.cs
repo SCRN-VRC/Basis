@@ -38,6 +38,14 @@ namespace Basis.BasisUI
 
             public static string Microphone = "Packages/com.basis.sdk/Textures/Runtime/microphone-solid.png";
             public static string MicrophoneMute = "Packages/com.basis.sdk/Textures/Runtime/microphone-mute-solid.png";
+            public static string People = "Packages/com.basis.sdk/Textures/Runtime/people-outline.png";
+
+            // row-action icons (Library Instantiated tab)
+            public static string Select = "Packages/com.basis.sdk/Textures/Runtime/scan-outline.png";
+            public static string TeleportTo = "Packages/com.basis.sdk/Textures/Runtime/Teleport.png";
+            public static string Trash = "Packages/com.basis.sdk/Textures/Runtime/trash-bin-outline.png";
+            public static string Link = "Packages/com.basis.sdk/Textures/Runtime/link-outline.png";
+            public static string Unlink = "Packages/com.basis.sdk/Textures/Runtime/unlink-outline.png";
 
             // embedded items
             public static string Embedded = "Packages/com.basis.sdk/Textures/Runtime/embedded.png";
@@ -55,13 +63,39 @@ namespace Basis.BasisUI
             public static string PlatformStandaloneWindows64 = "Packages/com.basis.sdk/Textures/Runtime/Platform Icons/logo-windows.png";
         }
 
+        private static readonly Dictionary<string, AsyncOperationHandle<Sprite>> _spriteHandles = new();
+
         public static Sprite GetSprite(string path)
         {
+            if (string.IsNullOrEmpty(path)) return null;
+
+            if (_spriteHandles.TryGetValue(path, out AsyncOperationHandle<Sprite> existing))
+            {
+                return existing.IsValid() ? existing.Result : null;
+            }
+
             if (AddressExists(path))
-                return Addressables.LoadAssetAsync<Sprite>(path).WaitForCompletion();
+            {
+                AsyncOperationHandle<Sprite> handle = Addressables.LoadAssetAsync<Sprite>(path);
+                Sprite sprite = handle.WaitForCompletion();
+                _spriteHandles[path] = handle;
+                return sprite;
+            }
 
             Debug.LogWarning($"Could not find addressable at path \"{path}\"");
             return null;
+        }
+
+        public static void ReleaseAllSprites()
+        {
+            foreach (AsyncOperationHandle<Sprite> handle in _spriteHandles.Values)
+            {
+                if (handle.IsValid())
+                {
+                    Addressables.Release(handle);
+                }
+            }
+            _spriteHandles.Clear();
         }
 
         public static bool AddressExists(string key)

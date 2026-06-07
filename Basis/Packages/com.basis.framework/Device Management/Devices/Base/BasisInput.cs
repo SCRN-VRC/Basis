@@ -88,6 +88,7 @@ namespace Basis.Scripts.Device_Management.Devices
         /// Optional visible device model attached to this input.
         /// </summary>
         public BasisVisualTracker BasisVisualTracker;
+        private UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationHandle<GameObject> _visualModelHandle;
 
         /// <summary>
         /// Raycaster for pointing at interactables (e.g., UI).
@@ -163,7 +164,7 @@ namespace Basis.Scripts.Device_Management.Devices
         public float HandBiasSplay = 0;
 
         /// <summary>
-        /// this is used for example when we have multi touch support and need a way to get a bunch of differnt fingers coming from the same "head role"
+        /// this is used for example when we have multi touch support and need a way to get a bunch of different fingers coming from the same "head role"
         /// </summary>
         public bool HasRayCastOverrideSupport;
         /// <summary>
@@ -174,7 +175,7 @@ namespace Basis.Scripts.Device_Management.Devices
         /// <param name="subSystems">Subsystem/provider ID (OpenXR, SimulateXR, etc.).</param>
         /// <param name="ForceAssignTrackedRole">If true, forces the provided role even if a matcher suggests otherwise.</param>
         /// <param name="basisBoneTrackedRole">Desired tracked role for this device.</param>
-        public void InitalizeTracking(string uniqueID, string unUniqueDeviceID, string subSystems, bool ForceAssignTrackedRole, BasisBoneTrackedRole basisBoneTrackedRole, bool hasRayCastOverrideSupport = false)
+        public void InitializeTracking(string uniqueID, string unUniqueDeviceID, string subSystems, bool ForceAssignTrackedRole, BasisBoneTrackedRole basisBoneTrackedRole, bool hasRayCastOverrideSupport = false)
         {
             //unassign the old tracker
             UnAssignTracker();
@@ -310,8 +311,9 @@ namespace Basis.Scripts.Device_Management.Devices
             BasisInverseOffsetData.InitialControlRotation = Control.OutgoingWorldData.rotation;
 
             Vector3 Offset = Control.OutgoingWorldData.position - BasisInverseOffsetData.TrackerPosition;
-            Control.InverseOffsetFromBone.position = BasisInverseOffsetData.InitialInverseTrackRotation * (Offset);
-            Control.InverseOffsetFromBone.rotation = BasisInverseOffsetData.InitialInverseTrackRotation * BasisInverseOffsetData.InitialControlRotation;
+            Control.SetInverseOffset(
+                BasisInverseOffsetData.InitialInverseTrackRotation * (Offset),
+                BasisInverseOffsetData.InitialInverseTrackRotation * BasisInverseOffsetData.InitialControlRotation);
             Control.UseInverseOffset = true;
         }
 
@@ -322,8 +324,7 @@ namespace Basis.Scripts.Device_Management.Devices
         {
             if (Control != null)
             {
-                Control.IncomingData.position = Vector3.zero;
-                Control.IncomingData.rotation = Quaternion.identity;
+                Control.SetIncoming(Vector3.zero, Quaternion.identity);
                 SetRealTrackers(BasisHasTracked.HasNoTracker, BasisHasRigLayer.HasNoRigLayer, UniqueDeviceIdentifier);
             }
             if (DeviceMatchSettings == null || DeviceMatchSettings.HasTrackedRole == false)
@@ -391,8 +392,7 @@ namespace Basis.Scripts.Device_Management.Devices
                 if (HasControl)
                 {
                     BasisDebug.Log($"UnAssigning Tracker {Control.name}", BasisDebug.LogTag.Input);
-                    Control.InverseOffsetFromBone.position = Vector3.zero;
-                    Control.InverseOffsetFromBone.rotation = Quaternion.identity;
+                    Control.SetInverseOffset(Vector3.zero, Quaternion.identity);
                     Control.UseInverseOffset = false;
                 }
                 UnAssignRoleAndTracker();
@@ -610,6 +610,11 @@ namespace Basis.Scripts.Device_Management.Devices
                 BasisDebug.Log("Found and removing  HideTrackedVisual", BasisDebug.LogTag.Input);
                 GameObject.Destroy(BasisVisualTracker.gameObject);
             }
+            if (_visualModelHandle.IsValid())
+            {
+                Addressables.Release(_visualModelHandle);
+                _visualModelHandle = default;
+            }
         }
         /// <summary>
         /// Creates and initializes raycasting helpers for this device (pointer + UI raycast).
@@ -636,7 +641,7 @@ namespace Basis.Scripts.Device_Management.Devices
             {
                 GameObject LineRenderer = new GameObject($"{input.name} Line Renderer", new System.Type[] { typeof(LineRenderer) });
                 LineRenderer.TryGetComponent<LineRenderer>(out InteractionLineRenderer);
-                // deskies cant hover grab :)
+                // deskies can't hover grab :)
                 hoverSphere = new BasisHoverSphere(input.RaycastCoord.position, BasisPlayerInteract.hoverRadius, BasisPlayerInteract.k_MaxPhysicHitCount, BasisPlayerInteract.Mask, !BasisPlayerInteract.IsDesktopCenterEye(input), BasisPlayerInteract.OnlySortClosest);
                 LineRenderer.transform.SetParent(BasisLocalPlayer.Instance.transform);
                 LineRenderer.layer = BasisPlayerInteract.IgnoreRaycasting;
@@ -655,6 +660,7 @@ namespace Basis.Scripts.Device_Management.Devices
                 InteractionLineRenderer.useWorldSpace = true;
                 InteractionLineRenderer.textureMode = LineTextureMode.Tile;
                 InteractionLineRenderer.applyActiveColorSpace = false;
+                Basis.Scripts.UI.BasisRaycastLineCustomization.StyleInteractionLine(InteractionLineRenderer);
             }
             HasRaycaster = true;
         }
@@ -681,8 +687,13 @@ namespace Basis.Scripts.Device_Management.Devices
         /// <param name="key">Addressables key for the model prefab.</param>
         public void LoadModelWithKey(string key)
         {
-            UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationHandle<GameObject> op = Addressables.LoadAssetAsync<GameObject>(key);
-            GameObject go = op.WaitForCompletion();
+            if (_visualModelHandle.IsValid())
+            {
+                Addressables.Release(_visualModelHandle);
+                _visualModelHandle = default;
+            }
+            _visualModelHandle = Addressables.LoadAssetAsync<GameObject>(key);
+            GameObject go = _visualModelHandle.WaitForCompletion();
             GameObject gameObject = GameObject.Instantiate(go, this.transform);
             gameObject.name = CommonDeviceIdentifier;
             if (gameObject.TryGetComponent(out BasisVisualTracker))
@@ -724,11 +735,7 @@ namespace Basis.Scripts.Device_Management.Devices
         {
             if (hasRoleAssigned && Control.HasTracked != BasisHasTracked.HasNoTracker)
             {
-                // Apply position offset using math.mul for quaternion-vector multiplication
-                Control.IncomingData.position = ScaledDeviceCoord.position;
-
-                // Apply rotation offset using math.mul for quaternion multiplication
-                Control.IncomingData.rotation = ScaledDeviceCoord.rotation;
+                Control.SetIncoming(ScaledDeviceCoord.position, ScaledDeviceCoord.rotation);
             }
 
         }

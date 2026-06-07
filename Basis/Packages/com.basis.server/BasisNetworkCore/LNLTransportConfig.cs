@@ -5,8 +5,14 @@ namespace Basis.Network.Core
     [Serializable]
     public sealed class LNLTransportConfig
     {
+        /// <summary>Bump to force existing files to be rewritten; newly-added fields are healed automatically on load.</summary>
+        public const int CurrentConfigVersion = 1;
+        /// <summary>Schema version stamped into the file; 0 = pre-versioning, upgraded on load.</summary>
+        public int ConfigVersion = 0;
+
         public bool UseNativeSockets = true;
         public bool NatPunchEnabled = true;
+        public int NatPortPredictionRange = 32;
         public int PingInterval = 1500;
         public int DisconnectTimeout = 30000;
         public bool SimulatePacketLoss = false;
@@ -23,5 +29,6 @@ namespace Basis.Network.Core
         public bool MtuDiscovery = true;
         public bool DisconnectOnUnreachable = false;
         public bool AllowPeerAddressChange = true;
+        public int MultiSocketCount = 1;
     }
 }

@@ -78,6 +78,14 @@ namespace Basis.Scripts.Drivers
             }
         }
 
+        public void SetMirror(bool mirrored)
+        {
+            if (displaySpriteRenderer != null)
+            {
+                displaySpriteRenderer.flipX = mirrored;
+            }
+        }
+
         private void CreateObjects()
         {
             if (initialized) return;
@@ -126,6 +134,7 @@ namespace Basis.Scripts.Drivers
 
             displaySpriteRenderer = displayGO.AddComponent<SpriteRenderer>();
             displaySpriteRenderer.sharedMaterial = new Material(Shader.Find("Basis/UI/Main"));
+            displaySpriteRenderer.flipX = BasisSettingsDefaults.AvatarPreviewMirror.RawValue;
 
             // Create a dummy sprite for mesh/UV generation (full 0-1 UVs)
             dummyTexture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
@@ -146,6 +155,12 @@ namespace Basis.Scripts.Drivers
         {
             initialized = false;
             active = false;
+
+            if (displaySpriteRenderer != null)
+            {
+                if (displaySpriteRenderer.sharedMaterial != null) Object.Destroy(displaySpriteRenderer.sharedMaterial);
+                if (displaySpriteRenderer.sprite != null) Object.Destroy(displaySpriteRenderer.sprite);
+            }
 
             if (cameraGO != null) { Object.Destroy(cameraGO); cameraGO = null; }
             if (displayGO != null) { Object.Destroy(displayGO); displayGO = null; }
@@ -176,10 +191,10 @@ namespace Basis.Scripts.Drivers
         /// </summary>
         public void Simulate()
         {
-            if (!active || PreviewCamera == null) return;
-            if (!BasisLocalPlayer.PlayerReady || BasisLocalPlayer.Instance == null) return;
-            if (!BasisLocalAvatarDriver.Mapping.Hashead || BasisLocalAvatarDriver.Mapping.head == null) return;
-
+            if (!active)
+            {
+                return;
+            }
             Transform head = BasisLocalAvatarDriver.Mapping.head;
 
             Vector3 feetPos = BasisLocalPlayer.Instance.transform.position;
@@ -196,7 +211,7 @@ namespace Basis.Scripts.Drivers
             if (halfFovTan < 1e-4f) halfFovTan = 1e-4f;
             float cameraDistance = (verticalSpan * 0.5f) / halfFovTan;
 
-            Vector3 cameraPos = frameCenter + head.forward * cameraDistance;
+            Vector3 cameraPos = frameCenter + BasisLocalCameraDriver.HeadForward() * cameraDistance;
 
             PreviewCamera.transform.SetPositionAndRotation(
                 cameraPos,
@@ -214,7 +229,7 @@ namespace Basis.Scripts.Drivers
                     : cachedDriver.DesktopMicrophoneViewportPosition;
                 viewportPos.x = 1f - viewportPos.x;
                 Vector3 parentWorld = cam.ViewportToWorldPoint(viewportPos);
-                parentOfUIGO.transform.localPosition = cachedDriver.transform.InverseTransformPoint(parentWorld);
+                parentOfUIGO.transform.localPosition = cam.transform.InverseTransformPoint(parentWorld);
 
                 float displayHeight = halfH * DisplaySizeScale;
                 float displayWidth = displayHeight * aspect;
@@ -222,9 +237,7 @@ namespace Basis.Scripts.Drivers
 
                 // Anchor the sprite's bottom-right corner to the frustum's bottom-right corner.
                 Vector3 displayCameraLocal = new Vector3(halfW - displayWidth * 0.5f, -halfH + displayHeight * 0.5f, 1f);
-                Vector3 displayWorld = cam.transform.TransformPoint(displayCameraLocal);
-                Vector3 displayLocal = cachedDriver.transform.InverseTransformPoint(displayWorld);
-                displayGO.transform.localPosition = displayLocal - parentOfUIGO.transform.localPosition;
+                displayGO.transform.localPosition = displayCameraLocal - parentOfUIGO.transform.localPosition;
             }
         }
 

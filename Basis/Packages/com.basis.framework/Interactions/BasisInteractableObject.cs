@@ -200,7 +200,7 @@ namespace Basis.Scripts.BasisSdk.Interactions
             }
             else
             {
-                BasisLocalPlayer.OnLocalPlayerInitalized += SetupInputs;
+                BasisLocalPlayer.OnLocalPlayerInitialized += SetupInputs;
             }
         }
 
@@ -209,6 +209,7 @@ namespace Basis.Scripts.BasisSdk.Interactions
         /// </summary>
         private void SetupInputs()
         {
+            BasisLocalPlayer.OnLocalPlayerInitialized -= SetupInputs;
             var Devices = Basis.Scripts.Device_Management.BasisDeviceManagement.Instance.AllInputDevices;
             Devices.OnListAdded += OnInputAdded;
             Devices.OnListItemRemoved += OnInputRemoved;
@@ -223,6 +224,7 @@ namespace Basis.Scripts.BasisSdk.Interactions
         /// </summary>
         public virtual void OnDestroy()
         {
+            BasisLocalPlayer.OnLocalPlayerInitialized -= SetupInputs;
             var Devices = Basis.Scripts.Device_Management.BasisDeviceManagement.Instance.AllInputDevices;
             Devices.OnListAdded -= OnInputAdded;
             Devices.OnListItemRemoved -= OnInputRemoved;

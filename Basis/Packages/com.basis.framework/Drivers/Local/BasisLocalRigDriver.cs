@@ -510,6 +510,7 @@ namespace Basis.Scripts.Drivers
                 hipsPos.y -= localPlayer.LocalCharacterDriver.landingCrouchEffect;
                 data.PositionHips = hipsPos;
                 data.RotationHips = hipsRot;
+                data.HasHipsTracker = hipsHaveTracker;
 
                 data.PositionHead = pOut[S_Head];
                 data.RotationHead = rOut[S_Head];
@@ -620,13 +621,11 @@ namespace Basis.Scripts.Drivers
                 // ── LOWER ARMS (elbow hints) ──
                 llaPos = pOut[S_LeftLowerArm];
                 llaRot = rOut[S_LeftLowerArm];
-                llaPos = ApplyHintBias(BasisBoneTrackedRole.LeftLowerArm, llaPos, llaRot);
                 data.LeftLowerArmPosition = llaPos;
                 data.LeftLowerArmRotation = llaRot;
 
                 rlaPos = pOut[S_RightLowerArm];
                 rlaRot = rOut[S_RightLowerArm];
-                rlaPos = ApplyHintBias(BasisBoneTrackedRole.RightLowerArm, rlaPos, rlaRot);
                 data.RightLowerArmPosition = rlaPos;
                 data.RightLowerArmRotation = rlaRot;
 
@@ -645,12 +644,6 @@ namespace Basis.Scripts.Drivers
             Vector3 fwdC = chestRot * Vector3.forward;
             Vector3 outC = chestRot * Vector3.right;
             Vector3 upC = chestRot * Vector3.up;
-            data.ElbowBendPrefLeft = (fwdC * elbowBendPrefLeftWeights.x
-                + outC * elbowBendPrefLeftWeights.y
-                + upC * elbowBendPrefLeftWeights.z).normalized;
-            data.ElbowBendPrefRight = (fwdC * elbowBendPrefRightWeights.x
-                + outC * elbowBendPrefRightWeights.y
-                + upC * elbowBendPrefRightWeights.z).normalized;
 
             Vector3 fwd = hipsRot * Vector3.forward;
             Vector3 outR = hipsRot * Vector3.right;
@@ -670,8 +663,6 @@ namespace Basis.Scripts.Drivers
             Builder.SyncLayers();
             PlayableGraph.Evaluate(deltaTime);
         }
-        [SerializeField] private Vector3 elbowBendPrefLeftWeights = new Vector3(0, 1, 0);
-        [SerializeField] private Vector3 elbowBendPrefRightWeights = new Vector3(0, 1, 0);
         [SerializeField] private Vector3 spineBendNormalWeights = new Vector3(1f, 0f, 0f);
         public static Vector3 ApplyHintBias(BasisBoneTrackedRole hintRole, Vector3 rawPos, Quaternion rawRot)
         {
@@ -686,18 +677,6 @@ namespace Basis.Scripts.Drivers
         private static float ExpAlpha(float hz, float dt)
         {
             return 1f - Mathf.Exp(-2f * Mathf.PI * Mathf.Max(0.0001f, hz) * Mathf.Max(0.000001f, dt));
-        }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Vector3 FallbackPos(ref Vector3 state, Vector3 raw, float alpha)
-        {
-            state = Vector3.LerpUnclamped(state, raw, alpha);
-            return state;
-        }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Quaternion FallbackRot(ref Quaternion state, Quaternion raw, float alpha)
-        {
-            state = Quaternion.Slerp(state, raw, alpha);
-            return state;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void UpdateEuroSettings()
@@ -941,6 +920,10 @@ namespace Basis.Scripts.Drivers
             data.SpineMaxBackwardDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKSpineMaxBackwardDeg.RawValue;
             data.SpineMaxLateralDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKSpineMaxLateralDeg.RawValue;
             data.SpineSquishBoost = Basis.BasisUI.BasisSettingsDefaults.FBIKSpineSquishBoost.RawValue;
+            data.MoveBodyBackWhenCrouching = Basis.BasisUI.BasisSettingsDefaults.FBIKMoveBodyBackWhenCrouching.RawValue;
+            data.SwingSmoothRateDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKSwingSmoothRate.RawValue;
+            data.SpineCCDRelax = Basis.BasisUI.BasisSettingsDefaults.FBIKSpineCCDRelax.RawValue;
+            data.NeckMaxConeDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKNeckMaxConeDeg.RawValue;
             data.ChestArmSwingFactor = Basis.BasisUI.BasisSettingsDefaults.FBIKChestArmSwingFactor.RawValue;
             data.ChestArmSwingMaxDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKChestArmSwingMaxDeg.RawValue;
             data.LowerArmTwistFraction = Basis.BasisUI.BasisSettingsDefaults.FBIKLowerArmTwistFraction.RawValue;
@@ -950,6 +933,19 @@ namespace Basis.Scripts.Drivers
             data.AnatCervicalLordosis = Basis.BasisUI.BasisSettingsDefaults.FBIKAnatCervicalLordosis.RawValue;
             data.AnatPelvicTwistRouting = Basis.BasisUI.BasisSettingsDefaults.FBIKAnatPelvicTwistRouting.RawValue;
             data.LordosisPitchGainDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisPitchGainDeg.RawValue;
+            data.LordosisBaseDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisBaseDeg.RawValue;
+            data.LordosisNeckShare = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisNeckShare.RawValue;
+            data.LordosisMaxHeadPitchDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisMaxHeadPitchDeg.RawValue;
+            data.LordosisExtremeStartDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisExtremeStartDeg.RawValue;
+            data.LordosisExtremeFullDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisExtremeFullDeg.RawValue;
+            data.LordosisExtremeRollForwardMaxDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisExtremeRollForwardMaxDeg.RawValue;
+            data.LordosisExtremeRollBackwardMaxDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisExtremeRollBackwardMaxDeg.RawValue;
+            data.LordosisExtremeHipsHorizontalMax = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisExtremeHipsHorizontalMax.RawValue;
+            data.LordosisExtremeChestHorizontalMax = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisExtremeChestHorizontalMax.RawValue;
+            data.LordosisExtremeHipsDownMax = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisExtremeHipsDownMax.RawValue;
+            data.LordosisExtremeChestDownMax = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisExtremeChestDownMax.RawValue;
+            data.LordosisExtremeHipsDownLookUp = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisExtremeHipsDownLookUp.RawValue;
+            data.LordosisExtremeChestDownLookUp = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisExtremeChestDownLookUp.RawValue;
 
             // Toggles + shoulder-solve params that previously only flowed at init. Without these
             // here, flipping the matching toggle/slider in the IK panel left the animation job
@@ -985,6 +981,7 @@ namespace Basis.Scripts.Drivers
                 data.HintWeightLeftHand = false;
                 data.HintWeightRightHand = false;
                 data.WeightChest = false;
+                data.HasHipsTracker = false;
                 data.EnabledLeftShoulder = false;
                 data.EnabledRightShoulder = false;
                 BasisFullIKConstraint.data = data;

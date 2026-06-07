@@ -55,8 +55,16 @@ namespace Basis.Scripts.UI
         public List<RaycastResult> SortedRays = new List<RaycastResult>();
         public List<Canvas> Results = new List<Canvas>();
         private readonly List<int> _uiHitOrder = new List<int>(16);
+        // Per-hit layer/transform resolved once per frame — RaycastHit.collider/.transform are
+        // re-resolving getters, and the hit sort would otherwise re-read them O(n^2).
+        private int[] _hitLayers = System.Array.Empty<int>();
+        private Transform[] _hitTransforms = System.Array.Empty<Transform>();
+        // Canvas hierarchy under a hit collider is near-static; cache the walk and re-walk rarely.
+        private struct CanvasCacheEntry { public Canvas[] Canvases; public int Frame; }
+        private readonly Dictionary<Transform, CanvasCacheEntry> _canvasCache = new Dictionary<Transform, CanvasCacheEntry>();
+        private const int CanvasCacheRevalidateFrames = 30;
         public bool IgnoreReversedGraphics = true;
-        public Vector3 highlightQuadInitalSize;
+        public Vector3 highlightQuadInitialSize;
         public bool HasOnPlayersHeightChanged = false;
         public BasisCursorType ActiveCursorType = BasisCursorType.Default;
         public Renderer ReticleRenderer;
@@ -103,25 +111,10 @@ namespace Basis.Scripts.UI
                 LineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 LineRenderer.startWidth = 0.1f;
                 LineRenderer.endWidth = 0.1f;
-                LineRenderer.widthMultiplier = BasisPlayerInteract.interactLineWidth;
                 LineRenderer.useWorldSpace = true;
                 LineRenderer.textureMode = LineTextureMode.Tile;
                 LineRenderer.applyActiveColorSpace = false;
-                var g = new Gradient();
-                g.SetKeys(
-                    new[]
-                    {
-        new GradientColorKey(new Color(0.3019608f,0.09411766f,0.2980392f), 0f),
-        new GradientColorKey(new Color(0.1058824f,0.1411765f,0.3137255f), 1f),
-                    },
-                    new[]
-                    {
-        new GradientAlphaKey(1.00f, 1),
-        new GradientAlphaKey(1, 0),
-                    }
-                );
-
-                LineRenderer.colorGradient = g;
+                BasisRaycastLineCustomization.StyleUiLine(LineRenderer);
             }
             if (basisInput.DeviceMatchSettings.HasRayCastRadical)
             {
@@ -130,7 +123,7 @@ namespace Basis.Scripts.UI
                 GameObject gameObject = GameObject.Instantiate(InMemory);
                 gameObject.name = $"{DeviceName}_Redical";
                 gameObject.transform.SetParent(BasisLocalPlayer.Instance.transform);
-                highlightQuadInitalSize = gameObject.transform.localScale;
+                highlightQuadInitialSize = gameObject.transform.localScale;
                 highlightQuadInstance = gameObject;
                 if (highlightQuadInstance.TryGetComponent(out Canvas Canvas))
                 {
@@ -169,7 +162,7 @@ namespace Basis.Scripts.UI
             }
             if (highlightQuadInstance != null)
             {
-                highlightQuadInstance.transform.localScale = highlightQuadInitalSize * uiScale;
+                highlightQuadInstance.transform.localScale = highlightQuadInitialSize * uiScale;
             }
         }
 
@@ -199,11 +192,20 @@ namespace Basis.Scripts.UI
             // current ray position wins.
             // this fixes issues like the menu being unresponsive when the player opens the photo camera
             var hits = BasisPointRaycaster.PhysicHits;
+            if (_hitLayers.Length < hitCount)
+            {
+                _hitLayers = new int[hitCount];
+                _hitTransforms = new Transform[hitCount];
+            }
             _uiHitOrder.Clear();
             for (int i = 0; i < hitCount; i++)
             {
-                if (hits[i].collider != null)
+                // Resolve collider/layer/transform once; the sort and candidate loop reuse these.
+                Collider c = hits[i].collider;
+                if (c != null)
                 {
+                    _hitLayers[i] = c.gameObject.layer;
+                    _hitTransforms[i] = hits[i].transform;
                     _uiHitOrder.Add(i);
                 }
             }
@@ -214,7 +216,7 @@ namespace Basis.Scripts.UI
                 int currentIndex = _uiHitOrder[i];
                 int insertIndex = i - 1;
 
-                while (insertIndex >= 0 && CompareUiHitOrder(hits, currentIndex, _uiHitOrder[insertIndex]) < 0)
+                while (insertIndex >= 0 && CompareUiHitOrder(_hitLayers, hits, currentIndex, _uiHitOrder[insertIndex]) < 0)
                 {
                     _uiHitOrder[insertIndex + 1] = _uiHitOrder[insertIndex];
                     insertIndex--;
@@ -225,13 +227,14 @@ namespace Basis.Scripts.UI
 
             for (int idx = 0; idx < orderCount; idx++)
             {
-                RaycastHit candidate = hits[_uiHitOrder[idx]];
-                if (candidate.transform == null)
+                int hitIndex = _uiHitOrder[idx];
+                Transform candidateTransform = _hitTransforms[hitIndex];
+                if (candidateTransform == null)
                 {
                     continue;
                 }
 
-                candidate.transform.GetComponentsInChildren<Canvas>(false, Results);
+                GetActiveCanvases(candidateTransform, Results);
                 if (Results.Count == 0)
                 {
                     continue;
@@ -239,7 +242,7 @@ namespace Basis.Scripts.UI
 
                 SortedGraphics.Clear();
                 SortedRays.Clear();
-                PhysicHit = candidate;
+                PhysicHit = hits[hitIndex];
 
                 if (RaycastToUI())
                 {
@@ -253,12 +256,34 @@ namespace Basis.Scripts.UI
             HandleNoHit();
         }
 
-        private static int CompareUiHitOrder(RaycastHit[] hits, int leftIndex, int rightIndex)
+        // Re-walks the canvas hierarchy at most every N frames, then re-filters to active canvases
+        // each frame. Structural changes are picked up within N frames; toggles take effect at once.
+        private void GetActiveCanvases(Transform root, List<Canvas> output)
         {
-            int leftLayer = hits[leftIndex].collider.gameObject.layer;
-            int rightLayer = hits[rightIndex].collider.gameObject.layer;
-            bool leftIsOverlay = leftLayer == OverlayUI;
-            bool rightIsOverlay = rightLayer == OverlayUI;
+            int frame = Time.frameCount;
+            if (!_canvasCache.TryGetValue(root, out CanvasCacheEntry entry) || frame - entry.Frame >= CanvasCacheRevalidateFrames)
+            {
+                entry.Canvases = root.GetComponentsInChildren<Canvas>(true);
+                entry.Frame = frame;
+                _canvasCache[root] = entry;
+            }
+
+            output.Clear();
+            Canvas[] canvases = entry.Canvases;
+            for (int i = 0; i < canvases.Length; i++)
+            {
+                Canvas c = canvases[i];
+                if (c != null && c.gameObject.activeInHierarchy)
+                {
+                    output.Add(c);
+                }
+            }
+        }
+
+        private static int CompareUiHitOrder(int[] layers, RaycastHit[] hits, int leftIndex, int rightIndex)
+        {
+            bool leftIsOverlay = layers[leftIndex] == OverlayUI;
+            bool rightIsOverlay = layers[rightIndex] == OverlayUI;
 
             if (leftIsOverlay != rightIsOverlay)
             {
@@ -613,7 +638,7 @@ namespace Basis.Scripts.UI
 
         public void SortedRaycastGraphics(Canvas canvas, Camera eventCamera, ref List<BasisRaycastUIHitData> results)
         {
-            var graphics = GraphicRegistry.GetGraphicsForCanvas(canvas);
+            var graphics = GraphicRegistry.GetRaycastableGraphicsForCanvas(canvas);
 
             results.Clear();
             for (int i = 0; i < graphics.Count; ++i)

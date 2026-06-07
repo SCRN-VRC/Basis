@@ -16,7 +16,8 @@ namespace Basis.Scripts.Networking
     {
         // --- Collections (thread-safe) -------------------------------------
         public static readonly ConcurrentDictionary<ushort, BasisNetworkPlayer> Players = new();
-        public static readonly ConcurrentDictionary<ushort, BasisNetworkReceiver> RemotePlayers = new();
+        public static readonly ConcurrentDictionary<ushort, BasisNetworkReceiver> RemotePlayerReceivers = new();
+        public static readonly ConcurrentDictionary<ushort, BasisRemotePlayer> RemotePlayers = new();
         public static readonly ConcurrentDictionary<ushort, byte> JoiningPlayers = new(); // used as a concurrent set
         public static readonly ConcurrentDictionary<string, ushort> OwnershipPairing = new();
 
@@ -24,6 +25,7 @@ namespace Basis.Scripts.Networking
         // Reusable buffer — grows on demand, never shrinks (avoids per-frame allocation).
         public static BasisNetworkReceiver[] ReceiversSnapshot = Array.Empty<BasisNetworkReceiver>();
         public static int ReceiverCount;
+        public static uint SnapshotVersion;
         public static ushort LargestNetworkReceiverID;
         private static BasisNetworkReceiver[] _snapshotBuffer = Array.Empty<BasisNetworkReceiver>();
 
@@ -39,6 +41,7 @@ namespace Basis.Scripts.Networking
                 BasisNetworkHandleRemoval.HandleDisconnectIdImmediate(BasisNetworkPlayer.Key);
             }
             Players.Clear();
+            RemotePlayerReceivers.Clear();
             RemotePlayers.Clear();
             JoiningPlayers.Clear();
             OwnershipPairing.Clear();
@@ -53,8 +56,9 @@ namespace Basis.Scripts.Networking
         public static void PublishReceiversSnapshot()
         {
             if (!_snapshotDirty) return;
+            SnapshotVersion++;
 
-            int count = RemotePlayers.Count;
+            int count = RemotePlayerReceivers.Count;
             if (count == 0)
             {
                 // Null out stale references so GC can collect departed receivers
@@ -77,7 +81,7 @@ namespace Basis.Scripts.Networking
 
             // Enumerate directly (struct enumerator) — no Values/ToArray allocation
             int i = 0;
-            foreach (var kvp in RemotePlayers)
+            foreach (var kvp in RemotePlayerReceivers)
             {
                 if (i >= _snapshotBuffer.Length) break;
                 _snapshotBuffer[i++] = kvp.Value;
@@ -124,18 +128,19 @@ namespace Basis.Scripts.Networking
 
             if (!netPlayer.Player.IsLocal)
             {
-                if (RemotePlayers.ContainsKey(netPlayer.playerId))
+                if (RemotePlayerReceivers.ContainsKey(netPlayer.playerId))
                 {
                     BasisDebug.LogWarning($"Remote player {netPlayer.playerId} already exists. Removing old entry before adding new one.");
                     BasisNetworkHandleRemoval.HandleDisconnectIdImmediate(netPlayer.playerId);
                 }
 
-                if (!RemotePlayers.TryAdd(netPlayer.playerId, (BasisNetworkReceiver)netPlayer))
+                if (!RemotePlayerReceivers.TryAdd(netPlayer.playerId, (BasisNetworkReceiver)netPlayer))
                 {
                     Players.TryRemove(netPlayer.playerId, out _);
                     BasisDebug.LogError($"Failed to add remote player {netPlayer.playerId} to RemotePlayers. Rolled back from Players.");
                     return false;
                 }
+                RemotePlayers[netPlayer.playerId] = (BasisRemotePlayer)netPlayer.Player;
                 _snapshotDirty = true;
             }
 
@@ -152,6 +157,7 @@ namespace Basis.Scripts.Networking
             }
 
             Players.TryRemove(netId, out player);
+            RemotePlayerReceivers.TryRemove(netId, out _);
             RemotePlayers.TryRemove(netId, out _);
             _snapshotDirty = true;
             return true;
@@ -161,7 +167,7 @@ namespace Basis.Scripts.Networking
             Players.TryGetValue(playerId, out player);
 
         // --- Conversions (Avatar/Player) -----------------------------------
-        public static bool AvatarToPlayer(BasisAvatar avatar, out BasisPlayer basisPlayer, out BasisNetworkPlayer networkedPlayer)
+        public static bool AvatarToPlayer(BasisAvatar avatar, out IBasisPlayer basisPlayer, out BasisNetworkPlayer networkedPlayer)
         {
             basisPlayer = null;
             networkedPlayer = null;
@@ -188,7 +194,7 @@ namespace Basis.Scripts.Networking
             return false;
         }
 
-        public static bool AvatarToPlayer(BasisAvatar avatar, out BasisPlayer basisPlayer)
+        public static bool AvatarToPlayer(BasisAvatar avatar, out IBasisPlayer basisPlayer)
         {
             basisPlayer = null;
 
@@ -218,7 +224,7 @@ namespace Basis.Scripts.Networking
             return false;
         }
 
-        public static bool PlayerToNetworkedPlayer(BasisPlayer basisPlayer, out BasisNetworkPlayer networkedPlayer)
+        public static bool PlayerToNetworkedPlayer(IBasisPlayer basisPlayer, out BasisNetworkPlayer networkedPlayer)
         {
             networkedPlayer = null;
             if (basisPlayer == null)
@@ -227,11 +233,13 @@ namespace Basis.Scripts.Networking
                 return false;
             }
 
-            int instance = basisPlayer.GetEntityId();
+            // Match by reference: a player is the same object on both sides. The remote
+            // player is a plain managed object, so the old GetEntityId() identity check
+            // (a UnityEngine.Object method) no longer applies.
             foreach (var nPlayer in Players.Values)
             {
                 if (nPlayer?.Player == null) continue;
-                if (nPlayer.Player.GetEntityId() == instance)
+                if (ReferenceEquals(nPlayer.Player, basisPlayer))
                 {
                     networkedPlayer = nPlayer;
                     return true;

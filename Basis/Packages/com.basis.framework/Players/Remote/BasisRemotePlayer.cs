@@ -1,6 +1,7 @@
 using Basis.Scripts.Addressable_Driver.Resource;
 using Basis.Scripts.Avatar;
 using Basis.Scripts.Drivers;
+using Basis.Scripts.Networking;
 using Basis.Scripts.Networking.Receivers;
 using Basis.Scripts.UI.NamePlate;
 using System;
@@ -17,34 +18,87 @@ namespace Basis.Scripts.BasisSdk.Players
     /// mesh LOD adjustments, and remote name plate lifecycle.
     /// </summary>
     /// <remarks>
-    /// This class owns a number of runtime-only components and addressable resources.
-    /// Call <see cref="OnDestroy"/> to dispose drivers and release addressable instances
-    /// created during <see cref="RemoteInitialize(ClientAvatarChangeMessage, ClientMetaDataMessage, string)"/>.
+    /// Unlike the local player, this is a plain managed object (not a <see cref="MonoBehaviour"/>)
+    /// with no dedicated root GameObject. The avatar, nameplate, and mouth marker are each
+    /// independent scene roots positioned by the bone job system, so their transform writes
+    /// spread across worker threads. Because it is not a UnityEngine.Object, lifecycle is
+    /// explicit: the disconnect path calls <see cref="OnDestroy"/> to release the nameplate and
+    /// mouth (the avatar is unloaded separately by the avatar factory).
     /// </remarks>
-    [System.Serializable]
-    public class BasisRemotePlayer : BasisPlayer
+    public class BasisRemotePlayer : IBasisPlayer
     {
+        #region IBasisPlayer shared state
+
+        public bool IsLocal { get; set; }
+        public string PlayerPlatform { get; set; }
+        public string DisplayName { get; set; }
+        public string UUID { get; set; }
+        public string SafeDisplayName { get; set; }
+
+        public BasisAvatar BasisAvatar { get; set; }
+        public Transform AvatarTransform { get; set; }
+        public Transform AvatarAnimatorTransform { get; set; }
+        public Transform PlayerSelf { get; set; }
+
+        public BasisProgressReport ProgressReportAvatarLoad { get; } = new BasisProgressReport();
+        public BasisProgressReport AvatarProgress { get; } = new BasisProgressReport();
+        public Action AudioReceived { get; set; }
+
+        public bool FaceIsVisible { get; set; }
+        public BasisMeshRendererCheck FaceRenderer { get; set; }
+
+        public bool IsConsideredFallBackAvatar { get; set; } = true;
+        public byte AvatarLoadMode { get; set; }
+        public BasisLoadableBundle AvatarMetaData { get; set; }
+
+        /// <summary>
+        /// The remote player has no dedicated root object. The "Mouth" marker is a stable
+        /// per-player transform (job-positioned, alive for the player's whole lifetime), so it
+        /// doubles as the anchor for <see cref="Transform"/>/<see cref="GameObject"/>.
+        /// </summary>
+        public GameObject GameObject => MouthTransform != null ? MouthTransform.gameObject : null;
+        public Transform Transform => MouthTransform;
+
+        /// <summary>Remote avatars are scene roots (no parent) so the bone jobs parallelize.</summary>
+        public Transform AvatarParent => null;
+
+        /// <summary>True once <see cref="OnDestroy"/> has run. Used in place of Unity's <c>this == null</c>.</summary>
+        public bool IsDestroyed { get; private set; }
+
+        public event Action OnAvatarSwitched;
+
+        public void SetSafeDisplayname()
+        {
+            SafeDisplayName = System.Text.RegularExpressions.Regex.Replace(DisplayName, "<.*?>", string.Empty);
+        }
+
+        public void UpdateFaceVisibility(bool State)
+        {
+            FaceIsVisible = State;
+        }
+
+        public void AvatarSwitched()
+        {
+            OnAvatarSwitched?.Invoke();
+        }
+
+        #endregion
+
         #region Drivers & Receivers
         /// <summary>
         /// Driver responsible for avatar-specific remote updates (e.g., bone jobs hookup).
         /// </summary>
-        [Header("Avatar Driver")]
-        [SerializeField]
         public BasisRemoteAvatarDriver RemoteAvatarDriver = new BasisRemoteAvatarDriver();
 
         /// <summary>
         /// Network receiver that provides pose/animation buffers and messages for this player.
         /// </summary>
-        [Header("Network Receiver")]
-        [SerializeField]
         public BasisNetworkReceiver NetworkReceiver;
 
         /// <summary>
         /// Network Face Driver that provides eye and blink support
         /// </summary>
-        [Header("Face Driver")]
-        [SerializeField]
-        public BasisRemoteFaceDriver RemoteFaceDriver;
+        public BasisRemoteFaceDriver RemoteFaceDriver = new BasisRemoteFaceDriver();
         #endregion
 
         #region UI / Name Plate
@@ -61,10 +115,46 @@ namespace Basis.Scripts.BasisSdk.Players
         public Action<string> OnChatMessageReceived;
 
         /// <summary>
+        /// Fired when this player's transient chat typing state changes.
+        /// </summary>
+        public Action<bool> OnChatTypingStateChanged;
+
+        /// <summary>
         /// Fired when something that affects nameplate active-state has changed
         /// (block, range, visibility settings).
         /// </summary>
         public Action OnNamePlateActiveStateShouldRefresh;
+
+        /// <summary>
+        /// This player's current outgoing talk mode, used to color their nameplate.
+        /// Driven from the network by <see cref="BasisTalkModeManager"/>.
+        /// </summary>
+        public BasisTalkMode TalkMode = BasisTalkMode.Normal;
+
+        /// <summary>
+        /// Fired when <see cref="TalkMode"/> changes so the nameplate can recolor.
+        /// </summary>
+        public Action OnTalkModeChanged;
+
+        public void SetTalkMode(BasisTalkMode mode)
+        {
+            if (TalkMode == mode) return;
+            TalkMode = mode;
+            OnTalkModeChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Whether this player has muted their own microphone. Driven from the network
+        /// by <see cref="BasisTalkModeManager"/> and shown on the nameplate.
+        /// </summary>
+        public bool IsSelfMuted;
+
+        public void SetSelfMuted(bool muted)
+        {
+            if (IsSelfMuted == muted) return;
+            IsSelfMuted = muted;
+            OnTalkModeChanged?.Invoke();
+        }
 
         /// <summary>
         /// Fired during <see cref="OnDestroy"/> so attached subsystems can tear themselves
@@ -74,7 +164,7 @@ namespace Basis.Scripts.BasisSdk.Players
 
         /// <summary>
         /// Provider for the nameplate's world transform. The nameplate registers itself
-        /// here in its Initalize and clears it in DeInitalize. Callers must null-check.
+        /// here in its Initialize and clears it in DeInitialize. Callers must null-check.
         /// </summary>
         public Func<Transform> NamePlateTransformProvider;
 
@@ -114,9 +204,9 @@ namespace Basis.Scripts.BasisSdk.Players
         /// flash every affected player to the loading avatar. We require the new value to
         /// remain stable for <see cref="AvatarRangeDebounceSeconds"/> before committing.
         /// </summary>
-        [System.NonSerialized] public bool PendingRangeActive;
-        [System.NonSerialized] public bool PendingRangeTarget;
-        [System.NonSerialized] public float PendingRangeCommitTime;
+        public bool PendingRangeActive;
+        public bool PendingRangeTarget;
+        public float PendingRangeCommitTime;
         public const float AvatarRangeDebounceSeconds = 0.5f;
 
         /// <summary>
@@ -143,7 +233,6 @@ namespace Basis.Scripts.BasisSdk.Players
         /// <summary>
         /// The last bundle requested for this player (used by <see cref="ReloadAvatar"/>).
         /// </summary>
-        [HideInInspector]
         public BasisLoadableBundle AlwaysRequestedAvatar;
 
         /// <summary>
@@ -167,7 +256,6 @@ namespace Basis.Scripts.BasisSdk.Players
         /// fails so we stop re-attempting on every range change. Cleared only when the
         /// local user manually toggles Hide/Show Avatar for this player.
         /// </summary>
-        [System.NonSerialized]
         public bool HasFailedAvatarLoadGlobally;
 
         /// <summary>
@@ -177,6 +265,11 @@ namespace Basis.Scripts.BasisSdk.Players
         /// Refreshed during avatar load and toggled by the user settings UI.
         /// </summary>
         public bool IsBlocked;
+
+        /// <summary>
+        /// Transient networked chat typing state for this remote player.
+        /// </summary>
+        public bool IsChatTyping;
 
         /// <summary>
         /// Session-scoped "temp block" set when the remote side (this player) has blocked
@@ -193,7 +286,6 @@ namespace Basis.Scripts.BasisSdk.Players
         /// <see cref="IsBlocked"/> this is automatically cleared when the user relaxes
         /// the relevant limit (the settings bridge reloads the avatar). Not persisted.
         /// </summary>
-        [System.NonSerialized]
         public bool IsBlockedByPerformance;
 
         /// <summary>
@@ -201,7 +293,6 @@ namespace Basis.Scripts.BasisSdk.Players
         /// (e.g. "Exceeds triangles limit (250k > 200k)"). Null when not blocked.
         /// Drives nameplate / info panel messaging.
         /// </summary>
-        [System.NonSerialized]
         public string PerformanceBlockReason;
 
         /// <summary>
@@ -212,8 +303,9 @@ namespace Basis.Scripts.BasisSdk.Players
         /// (jiggle rig ingestion). Read by the individual player menu so the local
         /// user can see exactly what the filter did to this specific remote avatar.
         /// </summary>
-        [System.NonSerialized]
         public Basis.Scripts.Avatar.BasisAvatarPerformanceLimits.PerformanceInfo LastPerformanceInfo;
+
+        public bool RequiresPerformanceReval;
 
         /// <summary>
         /// Per-player override that tells the avatar performance filter to treat this
@@ -221,11 +313,9 @@ namespace Basis.Scripts.BasisSdk.Players
         /// so the local user can look at a specific avatar at full fidelity without
         /// touching their global caps or the session-wide
         /// <see cref="Basis.Scripts.Avatar.BasisAvatarPerformanceLimits.BypassAllLimits"/>
-        /// toggle. Deliberately <see cref="System.NonSerializedAttribute"/> — resets
-        /// to false every launch, every reconnect, and every fresh player join, so
-        /// there's no accidental "I forgot I disabled the filter for Alice".
+        /// toggle. Resets to false every launch, every reconnect, and every fresh
+        /// player join, so there's no accidental "I forgot I disabled the filter for Alice".
         /// </summary>
-        [System.NonSerialized]
         public bool BypassPerformanceLimits;
 
         /// <summary>
@@ -278,19 +368,26 @@ namespace Basis.Scripts.BasisSdk.Players
             DisplayName = PlayerMetaDataMessage.playerDisplayName;
             PlayerPlatform = PlayerMetaDataMessage.playerPlatform;
             SetSafeDisplayname();
-            this.name = DisplayName;
             UUID = PlayerMetaDataMessage.playerUUID;
             IsLocal = false;
 
-            GameObject data = GameObject.Instantiate(LoadFromHandle(LoadableNamePlatename), transform);
+            // Mouth marker: a standalone scene root positioned by the bone job. It also
+            // serves as this player's transform anchor (see Transform/GameObject).
+            GameObject mouth = new GameObject("Mouth");
+            UnityEngine.Object.DontDestroyOnLoad(mouth);
+            MouthTransform = mouth.transform;
+
+            // Nameplate: a standalone scene root, also positioned by the bone job.
+            GameObject data = UnityEngine.Object.Instantiate(LoadFromHandle(LoadableNamePlatename));
+            UnityEngine.Object.DontDestroyOnLoad(data);
             if (data.TryGetComponent(out BasisRemoteNamePlate plate))
             {
-                if (this == null)
+                if (IsDestroyed)
                 {
                     AddressableResourceProcess.ReleaseGameobject(data);
                     return;
                 }
-                plate.Initalize(this);
+                plate.Initialize(this);
             }
         }
 
@@ -325,7 +422,7 @@ namespace Basis.Scripts.BasisSdk.Players
                 else
                 {
                     AvatarLoadErrorMessage = "Invalid initial avatar data: failed to convert network bytes to loadable bundle";
-                    BasisDebug.LogError("Invalid Inital Data");
+                    BasisDebug.LogError("Invalid Initial Data");
                 }
             }
         }
@@ -345,6 +442,7 @@ namespace Basis.Scripts.BasisSdk.Players
             }
         }
         public bool IsLoadingAnAvatar = false;
+        private bool _reloadQueuedDuringLoad = false;
         /// <summary>
         /// Creates or replaces the current avatar using the provided load mode and bundle.
         /// Applies user visibility settings and distance gating before loading,
@@ -355,39 +453,40 @@ namespace Basis.Scripts.BasisSdk.Players
         /// <returns>A task that completes when the avatar is loaded or a fallback is applied.</returns>
         public async Task CreateAvatar(byte Mode, BasisLoadableBundle BasisLoadableBundle)
         {
+            if (BasisLoadableBundle == null || string.IsNullOrEmpty(BasisLoadableBundle.BasisRemoteBundleEncrypted.RemoteBeeFileLocation))
+            {
+                AvatarLoadErrorMessage = "Avatar bundle was empty or null";
+                BasisDebug.LogError("trying to create Avatar with empty Bundle", BasisDebug.LogTag.Remote);
+                BasisLoadableBundle = BasisAvatarFactory.LoadingAvatar;
+                Mode = 0;
+            }
+
+            // Remember last requested avatar and mode for potential reloads.
+            AlwaysRequestedAvatar = BasisLoadableBundle;
+            AlwaysRequestedMode = Mode;
+
             if (IsLoadingAnAvatar)
             {
+                _reloadQueuedDuringLoad = true;
                 return;
             }
             IsLoadingAnAvatar = true;
             BasisPlayerSettingsData BasisPlayerSettingsData = default;
             try
             {
-                if (BasisLoadableBundle == null || string.IsNullOrEmpty(BasisLoadableBundle.BasisRemoteBundleEncrypted.RemoteBeeFileLocation))
-                {
-                    AvatarLoadErrorMessage = "Avatar bundle was empty or null";
-                    BasisDebug.LogError("trying to create Avatar with empty Bundle", BasisDebug.LogTag.Remote);
-                    BasisLoadableBundle = BasisAvatarFactory.LoadingAvatar;
-                    Mode = 0;
-                }
-
                 // Fetch per-player visibility settings.
                 BasisPlayerSettingsData = await BasisPlayerSettingsManager.RequestPlayerSettings(UUID);
 
                 // The await above is file I/O — the player can disconnect and be destroyed
                 // mid-await. BasisAvatarFactory.CancelPlayerLoad can't help here because the
                 // per-player cancellation token is created inside LoadAvatarRemote, after
-                // this point. Bail before touching any Unity native members.
-                if (this == null)
+                // this point. Bail before touching any owned members.
+                if (IsDestroyed)
                 {
                     return;
                 }
 
                 IsBlocked = BasisPlayerSettingsData.IsBlocked;
-
-                // Remember last requested avatar and mode for potential reloads.
-                AlwaysRequestedAvatar = BasisLoadableBundle;
-                AlwaysRequestedMode = Mode;
 
                 bool effectivelyBlocked = IsEffectivelyBlocked;
 
@@ -440,6 +539,13 @@ namespace Basis.Scripts.BasisSdk.Players
                 IsLoadingAnAvatar = false;
             }
 
+            if (_reloadQueuedDuringLoad)
+            {
+                _reloadQueuedDuringLoad = false;
+                await CreateAvatar(AlwaysRequestedMode, AlwaysRequestedAvatar);
+                return;
+            }
+
             // Any terminal "pin to fallback" state must skip the range-based re-evaluation
             // below — otherwise the mismatch check fires every iteration (fallback is the
             // correct state for these, but the check reads it as drift) and ReloadAvatar
@@ -465,16 +571,43 @@ namespace Basis.Scripts.BasisSdk.Players
 
         /// <summary>
         /// Disposes owned drivers and releases addressable instances (name plate, bone jobs).
+        /// No longer a Unity message — the disconnect path calls this explicitly before
+        /// destroying the owned root GameObject.
         /// </summary>
         public void OnDestroy()
         {
+            if (IsDestroyed)
+            {
+                return;
+            }
+            IsDestroyed = true;
+
+            // Unregister from the job system before any of this player's transforms are
+            // destroyed — the job holds the nameplate and mouth transforms.
+            RemoveFromBoneDriver();
+
             if (RemoteFaceDriver != null)
             {
                 RemoteFaceDriver.OnDestroy();
             }
 
+            // The nameplate self-releases on this event; then drop the mouth marker.
             OnRemotePlayerDestroying?.Invoke();
 
+            if (MouthTransform != null)
+            {
+                UnityEngine.Object.Destroy(MouthTransform.gameObject);
+                MouthTransform = null;
+            }
+        }
+
+        /// <summary>
+        /// Unregisters this player from the bone job system. Must run while the avatar
+        /// transforms are still alive (before any destroy) or the parallel SoA desyncs.
+        /// Idempotent via the InBoneDriver guard.
+        /// </summary>
+        public void RemoveFromBoneDriver()
+        {
             if (RemoteAvatarDriver.InBoneDriver)
             {
                 RemoteBoneJobSystem.RemoveRemotePlayer(NetworkReceiver.playerId);

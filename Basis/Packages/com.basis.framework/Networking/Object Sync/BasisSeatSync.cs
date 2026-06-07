@@ -30,8 +30,8 @@ public class BasisSeatSync : BasisNetworkBehaviour
         LinkedPlayer.ThePlayerID = 0;
         BasisLocalPlayer.JustBeforeNetworkApply.AddAction(20, ProvideRemotePlayerTarget);
     }
-    public Action<BasisPlayer> OnNetworkPlayerEnterSeat;
-    public Action<BasisPlayer> OnNetworkPlayerExitSeat;
+    public Action<IBasisPlayer> OnNetworkPlayerEnterSeat;
+    public Action<IBasisPlayer> OnNetworkPlayerExitSeat;
     /// <summary>Returns true if the local player is currently the recorded occupant.</summary>
     public bool IsLocallyEntered()
     {
@@ -133,7 +133,7 @@ public class BasisSeatSync : BasisNetworkBehaviour
         }
 
         // Try to get the remote player by id.
-        if (!BasisNetworkPlayers.RemotePlayers.TryGetValue(storedId, out BasisNetworkReceiver rec))
+        if (!BasisNetworkPlayers.RemotePlayerReceivers.TryGetValue(storedId, out BasisNetworkReceiver rec))
         {
             // ID no longer exists in dictionary (disconnected / removed).
             ClearCurrentRemote();
@@ -150,7 +150,7 @@ public class BasisSeatSync : BasisNetworkBehaviour
 
         // Now drive the current remote receiver.
         Seat.CalculateSeatPositionRotation(rec.RemotePlayer, out Quaternion seatQuat, out Vector3 hips);
-        rec.OverridenDestinationOfRoot(true);
+        rec.OverriddenDestinationOfRoot(true);
         rec.ProvidedDestinationOfRoot(hips, seatQuat);
     }
 
@@ -159,7 +159,7 @@ public class BasisSeatSync : BasisNetworkBehaviour
         if (_currentRemoteRec != null)
         {
             // Assuming false turns off the override.
-            _currentRemoteRec.OverridenDestinationOfRoot(false);
+            _currentRemoteRec.OverriddenDestinationOfRoot(false);
             if (_currentRemoteRec.Player != null)
             {
                 OnNetworkPlayerExitSeat?.Invoke(_currentRemoteRec.Player);

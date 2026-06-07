@@ -1,7 +1,7 @@
 using Basis.Network;
 using Basis.Network.Server;
 using BasisNetworkConsole;
-using BasisNetworking.InitalData;
+using BasisNetworking.InitialData;
 using BasisNetworkServer.BasisNetworking;
 using BasisNetworkServer.BasisNetworkingReductionSystem;
 namespace Basis
@@ -23,11 +23,20 @@ namespace Basis
                 Directory.CreateDirectory(configDir);
             }
             string configFilePath = Path.Combine(configDir, "config.xml");
+            // Capture this before LoadFromXml, which creates config.xml when it's missing.
+            bool isFirstBoot = !File.Exists(configFilePath);
             Configuration config = Configuration.LoadFromXml(configFilePath);
             config.ProcessEnvironmentalOverrides();
 
             string folderPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Configuration.LogsFolderName);
             BasisServerSideLogging.Initialize(config, folderPath);
+
+            // Brand-new server: walk the operator through core settings and force them to
+            // designate an admin before anything boots.
+            if (isFirstBoot)
+            {
+                BasisSetupWizard.Run(config, configFilePath);
+            }
 
             BNL.Log("Server Booting");
             Check = new BasisNetworkHealthCheck(config);

@@ -3,7 +3,7 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using Basis.BasisUI;
 
-namespace BattlePhaze.SettingsManager.Intergrations
+namespace BattlePhaze.SettingsManager.Integrations
 {
     public class SMModuleQualityAndQualitySetURP : BasisSettingsBase
     {
@@ -197,8 +197,7 @@ namespace BattlePhaze.SettingsManager.Intergrations
         {
             // Includes inactive terrains too, which is usually what you want in settings menus.
             Terrain[] terrains = FindObjectsByType<Terrain>(
-                FindObjectsInactive.Include,
-                FindObjectsSortMode.None);
+                FindObjectsInactive.Include);
 
             for (int i = 0; i < terrains.Length; i++)
             {

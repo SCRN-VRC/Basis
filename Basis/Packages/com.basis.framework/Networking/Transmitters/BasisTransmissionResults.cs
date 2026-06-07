@@ -131,6 +131,9 @@ public partial class BasisTransmissionResults
     public static float LastHearingRange = -1;
     public static bool RevaluteAudioRanges = false;
     public static float ConvertedVoiceDistance;
+
+    /// <summary>Set by BasisTalkModeManager to force a recipient-list resend on the next tick after a talk-mode change.</summary>
+    public static bool ForceVoiceRecipientResend;
     /// <summary>
     /// Called each frame; drives scheduling of distance job and network sync.
     /// </summary>
@@ -138,11 +141,15 @@ public partial class BasisTransmissionResults
     {
         float dt = Time.deltaTime;
         timer += dt;
+        timer = math.min(timer, intervalSeconds * 2f);
 
         if (timer < intervalSeconds)
         {
 #if UNITY_EDITOR
-            if (BasisEventDriverProfilerData.Enabled) BasisEventDriverProfilerData.Net_TransmitSimRanThisTick = false;
+            if (BasisEventDriverProfilerData.Enabled)
+            {
+                BasisEventDriverProfilerData.Net_TransmitSimRanThisTick = false;
+            }
 #endif
             return;
         }
@@ -255,6 +262,7 @@ public partial class BasisTransmissionResults
         distanceJobHandle = distanceJob.Schedule(receiverCount, 64);
 
         // Reduce depends on distance job (reads PerIndexMinD2/PerIndexMask)
+        reduceJob.ReceiverCount = receiverCount;
         reduceJobHandle = reduceJob.Schedule(distanceJobHandle);
 
         // Avatar cap job depends on distance job (reads AvatarRange/DistanceSq).
@@ -395,7 +403,7 @@ public partial class BasisTransmissionResults
             SquaredSmallestDistance = 0f;
         }
 
-        bool microphoneChange = IndexChanged || AnyMicrophoneRangeChanged;
+        bool microphoneChange = IndexChanged || AnyMicrophoneRangeChanged || ForceVoiceRecipientResend;
         bool lodChange = IndexChanged || AnyLodRangeChanged;
 
         // Avatar range is always evaluated per-player in the loop below — the debounce
@@ -515,24 +523,13 @@ public partial class BasisTransmissionResults
         if (microphoneChange)
         {
             BuildAndSendTalkingPoints(snapshot, receiverCount);
+            ForceVoiceRecipientResend = false;
         }
 #if UNITY_EDITOR
         if (_prof) { _psw.Stop(); BasisEventDriverProfilerData.Net_TransmitSim_TalkingPointsMs = _psw.Elapsed.TotalMilliseconds; }
 #endif
 
         UpdateSendInterval(SquaredSmallestDistance);
-
-        // Recording hook
-        if (BasisAvatarRecorder.IsRecording)
-        {
-            var anim = avatar.Animator;
-            BasisAvatarRecorder.StoreData(
-                intervalSeconds,
-                anim.bodyRotation,
-                anim.bodyPosition,
-             null, //  BasisNetworkTransmitter.HumanPose.muscles,
-                anim.transform.localScale.y);
-        }
 
         // Swap buffers instead of CopyTo() each tick (avoid full-array memcopy on main thread)
         Swap(ref MicrophoneRange, ref PrevInMicrophoneRange);
@@ -579,6 +576,10 @@ public partial class BasisTransmissionResults
         ExcludedPoints.Clear();
         ushort maxId = 0;
 
+        BasisTalkMode talkMode = BasisTalkModeManager.CurrentMode;
+        bool restricted = talkMode == BasisTalkMode.Private || talkMode == BasisTalkMode.ThisPerson;
+        bool direct = talkMode == BasisTalkMode.Direct;
+
         unsafe
         {
             bool* pMicRange = (bool*)MicrophoneRange.GetUnsafeReadOnlyPtr();
@@ -590,7 +591,21 @@ public partial class BasisTransmissionResults
                     maxId = id;
                 }
 
-                if (pMicRange[i])
+                bool include;
+                if (restricted)
+                {
+                    include = BasisTalkModeManager.IsRecipient(id);
+                }
+                else if (direct)
+                {
+                    include = false;
+                }
+                else
+                {
+                    include = pMicRange[i];
+                }
+
+                if (include)
                 {
                     TalkingPoints.Add(id);
                 }
@@ -601,17 +616,32 @@ public partial class BasisTransmissionResults
             }
         }
 
-        // micRangeCount captured BEFORE the P2P strip so HasReasonToSendAudio
-        // (which gates EncodeAndSend upstream) reflects "anyone in mic range",
-        // not "anyone the server still relays to".
-        int micRangeCount = TalkingPoints.Count;
+        if (restricted)
+        {
+            // Private / This-person route entirely through the server recipient list; P2P
+            // broadcast is suppressed (see BasisAudioTransmission) so non-members can't hear.
+            BasisNetworkTransmitter.HasReasonToSendAudio = TalkingPoints.Count != 0;
+        }
+        else if (direct)
+        {
+            // Direct mode: nobody via the server, audio reaches P2P-connected peers only.
+            BasisNetworkTransmitter.HasReasonToSendAudio = Basis.Scripts.Networking.BasisP2PManager.GetConnectedSessionCount() > 0;
+        }
+        else
+        {
+            // micRangeCount captured BEFORE the P2P strip so HasReasonToSendAudio
+            // (which gates EncodeAndSend upstream) reflects "anyone in mic range",
+            // not "anyone the server still relays to".
+            int micRangeCount = TalkingPoints.Count;
 
-        Basis.Scripts.Networking.BasisP2PManager.StripP2PConnectedFromRecipients(TalkingPoints);
-        Basis.Scripts.Networking.BasisP2PManager.AddP2PConnectedToExcluded(ExcludedPoints);
+            Basis.Scripts.Networking.BasisP2PManager.StripP2PConnectedFromRecipients(TalkingPoints);
+            Basis.Scripts.Networking.BasisP2PManager.AddP2PConnectedToExcluded(ExcludedPoints);
+
+            BasisNetworkTransmitter.HasReasonToSendAudio = micRangeCount != 0;
+        }
 
         int recipientCount = TalkingPoints.Count;
         int excludedCount = ExcludedPoints.Count;
-        BasisNetworkTransmitter.HasReasonToSendAudio = micRangeCount != 0;
         // Compute wire sizes for each mode
         int listSize = (recipientCount <= byte.MaxValue ? 1 : 2) + recipientCount * 2;
         int invertedSize = (excludedCount <= byte.MaxValue ? 1 : 2) + excludedCount * 2;
@@ -640,9 +670,9 @@ public partial class BasisTransmissionResults
             VRMWriter.Put((ushort)bitfieldBytes);
             VRMWriter.Put(bitfieldBuffer, 0, bitfieldBytes);
         }
-        else if (invertedSize < listSize)
+        else if (!restricted && invertedSize < listSize)
         {
-            // Inverted list mode: send excluded IDs
+            // Inverted list mode: send excluded IDs (denylist — never used for allowlist modes)
             bool largeCnt = excludedCount > byte.MaxValue;
             channel = largeCnt  ? BasisNetworkCommons.AudioRecipientsInvertedLargeChannel : BasisNetworkCommons.AudioRecipientsInvertedChannel;
             if (largeCnt)
@@ -700,10 +730,30 @@ public partial class BasisTransmissionResults
             UnClampedInterval = fast;
             intervalSeconds = fast;
 
-            Basis.Scripts.Networking.BasisAvatarRateRegistry.MaybeAnnounceLocalRate(intervalSeconds);
+            // Keep BasisFrameClock ticking only while we're announcing a P2P rate, so the floor
+            // below can read a live (smoothed, unscaled) frame interval.
+            if (!_p2pFrameClockRequested)
+            {
+                BasisFrameClock.AddRequest();
+                _p2pFrameClockRequested = true;
+            }
+
+            // Floor the advertised interval at the real frame interval so we never advertise a
+            // faster rate than we can actually send — the same FPS the P2P rate-warning UI reads.
+            // Falls back to Time.smoothDeltaTime until the clock warms up (e.g. just entered P2P).
+            float fps = BasisFrameClock.SmoothedFramesPerSecond;
+            float frameInterval = fps > 0f ? 1f / fps : Time.smoothDeltaTime;
+            Basis.Scripts.Networking.BasisAvatarRateRegistry.MaybeAnnounceLocalRate(Mathf.Max(fast, frameInterval));
         }
         else
         {
+            // Not in a P2P session — drop the frame-clock request if we were holding one.
+            if (_p2pFrameClockRequested)
+            {
+                BasisFrameClock.RemoveRequest();
+                _p2pFrameClockRequested = false;
+            }
+
             DefaultInterval = meta.SyncInterval / 1000f;
             float calculatedIntervalBase = meta.BaseMultiplier + (smallestD2 * meta.IncreaseRate);
             UnClampedInterval = DefaultInterval * calculatedIntervalBase;
@@ -816,7 +866,12 @@ public partial class BasisTransmissionResults
         return true;
     }
 
-    public void Initalize()
+    // Held only while in a P2P session (see UpdateSendInterval): keeps BasisFrameClock
+    // ticking so the rate-announce floor can read a live SmoothedFramesPerSecond without
+    // depending on the FPS HUD / settings panel being open. Released in the server branch.
+    private bool _p2pFrameClockRequested;
+
+    public void Initialize()
     {
         // Track join/leave to force resync against index order changes
         BasisNetworkPlayer.OnRemotePlayerJoined += OnPlayerIndexChanged;
@@ -825,10 +880,17 @@ public partial class BasisTransmissionResults
         LengthOfArrays = -1;
     }
 
-    public void DeInitalize()
+    public void DeInitialize()
     {
         BasisNetworkPlayer.OnRemotePlayerJoined -= OnPlayerIndexChanged;
         BasisNetworkPlayer.OnRemotePlayerLeft -= OnPlayerIndexChanged;
+
+        // Backstop: release the frame-clock request if we tore down mid-P2P-session.
+        if (_p2pFrameClockRequested)
+        {
+            BasisFrameClock.RemoveRequest();
+            _p2pFrameClockRequested = false;
+        }
 
         ReleaseResults();
 
@@ -877,7 +939,7 @@ public partial class BasisTransmissionResults
         if (hasActiveAudioSource.IsCreated) hasActiveAudioSource.Dispose();
         if (audioCapEntries.IsCreated) audioCapEntries.Dispose();
 
-        // Note: smallestD2/changeMask are 1-length arrays kept across reallocs; disposed in DeInitalize.
+        // Note: smallestD2/changeMask are 1-length arrays kept across reallocs; disposed in DeInitialize.
         capacity = 0;
         LengthOfArrays = -1;
     }

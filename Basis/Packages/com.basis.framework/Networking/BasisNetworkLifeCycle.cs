@@ -15,15 +15,20 @@ public static class BasisNetworkLifeCycle
     /// <summary>
     /// boots up the network management
     /// </summary>
-    public static void Initalize()
+    public static void Initialize()
     {
-        BasisDebug.Log($"Initalizing Network Connection", BasisDebug.LogTag.Networking);
+        BasisDebug.Log($"Initializing Network Connection", BasisDebug.LogTag.Networking);
         BasisNetworkManagement.mainThreadId = Thread.CurrentThread.ManagedThreadId;
         BasisRemoteNetworkDriver.Initialize(Unity.Collections.Allocator.Persistent);
-        BasisAudioRemoteSource.Initalize();
+        BasisAudioRemoteSource.Initialize();
         BasisNetworkIdResolver.KnownIdMap.Clear();
         BasisNetworkIdResolver.PendingResolutions.Clear();
-        BasisNetworkManagement.instantiationParameters = new InstantiationParameters(Vector3.zero, Quaternion.identity, BasisDeviceManagement.Instance.transform);
+        // Remote players spawn as scene roots (null parent) so each avatar's bone hierarchy has its
+        // own Transform.root. IJobParallelForTransform batches by root, so a shared DeviceManagement
+        // parent forced every remote avatar's bones onto a single worker thread; distinct roots let the
+        // bone writes spread across all workers. DontDestroyOnLoad in CreateRemotePlayer keeps them alive
+        // across additive scene switches the way the persistent DeviceManagement parent used to.
+        BasisNetworkManagement.instantiationParameters = new InstantiationParameters(Vector3.zero, Quaternion.identity, null);
         // Reset & initialize metadata defaults
         BasisNetworkPlayers.ClearAllRegistries(); // new: central place
         BasisNetworkManagement.ServerMetaDataMessage = new ServerMetaDataMessage
@@ -38,6 +43,7 @@ public static class BasisNetworkLifeCycle
 
         BasisJoinLeaveNotification.Create();
         BasisNetworkHandleTempBlock.Initialize();
+        BasisNetworkHandleChatTyping.Initialize();
 #if !UNITY_SERVER
         BasisNetworkPIPCameraDriver.Create();
 #endif
@@ -89,6 +95,7 @@ public static class BasisNetworkLifeCycle
                 BasisDebug.Log($"Client disconnected from server [{peer?.RemoteId}] [{disconnectInfo.Reason}]");
                 BasisNetworkEvents.HandleDisconnectionReason(disconnectInfo);
             }
+            BasisNetworkHandleChatTyping.ClearState();
             System.Threading.Interlocked.Exchange(ref _rebootGuard, 0);
         }
     }
@@ -114,6 +121,7 @@ public static class BasisNetworkLifeCycle
             BasisNetworkConnection.BasisNetworkServerRunner.Stop();
             BasisNetworkConnection.BasisNetworkServerRunner = null;
         }
+        BasisNetworkManagement.JoinPendingCompute();//join the pipelined compute task before buffers are freed
         BasisRemoteNetworkDriver.Shutdown();//complete in-flight jobs before disposing anything
         BasisNetworkPlayers.ClearAllRegistries();//remove players
         Basis.Scripts.Networking.Receivers.BasisShoutAudioDriver.DeInitialize();//remove shout audio sources
@@ -122,7 +130,7 @@ public static class BasisNetworkLifeCycle
         BasisContentShareManager.Reset();//remove content spheres
         BasisNetworkIdResolver.KnownIdMap.Clear();
         BasisNetworkIdResolver.PendingResolutions.Clear();
-        BasisAudioRemoteSource.DeInitalize();//release memory for audio gameobject
+        BasisAudioRemoteSource.DeInitialize();//release memory for audio gameobject
         BasisNetworkManagement.Transmitter = null;
         // Clear delegates / events
         BasisNetworkPlayer.OnOwnershipTransfer = null;
@@ -140,6 +148,7 @@ public static class BasisNetworkLifeCycle
         BasisDebug.Log("BasisNetworkManagement has been successfully shutdown.", BasisDebug.LogTag.Networking);
         BasisJoinLeaveNotification.Shutdown();
         BasisNetworkHandleTempBlock.Shutdown();
+        BasisNetworkHandleChatTyping.Shutdown();
 #if !UNITY_SERVER
         BasisNetworkPIPCameraDriver.Shutdown();
 #endif

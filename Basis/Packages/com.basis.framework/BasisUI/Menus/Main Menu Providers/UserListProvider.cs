@@ -4,6 +4,7 @@ using Basis.Scripts.Networking;
 using Basis.Scripts.Networking.NetworkedAvatar;
 using System;
 using System.Collections.Generic;
+using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -26,7 +27,7 @@ namespace Basis.BasisUI
         public static string StaticTitle => BasisLocalization.Get(StaticTitleKey);
         public override string Title => StaticTitle;
         public override string IconAddress => AddressableAssets.Sprites.Avatars;
-        public override int Order => 4;
+        public override int Order => 40;
         public override bool Hidden => !BasisNetworkConnection.LocalPlayerIsConnected;
 
         private UserListController _controller;
@@ -476,7 +477,7 @@ namespace Basis.BasisUI
 
             private string BuildDescription(BasisNetworkPlayer netPlayer)
             {
-                BasisPlayer p = netPlayer.Player;
+                IBasisPlayer p = netPlayer.Player;
                 bool isPinned = p != null && PinnedPlayers.IsPinned(p.UUID);
                 bool isLocal = p != null && p.IsLocal;
 
@@ -535,16 +536,16 @@ namespace Basis.BasisUI
                     : BasisLocalization.Get("menu.players.behind");
             }
 
-            private static Vector3 GetRemotePosition(BasisPlayer p)
+            private static Vector3 GetRemotePosition(IBasisPlayer p)
             {
                 if (p is BasisRemotePlayer remote && remote.MouthTransform != null)
                     return remote.MouthTransform.position;
-                return p.transform.position;
+                return p.Transform.position;
             }
 
-            private static string FormatJoinedAgo(float joinTime)
+            private static string FormatJoinedAgo(double joinTime)
             {
-                float ago = Mathf.Max(0f, Time.realtimeSinceStartup - joinTime);
+                float ago = (float)math.max(0f, Time.realtimeSinceStartupAsDouble - joinTime);
                 if (ago < 60f)
                     return BasisLocalization.Get("menu.players.joinedAgoSeconds", Mathf.FloorToInt(ago));
                 if (ago < 3600f)
@@ -566,7 +567,7 @@ namespace Basis.BasisUI
 
             // ---- Sorting / Reordering ----
 
-            private static float DistanceTo(BasisPlayer p)
+            private static float DistanceTo(IBasisPlayer p)
             {
                 if (p == null || !BasisLocalCameraDriver.HasInstance) return float.MaxValue;
                 return Vector3.Distance(BasisLocalCameraDriver.Position, GetRemotePosition(p));
@@ -685,7 +686,7 @@ namespace Basis.BasisUI
                     // a freshly-opened menu would briefly hide everyone.
                     if (show && _directionFilter != DirectionFilter.All)
                     {
-                        BasisPlayer p = entry.NetPlayer.Player;
+                        IBasisPlayer p = entry.NetPlayer.Player;
                         bool isLocal = p != null && p.IsLocal;
                         if (!isLocal && p != null && forwardValid)
                         {

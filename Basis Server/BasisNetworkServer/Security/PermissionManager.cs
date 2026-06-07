@@ -64,6 +64,7 @@ namespace BasisPermissions
         public const string ModerationOpusBitrate = "basis.moderation.opusbitrate";
         /// <summary>Add/remove UUIDs on the server's allow-list (separate from ban management).</summary>
         public const string ModerationWhitelist = "basis.moderation.whitelist";
+        public const string AdminLogs = "basis.admin.logs";
 
         public const string PermissionsView = "basis.permissions.view";
         public const string PermissionsEdit = "basis.permissions.edit";
@@ -600,6 +601,20 @@ namespace BasisPermissions
             _dirty = true;
         }
 
+        public void EvictUserCache(string uuid)
+        {
+            if (string.IsNullOrEmpty(uuid)) return;
+            _lock.EnterWriteLock();
+            try
+            {
+                _cache.Remove(uuid);
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
+
         private EffectivePermissions GetEffective(string uuid)
         {
             _lock.EnterUpgradeableReadLock();
@@ -1068,6 +1083,11 @@ namespace BasisPermissions
             public static void RemovePlayerMeta(string uuid)
             {
                 _playerMeta.TryRemove(uuid, out _);
+            }
+
+            public static void EvictPermissionCache(string uuid)
+            {
+                Manager.EvictUserCache(uuid);
             }
 
             public static bool HasValidRequirement(string uuid, string permNode)

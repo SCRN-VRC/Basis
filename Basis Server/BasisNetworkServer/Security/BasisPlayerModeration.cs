@@ -9,7 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Xml.Serialization;
-using BasisNetworking.InitalData;
+using BasisNetworking.InitialData;
 using BasisNetworking.InitialData;
 using BasisServerHandle;
 using static BasisNetworkCore.Serializable.SerializableBasis;
@@ -349,9 +349,29 @@ namespace BasisNetworkServer.Security
                         HandleGlobalToggle(peer, "Additional avatar data lock", BasisGlobalLockManager.ToggleAdditionalAvatarDataLock()));
                     break;
 
+                case AdminRequestMode.SetGlobalCameraPolicy:
+                    Require(peer, PermNodes.ModerationGlobalLock, () =>
+                        HandleCameraPolicySet(peer, reader));
+                    break;
+
                 case AdminRequestMode.SetGlobalHeadlessAudio:
                     Require(peer, PermNodes.ModerationHeadlessAudio, () =>
                         HandleHeadlessAudioSet(peer, reader));
+                    break;
+
+                case AdminRequestMode.SetGlobalCrashReporting:
+                    Require(peer, PermNodes.ModerationGlobalLock, () =>
+                        HandleCrashReportingSet(peer, reader));
+                    break;
+
+                case AdminRequestMode.SetGlobalAudioRangeLimits:
+                    Require(peer, PermNodes.ModerationGlobalLock, () =>
+                        HandleAudioRangeLimitsSet(peer, reader));
+                    break;
+
+                case AdminRequestMode.RequestAllLogs:
+                    Require(peer, PermNodes.AdminLogs, () =>
+                        BasisServerLogBundleService.SendAllLogsToPeer(peer));
                     break;
 
                 case AdminRequestMode.SetGlobalHeadlessDisallow:
@@ -661,7 +681,29 @@ namespace BasisNetworkServer.Security
         {
             ushort id = reader.GetUShort();
             Basis.Network.Server.Generic.BasisSavedState.SetShoutMode(id, enable);
-            BasisServerHandle.BasisServerHandleEvents.BroadcastShoutModeState(id, enable);
+            BasisServerHandle.BasisServerHandleEvents.BroadcastShoutModeState(id, enable, (ushort)peer.Id);
+        }
+
+        private static void HandleCrashReportingSet(NetPeer peer, NetPacketReader reader)
+        {
+            bool enabled = reader.GetBool();
+            NetworkServer.Configuration.CrashReportingEnabled = enabled;
+            SaveConfig();
+            BasisCrashReportStateManager.SetEnabled(enabled);
+            BasisCrashReportStateManager.BroadcastState();
+            SendBackMessage(peer, $"Crash reporting {(enabled ? "ENABLED" : "DISABLED")}.");
+        }
+
+        private static void HandleAudioRangeLimitsSet(NetPeer peer, NetPacketReader reader)
+        {
+            float microphoneMeters = reader.GetFloat();
+            float hearingMeters = reader.GetFloat();
+            BasisAudioRangeLimitManager.SetLimits(microphoneMeters, hearingMeters);
+            NetworkServer.Configuration.MaxMicrophoneRangeMeters = BasisAudioRangeLimitManager.MaxMicrophoneRangeMeters;
+            NetworkServer.Configuration.MaxHearingRangeMeters = BasisAudioRangeLimitManager.MaxHearingRangeMeters;
+            SaveConfig();
+            BasisAudioRangeLimitManager.BroadcastState();
+            SendBackMessage(peer, $"Audio range limits set: microphone {NetworkServer.Configuration.MaxMicrophoneRangeMeters} m, hearing {NetworkServer.Configuration.MaxHearingRangeMeters} m.");
         }
 
         private static void HandleGlobalToggle(NetPeer peer, string contentType, bool nowLocked)
@@ -748,6 +790,21 @@ namespace BasisNetworkServer.Security
             BNL.Log(notification);
             SendBackMessage(peer, notification);
             BasisOpusPacketLossStateManager.BroadcastState();
+        }
+
+        private static void HandleCameraPolicySet(NetPeer peer, NetPacketReader reader)
+        {
+            if (reader.AvailableBytes < 1)
+            {
+                SendBackMessage(peer, "Failed to set camera metadata policy: missing mask byte.");
+                return;
+            }
+
+            byte mask = reader.GetByte();
+            BasisGlobalLockManager.SetCameraMetadataDisallowMask(mask);
+            BNL.Log($"Camera photo-metadata disallow mask set to {mask}.");
+            SendBackMessage(peer, $"Camera metadata policy updated (mask {mask}).");
+            BasisGlobalLockManager.BroadcastLockState();
         }
 
         private static void HandleUserOpusBitrateSet(NetPeer peer, NetPacketReader reader)

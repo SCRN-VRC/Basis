@@ -17,6 +17,7 @@ namespace Cilbox
 			"Basis.Scripts.BasisSdk.Interactions.BasisPickupInteractable", // Restrictive (See below), only access field.
 			"Basis.Scripts.BasisSdk.Interactions.BasisInteractableObject", // Restrictive (See below), only access field.
 			"Basis.BasisNetworkBehaviour",
+			"Basis.BasisNetworkShim*",
 			"Basis.Shims.BasisOsc*",
 			"Basis.Network.Core.DeliveryMethod",
 			"Basis.SafeUtil",
@@ -539,6 +540,27 @@ namespace Cilbox
 			if (ExtraGetTypeOverride(sType, out t)) return true;
 			switch (sType)
 			{
+				case "Basis.Shims.BasisNetworkShim":
+					t = typeof(Basis.BasisNetworkShim);
+					return true;
+				case "Basis.Shims.BasisNetworkShim+NetworkReadyEvent":
+					t = typeof(Basis.BasisNetworkShim.NetworkReadyEvent);
+					return true;
+				case "Basis.Shims.BasisNetworkShim+ServerOwnershipDestroyedEvent":
+					t = typeof(Basis.BasisNetworkShim.ServerOwnershipDestroyedEvent);
+					return true;
+				case "Basis.Shims.BasisNetworkShim+OwnershipTransferEvent":
+					t = typeof(Basis.BasisNetworkShim.OwnershipTransferEvent);
+					return true;
+				case "Basis.Shims.BasisNetworkShim+NetworkMessageEvent":
+					t = typeof(Basis.BasisNetworkShim.NetworkMessageEvent);
+					return true;
+				case "Basis.Shims.BasisNetworkShim+PlayerJoinedEvent":
+					t = typeof(Basis.BasisNetworkShim.PlayerJoinedEvent);
+					return true;
+				case "Basis.Shims.BasisNetworkShim+PlayerLeftEvent":
+					t = typeof(Basis.BasisNetworkShim.PlayerLeftEvent);
+					return true;
 				case "UnityEngine.Video.VideoPlayer":
 					t = typeof(Basis.Shims.VideoPlayerShim);
 					return true;

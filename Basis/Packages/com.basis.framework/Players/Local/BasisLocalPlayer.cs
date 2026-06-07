@@ -23,7 +23,7 @@ namespace Basis.Scripts.BasisSdk.Players
     /// </summary>
     /// <remarks>
     /// Use <see cref="LocalInitialize"/> to wire up drivers, load the initial avatar,
-    /// and signal readiness. Subscribe to events like <see cref="OnLocalPlayerInitalized"/>
+    /// and signal readiness. Subscribe to events like <see cref="OnLocalPlayerInitialized"/>
     /// to know when the player has finished bootstrapping.
     /// </remarks>
     public class BasisLocalPlayer : BasisPlayer, IBasisLocalPlayer
@@ -61,7 +61,7 @@ namespace Basis.Scripts.BasisSdk.Players
         /// <summary>
         /// Fired once the local player has completed <see cref="LocalInitialize"/> and is ready.
         /// </summary>
-        public static Action OnLocalPlayerInitalized;
+        public static Action OnLocalPlayerInitialized;
 
         /// <summary>
         /// Fired whenever the local avatar asset changes (including initial creation).
@@ -236,17 +236,17 @@ namespace Basis.Scripts.BasisSdk.Players
             BasisScene BasisScene = FindAnyObjectByType<BasisScene>(FindObjectsInactive.Exclude);
             if (BasisScene != null)
             {
-                BasisSceneFactory.Initalize(BasisScene);
+                BasisSceneFactory.Initialize(BasisScene);
                 BasisSceneFactory.SpawnPlayer(this);
             }
             else
             {
-                BasisDebug.LogError("Cant Find Basis Scene");
+                BasisDebug.LogError("Can't Find Basis Scene");
             }
 
-            BasisUILoadingBar.Initalize();
+            BasisUILoadingBar.Initialize();
             PlayerReady = true;
-            OnLocalPlayerInitalized?.Invoke();
+            OnLocalPlayerInitialized?.Invoke();
             BasisLocalPlayerData.RaiseLocalPlayerInitialized();
         }
 
@@ -384,7 +384,7 @@ namespace Basis.Scripts.BasisSdk.Players
         /// </summary>
         public void OnDestroy()
         {
-            if (BasisLocalPlayerData.Instance == this)
+            if (ReferenceEquals(BasisLocalPlayerData.Instance, this))
             {
                 BasisLocalPlayerData.Instance = null;
                 BasisLocalPlayerData.PlayerReady = false;
@@ -392,7 +392,7 @@ namespace Basis.Scripts.BasisSdk.Players
             if (HasEvents)
             {
                LocalVisemeDriver?.OnDestroy();
-                LocalCharacterDriver?.DeInitalize();
+                LocalCharacterDriver?.DeInitialize();
                 OnLocalAvatarChanged -= OnCalibration;
                 SceneManager.sceneLoaded -= OnSceneLoadedCallback;
                 HasEvents = false;
@@ -428,7 +428,7 @@ namespace Basis.Scripts.BasisSdk.Players
             BasisLocalFootDriver.Dispose();
             LocalRigDriver.CleanupBeforeContinue();
             BasisAvatarDriver.RemoveOldShadowClones();
-            BasisUILoadingBar.DeInitalize();
+            BasisUILoadingBar.DeInitialize();
         }
 
         /// <summary>
@@ -470,9 +470,6 @@ namespace Basis.Scripts.BasisSdk.Players
 
             // Simulate Final Destination of IK then process Animator and IK processes.
             LocalRigDriver.SimulateIKDestinations(DeltaTime);
-
-            // update WorldPosition in BoneDriver so AfterSimulateOnLate can use world coords
-            LocalBoneDriver.SimulateWorldDestinations(localToWorldMatrix);
 
             // Apply Animator Weights using most current data and outside movement effectors.
             LocalAnimatorDriver.SimulateAnimator(DeltaTime);

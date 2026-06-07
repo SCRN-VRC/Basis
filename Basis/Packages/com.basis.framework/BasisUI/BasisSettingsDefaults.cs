@@ -9,7 +9,6 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<float> MainVolume = new("main volume", new BasisPlatformDefault<float>(75));
 
         public static BasisSettingsBinding<float> MenuVolume = new("menuvolume", new BasisPlatformDefault<float>(75));
-        public static BasisSettingsBinding<float> MediaVolume = new("mediavolume", new BasisPlatformDefault<float>(75));
         public static BasisSettingsBinding<float> WorldVolume = new("worldvolume", new BasisPlatformDefault<float>(75));
 
         public static BasisSettingsBinding<float> VoiceVolume = new("voicevolume", new BasisPlatformDefault<float>(75));
@@ -240,6 +239,8 @@ namespace Basis.BasisUI
 
         public static BasisSettingsBinding<bool> EnableStatistics = new("enablestatistics", new BasisPlatformDefault<bool>(false));
 
+        public static BasisSettingsBinding<bool> ShowVoiceRange = new("showvoicerange", new BasisPlatformDefault<bool>(false));
+
         /// <summary>
         /// When on, the client runs a loopback-only HTTP listener on
         /// 127.0.0.1:<see cref="StreamingMetaPort"/> exposing /stats.json and
@@ -271,6 +272,13 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<bool> DevShowEuroFilter = new("devshowfilter", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> DevShowNetStats = new("devshownetstats", new BasisPlatformDefault<bool>(false));
 
+        public static BasisSettingsBinding<bool> EnableShaderPrewarm = new("enableshaderprewarm", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> EnableMaterialCorrection = new("enablematerialcorrection", new BasisPlatformDefault<bool>(false));
+
+        public static BasisSettingsBinding<string> RecorderCountdownSeconds = new("recordercountdownseconds", new BasisPlatformDefault<string>("3"));
+        public static BasisSettingsBinding<bool> RecorderAutoStop = new("recorderautostop", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<string> RecorderMaxDurationSeconds = new("recordermaxdurationseconds", new BasisPlatformDefault<string>("30"));
+
         /// <summary>
         /// When enabled, suppresses all <see cref="BasisDebug"/> log output (Log, LogWarning, LogError).
         /// Raw <see cref="UnityEngine.Debug"/> calls are unaffected.
@@ -285,12 +293,19 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<string> DebugLogLevelFilter = new("debugloglevelfilter", new BasisPlatformDefault<string>(DebugLogFilterAll));
 
         public static BasisSettingsBinding<bool> AudioDebugEnabled = new("audiodebugenabled", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> DisableLipSyncForFaceTracking = new("disablelipsyncforfacetracking", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> AudioDebugShowSource = new("audiodebugshowsource", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<bool> AudioDebugShowVolume = new("audiodebugshowvolume", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<bool> AudioDebugShowRingBuffer = new("audiodebugshowringbuffer", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<bool> AudioDebugShowJitter = new("audiodebugshowjitter", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<bool> AudioDebugShowSilence = new("audiodebugshowsilence", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<bool> AudioDebugShowViseme = new("audiodebugshowviseme", new BasisPlatformDefault<bool>(false));
+
+        public static BasisSettingsBinding<bool> AvatarDataDebugEnabled = new("avatardatadebugenabled", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> AvatarDataDebugShowReceive = new("avatardatadebugshowreceive", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> AvatarDataDebugShowStaging = new("avatardatadebugshowstaging", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> AvatarDataDebugShowInterp = new("avatardatadebugshowinterp", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> AvatarDataDebugShowMeta = new("avatardatadebugshowmeta", new BasisPlatformDefault<bool>(false));
 
         public static BasisSettingsBinding<string> MemoryAllocation = new("memoryallocation", new BasisPlatformDefault<string>
         {
@@ -301,6 +316,8 @@ namespace Basis.BasisUI
         });
 
         public static BasisSettingsBinding<bool> AvatarPreview = new("avatarpreview", new BasisPlatformDefault<bool>(false));
+
+        public static BasisSettingsBinding<bool> AvatarPreviewMirror = new("avatarpreviewmirror", new BasisPlatformDefault<bool>(true));
 
         public static BasisSettingsBinding<bool> DesktopReticle = new("desktopreticle", new BasisPlatformDefault<bool>(false));
 
@@ -485,7 +502,7 @@ namespace Basis.BasisUI
 
         public static BasisSettingsBinding<string> MicrophoneMode = new("microphonemode", new BasisPlatformDefault<string>("onactivation"));
 
-        public static BasisSettingsBinding<string> P2PAvatarSyncRate = new("p2pavatarsyncrate", new BasisPlatformDefault<string>("60 Hz"));
+        public static BasisSettingsBinding<float> P2PAvatarSyncRate = new("p2pavatarsyncrate", new BasisPlatformDefault<float>(60));
 
         public static BasisSettingsBinding<bool> DisableDirectConnections = new("disabledirectconnections", new BasisPlatformDefault<bool>(false));
 
@@ -533,6 +550,8 @@ namespace Basis.BasisUI
         // ---------------- NOTIFICATIONS ----------------
         public static BasisSettingsBinding<bool> JoinNotifications = new("joinnotifications", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> LeaveNotifications = new("leavenotifications", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> ExceptionNotifications = new("exceptionnotifications", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> ErrorNotifications = new("errornotifications", new BasisPlatformDefault<bool>(false));
 
         // ---------------- CHAT ----------------
         /// <summary>
@@ -544,6 +563,26 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<bool> FalseBinding = new("falsebinding", new BasisPlatformDefault<bool>(false));
 
         public static BasisSettingsBinding<bool> TrueBinding = new("truebinding", new BasisPlatformDefault<bool>(false));
+
+        // ---------------- CAMERA / PHOTO ----------------
+        public const string PhotoTagging_NoOne = "No One";
+        public const string PhotoTagging_EveryoneInPhoto = "Everyone In Photo";
+        public const string PhotoTagging_JustMe = "Just Me";
+
+        public static BasisSettingsBinding<string> PhotoMetadataTagging = new("photometadatatagging", new BasisPlatformDefault<string>(PhotoTagging_NoOne));
+
+        // Additional photo metadata, all opt-in (off by default).
+        public static BasisSettingsBinding<bool> PhotoEmbedCameraSettings = new("photoembedcamerasettings", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> PhotoEmbedCaptureInfo = new("photoembedcaptureinfo", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> PhotoEmbedPhotographer = new("photoembedphotographer", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> PhotoEmbedWorld = new("photoembedworld", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> PhotoEmbedPersonDetails = new("photoembedpersondetails", new BasisPlatformDefault<bool>(false));
+
+        // ---------------- RAYCAST / INTERACTION VISUALS ----------------
+        public static BasisSettingsBinding<float> RaycastLineWidth = new("raycastlinewidth", new BasisPlatformDefault<float>(1f));
+        public static BasisSettingsBinding<string> RaycastLineColor = new("raycastlinecolor", new BasisPlatformDefault<string>(""));
+        public static BasisSettingsBinding<string> PickupHighlightColor = new("pickuphighlightcolor", new BasisPlatformDefault<string>(""));
+        public static BasisSettingsBinding<string> PickupLineColor = new("pickuplinecolor", new BasisPlatformDefault<string>(""));
 
         // ---------------- GLOBAL ONE EURO PARAMS ----------------
         public static BasisSettingsBinding<float> FBIKMinCutoff = new("fbikmincutoff", new BasisPlatformDefault<float>(5.5f));
@@ -943,6 +982,13 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<float> FBIKSpineMaxLateralDeg = new("fbikspinemaxlateraldeg", new BasisPlatformDefault<float>(25f));
         // Spine relax: squish-driven bend coupling
         public static BasisSettingsBinding<float> FBIKSpineSquishBoost = new("fbikspinesquishboost", new BasisPlatformDefault<float>(0.5f));
+        // Spine relax: crouch counterweight (hips shift back as the head drops)
+        public static BasisSettingsBinding<float> FBIKMoveBodyBackWhenCrouching = new("fbikmovebodybackwhencrouching", new BasisPlatformDefault<float>(1f));
+        // Swing continuity: max elbow/knee swing speed (deg/s); lower = smoother, 0 = off
+        public static BasisSettingsBinding<float> FBIKSwingSmoothRate = new("fbikswingsmoothrate", new BasisPlatformDefault<float>(720f));
+        // Spine relax: CCD solve smoothing + neck overbend cone limit
+        public static BasisSettingsBinding<float> FBIKSpineCCDRelax = new("fbikspineccdrelax", new BasisPlatformDefault<float>(0.8f));
+        public static BasisSettingsBinding<float> FBIKNeckMaxConeDeg = new("fbikneckmaxconedeg", new BasisPlatformDefault<float>(45f));
         // Spine relax: arm-swing chest follow (only when no chest tracker)
         public static BasisSettingsBinding<float> FBIKChestArmSwingFactor = new("fbikchestarmswingfactor", new BasisPlatformDefault<float>(0.3f));
         public static BasisSettingsBinding<float> FBIKChestArmSwingMaxDeg = new("fbikchestarmswingmaxdeg", new BasisPlatformDefault<float>(15f));
@@ -962,6 +1008,23 @@ namespace Basis.BasisUI
         // bend gets extra angle proportional to head pitch-down. 0 = constant 5°; positive = more
         // bend when looking at the floor, less (down to zero) when looking up.
         public static BasisSettingsBinding<float> FBIKLordosisPitchGainDeg = new("fbiklordosispitchgaindeg", new BasisPlatformDefault<float>(8f));
+        // Cervical lordosis shaping (see ApplyCervicalLordosis): neutral-pose base bend + neck/upperChest
+        // split, head pitch clamp, and the extreme-look window that drives extra spine roll plus
+        // hips/chest counter-translation. Horizontal/Down maxima are in meters. Only used when
+        // Cervical Lordosis (Anatomy) is on.
+        public static BasisSettingsBinding<float> FBIKLordosisBaseDeg = new("fbiklordosisbasedeg", new BasisPlatformDefault<float>(5f));
+        public static BasisSettingsBinding<float> FBIKLordosisNeckShare = new("fbiklordosisneckshare", new BasisPlatformDefault<float>(0.65f));
+        public static BasisSettingsBinding<float> FBIKLordosisMaxHeadPitchDeg = new("fbiklordosismaxheadpitchdeg", new BasisPlatformDefault<float>(80f));
+        public static BasisSettingsBinding<float> FBIKLordosisExtremeStartDeg = new("fbiklordosisextremestartdeg", new BasisPlatformDefault<float>(50f));
+        public static BasisSettingsBinding<float> FBIKLordosisExtremeFullDeg = new("fbiklordosisextremefulldeg", new BasisPlatformDefault<float>(80f));
+        public static BasisSettingsBinding<float> FBIKLordosisExtremeRollForwardMaxDeg = new("fbiklordosisextremerollforwardmaxdeg", new BasisPlatformDefault<float>(10f));
+        public static BasisSettingsBinding<float> FBIKLordosisExtremeRollBackwardMaxDeg = new("fbiklordosisextremerollbackwardmaxdeg", new BasisPlatformDefault<float>(4f));
+        public static BasisSettingsBinding<float> FBIKLordosisExtremeHipsHorizontalMax = new("fbiklordosisextremehipshorizontalmax", new BasisPlatformDefault<float>(0.025f));
+        public static BasisSettingsBinding<float> FBIKLordosisExtremeChestHorizontalMax = new("fbiklordosisextremechesthorizontalmax", new BasisPlatformDefault<float>(0.04f));
+        public static BasisSettingsBinding<float> FBIKLordosisExtremeHipsDownMax = new("fbiklordosisextremehipsdownmax", new BasisPlatformDefault<float>(0.015f));
+        public static BasisSettingsBinding<float> FBIKLordosisExtremeChestDownMax = new("fbiklordosisextremechestdownmax", new BasisPlatformDefault<float>(0.025f));
+        public static BasisSettingsBinding<float> FBIKLordosisExtremeHipsDownLookUp = new("fbiklordosisextremehipsdownlookup", new BasisPlatformDefault<float>(0.0005f));
+        public static BasisSettingsBinding<float> FBIKLordosisExtremeChestDownLookUp = new("fbiklordosisextremechestdownlookup", new BasisPlatformDefault<float>(0.001f));
 
         // ---------------- VIRTUAL SPINE (no torso tracker) ----------------
         // Per-axis cascade fractions of head-relative pitch/roll that the synthesized chest and
@@ -987,6 +1050,19 @@ namespace Basis.BasisUI
         // hard-coded counterbalance/pendulum model in the virtual spine driver — see
         // BasisLocalVirtualSpineDriver.ComputeRealisticHipsXZ.)
         public static BasisSettingsBinding<float> VSpineHipsForwardBias = new("vspinehipsforwardbias", new BasisPlatformDefault<float>(0.02f));
+
+        // Torso yaw "play": degrees the head can turn before the synthesized chest/spine/hips begin
+        // following. The torso holds inside this cone, catches up once the head leaves it, then the
+        // cone re-centers when the head stops. 0 = follow immediately (legacy behavior).
+        public static BasisSettingsBinding<float> VSpineTorsoYawDeadzoneDeg = new("vspinetorsoyawdeadzonedeg", new BasisPlatformDefault<float>(45f));
+
+        // How quickly the torso eases into/out of following once it leaves the deadzone cone (slerp
+        // dt scaling, like the rotation speeds). Lower = softer blend, higher = snappier.
+        public static BasisSettingsBinding<float> VSpineTorsoYawBlendSpeed = new("vspinetorsoyawblendspeed", new BasisPlatformDefault<float>(8f));
+
+        // Off forces the yaw deadzone to 0 in VR (torso follows immediately); on uses the configured
+        // VSpineTorsoYawDeadzoneDeg cone in VR too. Desktop always uses the configured value.
+        public static BasisSettingsBinding<bool> VSpineTorsoYawPlayInVR = new("vspinetorsoyawplayinvr", new BasisPlatformDefault<bool>(false));
 
 
         // ---------------- TRACKER PAIRING (virtual midpoint) ----------------
@@ -1028,6 +1104,8 @@ namespace Basis.BasisUI
         // midpoint snaps. Higher = more reactive (catches glitches faster but
         // jitters more); lower = smoother (longer to recover from a glitch).
         public static BasisSettingsBinding<float> PairingWeightSmoothing = new("pairing_weightsmoothing", new BasisPlatformDefault<float>(0.25f));
+        // Half-life (seconds) of the low-pass on the fused midpoint rotation; 0 = raw.
+        public static BasisSettingsBinding<float> PairingRotationHalfLife = new("pairing_rothalflife", new BasisPlatformDefault<float>(0.08f));
 
         // ---------------- REMOTE NAMEPLATE ----------------
         public static BasisSettingsBinding<bool> NPEnabled = new("np_enabled", new BasisPlatformDefault<bool>(true));
@@ -1042,9 +1120,12 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<bool> NPHoverMenuOnly = new("np_hovermenuonly", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<float> NPSize = new("np_size", new BasisPlatformDefault<float>(1f));
         public static BasisSettingsBinding<float> NPTransparency = new("np_transparency", new BasisPlatformDefault<float>(0.45f));
+        public static BasisSettingsBinding<float> ChatSize = new("chat_size", new BasisPlatformDefault<float>(1.5f));
 
         // ---------------- ADMIN ----------------
         public static BasisSettingsBinding<bool> AdminAutoRefreshPlayerList = new("admin_autorefresh_playerlist", new BasisPlatformDefault<bool>(true));
+
+        public static BasisSettingsBinding<bool> ShoutShowOnMenuBar = new("admin_shout_on_menubar", new BasisPlatformDefault<bool>(false));
 
         // Limiter
         public static BasisSettingsBinding<float> LimitThreshold = new("limitthreshold", new BasisPlatformDefault<float>(0.95f)); // pre-clip
@@ -1117,7 +1198,6 @@ namespace Basis.BasisUI
             VoiceVolume.LoadBindingValue();
             AvatarVolume.LoadBindingValue();
             PropVolume.LoadBindingValue();
-            MediaVolume.LoadBindingValue();
 
             MicrophoneVolume.LoadBindingValue();
             MicrophoneRange.LoadBindingValue();
@@ -1142,6 +1222,7 @@ namespace Basis.BasisUI
 
             // Audio Debug
             AudioDebugEnabled.LoadBindingValue();
+            DisableLipSyncForFaceTracking.LoadBindingValue();
             AudioDebugShowSource.LoadBindingValue();
             AudioDebugShowVolume.LoadBindingValue();
             AudioDebugShowRingBuffer.LoadBindingValue();
@@ -1210,6 +1291,7 @@ namespace Basis.BasisUI
             AvatarShowTrackerRoles.LoadBindingValue();
             AvatarShowTextureStats.LoadBindingValue();
             EnableStatistics.LoadBindingValue();
+            ShowVoiceRange.LoadBindingValue();
             DevDebugFaceTracking.LoadBindingValue();
             DevDebugEyeTracking.LoadBindingValue();
             DevShowBuildInfo.LoadBindingValue();
@@ -1219,6 +1301,12 @@ namespace Basis.BasisUI
             DisableLogging.LoadBindingValue();
             BasisDebug.LoggingDisabled = DisableLogging.RawValue;
             DisableLogging.OnChanged += value => BasisDebug.LoggingDisabled = value;
+            EnableShaderPrewarm.LoadBindingValue();
+            ContentPoliceControl.ShaderPrewarmEnabled = EnableShaderPrewarm.RawValue;
+            EnableShaderPrewarm.OnChanged += value => ContentPoliceControl.ShaderPrewarmEnabled = value;
+            EnableMaterialCorrection.LoadBindingValue();
+            ContentPoliceControl.MaterialCorrectionEnabled = EnableMaterialCorrection.RawValue;
+            EnableMaterialCorrection.OnChanged += value => ContentPoliceControl.MaterialCorrectionEnabled = value;
             DebugLogTagFilter.LoadBindingValue();
             ApplyDebugLogTagFilter(DebugLogTagFilter.RawValue);
             DebugLogTagFilter.OnChanged += ApplyDebugLogTagFilter;
@@ -1303,12 +1391,15 @@ namespace Basis.BasisUI
             // Notifications
             JoinNotifications.LoadBindingValue();
             LeaveNotifications.LoadBindingValue();
+            ExceptionNotifications.LoadBindingValue();
+            ErrorNotifications.LoadBindingValue();
 
             // Chat
             ChatDisabled.LoadBindingValue();
 
             // UI
             AvatarPreview.LoadBindingValue();
+            AvatarPreviewMirror.LoadBindingValue();
             DesktopReticle.LoadBindingValue();
             EnableThirdPersonCamera.LoadBindingValue();
             AudioListenerFollowsHead.LoadBindingValue();
@@ -1487,6 +1578,10 @@ namespace Basis.BasisUI
             FBIKSpineMaxBackwardDeg.LoadBindingValue();
             FBIKSpineMaxLateralDeg.LoadBindingValue();
             FBIKSpineSquishBoost.LoadBindingValue();
+            FBIKMoveBodyBackWhenCrouching.LoadBindingValue();
+            FBIKSwingSmoothRate.LoadBindingValue();
+            FBIKSpineCCDRelax.LoadBindingValue();
+            FBIKNeckMaxConeDeg.LoadBindingValue();
             FBIKChestArmSwingFactor.LoadBindingValue();
             FBIKChestArmSwingMaxDeg.LoadBindingValue();
             FBIKLowerArmTwistFraction.LoadBindingValue();
@@ -1496,6 +1591,19 @@ namespace Basis.BasisUI
             FBIKAnatCervicalLordosis.LoadBindingValue();
             FBIKAnatPelvicTwistRouting.LoadBindingValue();
             FBIKLordosisPitchGainDeg.LoadBindingValue();
+            FBIKLordosisBaseDeg.LoadBindingValue();
+            FBIKLordosisNeckShare.LoadBindingValue();
+            FBIKLordosisMaxHeadPitchDeg.LoadBindingValue();
+            FBIKLordosisExtremeStartDeg.LoadBindingValue();
+            FBIKLordosisExtremeFullDeg.LoadBindingValue();
+            FBIKLordosisExtremeRollForwardMaxDeg.LoadBindingValue();
+            FBIKLordosisExtremeRollBackwardMaxDeg.LoadBindingValue();
+            FBIKLordosisExtremeHipsHorizontalMax.LoadBindingValue();
+            FBIKLordosisExtremeChestHorizontalMax.LoadBindingValue();
+            FBIKLordosisExtremeHipsDownMax.LoadBindingValue();
+            FBIKLordosisExtremeChestDownMax.LoadBindingValue();
+            FBIKLordosisExtremeHipsDownLookUp.LoadBindingValue();
+            FBIKLordosisExtremeChestDownLookUp.LoadBindingValue();
             VSpineChestPitchFrac.LoadBindingValue();
             VSpineChestRollFrac.LoadBindingValue();
             VSpineSpinePitchFrac.LoadBindingValue();
@@ -1505,6 +1613,9 @@ namespace Basis.BasisUI
             VSpineSpineRotationSpeed.LoadBindingValue();
             VSpineHipsRotationSpeed.LoadBindingValue();
             VSpineHipsForwardBias.LoadBindingValue();
+            VSpineTorsoYawDeadzoneDeg.LoadBindingValue();
+            VSpineTorsoYawBlendSpeed.LoadBindingValue();
+            VSpineTorsoYawPlayInVR.LoadBindingValue();
 
             // Tracker pairing
             TrackerLinkingAdvancedVisible.LoadBindingValue();
@@ -1525,9 +1636,11 @@ namespace Basis.BasisUI
             NPHoverMenuOnly.LoadBindingValue();
             NPSize.LoadBindingValue();
             NPTransparency.LoadBindingValue();
+            ChatSize.LoadBindingValue();
 
             // Admin
             AdminAutoRefreshPlayerList.LoadBindingValue();
+            ShoutShowOnMenuBar.LoadBindingValue();
 
             // Remote Player Audio
             RAMinDistance.LoadBindingValue();
@@ -1588,8 +1701,13 @@ namespace Basis.BasisUI
             UIPaletteDanger.LoadBindingValue();
             UIPaletteScrollbar.LoadBindingValue();
 
+            RaycastLineWidth.LoadBindingValue();
+            RaycastLineColor.LoadBindingValue();
+            PickupHighlightColor.LoadBindingValue();
+            PickupLineColor.LoadBindingValue();
+
             // Subscribers that read RawValue (Apply* in OnSettingsFinishedChanges)
-            // ran during Initalize before bindings were refreshed from the file —
+            // ran during Initialize before bindings were refreshed from the file —
             // re-notify so they pick up the loaded values.
             BasisSettingsSystem.NotifyFinishedChanges();
         }

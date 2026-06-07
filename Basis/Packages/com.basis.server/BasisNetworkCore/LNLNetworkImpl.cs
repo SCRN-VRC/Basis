@@ -140,6 +140,12 @@ namespace Basis.Network.Core
 
         int NetPeer.Mtu => peer.Mtu;
 
+        object NetPeer.Tag
+        {
+            get => peer.Tag;
+            set => peer.Tag = value;
+        }
+
         void NetPeer.Disconnect()
         {
             peer.Disconnect();
@@ -223,12 +229,28 @@ namespace Basis.Network.Core
                 SimulationMinLatency = lnl.SimulationMinLatency,
                 SimulationPacketLossChance = lnl.SimulationPacketLossChance,
                 MtuDiscovery = lnl.MtuDiscovery,
-                MtuOverride = lnl.MtuOverride
+                MtuOverride = lnl.MtuOverride,
+                MultiSocketCount = lnl.MultiSocketCount
             };
         }
         public void Start(IPAddress IPv4Address, IPAddress IPv6Address, int SetPort)
         {
             manager.Start(IPv4Address, IPv6Address, SetPort);
+        }
+
+        public void StartManual(IPAddress IPv4Address, IPAddress IPv6Address, int SetPort)
+        {
+            manager.StartInManualMode(IPv4Address, IPv6Address, SetPort);
+        }
+
+        public void PollEvents()
+        {
+            manager.PollEvents();
+        }
+
+        public void ManualUpdate(float elapsedMilliseconds)
+        {
+            manager.ManualUpdate(elapsedMilliseconds);
         }
 
         public void Stop()

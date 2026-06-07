@@ -9,6 +9,15 @@ using UnityEngine.SceneManagement;
 
 public static class ContentPoliceControl
 {
+    public static bool ShaderPrewarmEnabled = false;
+    public static bool MaterialCorrectionEnabled = false;
+
+    private static readonly bool PrewarmForcedByGraphicsApi =
+        SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Direct3D12 ||
+        SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Vulkan;
+
+    private static bool ShouldPrewarm => ShaderPrewarmEnabled || PrewarmForcedByGraphicsApi;
+
     /// <summary>
     /// Creates a copy of a GameObject, removes any unapproved MonoBehaviours, and returns the cleaned copy through instantiation. 
     /// </summary>
@@ -18,7 +27,7 @@ public static class ContentPoliceControl
     /// <param name="Rotation">The rotation to instantiate the cleaned copy.</param>
     /// <param name="Parent">The parent transform for the instantiated copy. Defaults to null.</param>
     /// <returns>A copy of the GameObject with unapproved scripts removed.</returns>
-    public static GameObject ContentControl(GameObject DisabledGameobject, GameObject SearchAndDestroy, ChecksRequired ChecksRequired, Vector3 Position, Quaternion Rotation, bool ModifyScale, Vector3 Scale, BundledContentHolder.Selector Selector, Transform Parent = null,int colliderlayer = -1, List<BasisHeadChop.HeadChopTarget> HarvestedHeadChop = null)
+    public static GameObject ContentControl(GameObject DisabledGameobject, GameObject SearchAndDestroy, ChecksRequired ChecksRequired, Vector3 Position, Quaternion Rotation, bool ModifyScale, Vector3 Scale, BundledContentHolder.Selector Selector, Transform Parent = null,int colliderlayer = -1, List<BasisHeadChop.HeadChopTarget> HarvestedHeadChop = null, BasisContentHarvest harvest = null)
     {
         if (ChecksRequired.UseContentRemoval)
         {
@@ -35,9 +44,13 @@ public static class ContentPoliceControl
 
             if (BundledContentHolder.Instance.GetSelector(Selector, out ContentPoliceSelector PoliceCheck))
             {
+                harvest ??= new BasisContentHarvest();
                 // Renderers harvested during the same walk that strips dangerous components,
                 // so shader prewarm runs without paying for a second GetComponentsInChildren.
                 List<Renderer> renderersForPrewarm = new List<Renderer>();
+                List<SkinnedMeshRenderer> skinnedForHarvest = harvest != null ? new List<SkinnedMeshRenderer>() : null;
+                List<BasisAuthoredMotion> authoredForHarvest = harvest != null ? new List<BasisAuthoredMotion>() : null;
+                BasisComponentKind[] kinds = harvest != null ? new BasisComponentKind[count] : null;
 
                 // BasisHeadChop is harvested during this walk so the local avatar driver
                 // doesn't need a second GetComponentsInChildren pass at calibration. Harvest
@@ -46,6 +59,10 @@ public static class ContentPoliceControl
                 for (int Index = 0; Index < count; Index++)
                 {
                     Component component = components[Index];
+                    if (kinds != null)
+                    {
+                        kinds[Index] = BasisContentHarvest.Classify(component);
+                    }
                     //do this first before we nuke stuff
                     switch (component)
                     {
@@ -59,6 +76,10 @@ public static class ContentPoliceControl
                                 HarvestedHeadChop.AddRange(headChop.Targets);
                             }
                             GameObject.DestroyImmediate(headChop);
+                            if (kinds != null) kinds[Index] = BasisComponentKind.Removed;
+                            break;
+                        case BasisAuthoredMotion authoredMotion:
+                            authoredForHarvest?.Add(authoredMotion);
                             break;
                         case Animator animator:
                             // AnimationEvents dispatch via SendMessage(methodName, arg),
@@ -89,6 +110,7 @@ public static class ContentPoliceControl
                             {
                                 BasisDebug.Log("Remove Collider ", BasisDebug.LogTag.Avatar);
                                 GameObject.Destroy(collider);
+                                if (kinds != null) kinds[Index] = BasisComponentKind.Removed;
                             }
                             else
                             {
@@ -111,6 +133,7 @@ public static class ContentPoliceControl
                             break;
                         case SkinnedMeshRenderer skinnedMeshRenderer:
                             renderersForPrewarm.Add(skinnedMeshRenderer);
+                            skinnedForHarvest?.Add(skinnedMeshRenderer);
                             break;
                         case ParticleSystemRenderer particleSystemRenderer:
                             renderersForPrewarm.Add(particleSystemRenderer);
@@ -142,15 +165,31 @@ public static class ContentPoliceControl
                         {
                             BasisDebug.LogError($"MonoBehaviour {monoTypeName} is not approved and will be removed. Request the {Application.productName} team to add it to the approved list, or add it yourself!", BasisDebug.LogTag.System);
                             GameObject.DestroyImmediate(monoBehaviour); // Destroy the unapproved MonoBehaviour immediately
+                            if (kinds != null) kinds[Index] = BasisComponentKind.Removed;
                         }
                     }
                 }
 
-                BasisShaderFallback.MaterialCorrection(renderersForPrewarm, BundledContentHolder.Instance.UrpShader);
+                if (harvest != null)
+                {
+                    harvest.Components = components;
+                    harvest.Kinds = kinds;
+                    harvest.Renderers = renderersForPrewarm;
+                    harvest.SkinnedMeshRenderers = skinnedForHarvest;
+                    harvest.AuthoredMotions = authoredForHarvest;
+                }
+
+                if (MaterialCorrectionEnabled)
+                {
+                    BasisShaderFallback.MaterialCorrection(renderersForPrewarm, BundledContentHolder.Instance.UrpShader);
+                }
 
                 // Compile shader variants for everything we just walked before we set the clone
                 // active, so the first frame it's visible doesn't stall on a hitch.
-                BasisShaderPrewarm.Warm(renderersForPrewarm, SearchAndDestroy.name);
+                if (ShouldPrewarm)
+                {
+                    BasisShaderPrewarm.Warm(renderersForPrewarm, SearchAndDestroy.name);
+                }
 
                 // Persistent UnityEvent listeners are the second attack surface:
                 // a Button.onClick wired in the editor to Application.OpenURL /
@@ -159,7 +198,7 @@ public static class ContentPoliceControl
                 // the disabled host so no MonoBehaviour callback has executed yet.
                 if (ChecksRequired.ScrubPersistentUnityEvents)
                 {
-                    ScrubDangerousPersistentListeners(SearchAndDestroy, PoliceCheck);
+                    ScrubDangerousPersistentListeners(components, PoliceCheck);
                 }
 
                 // Instantiate the cleaned GameObject copy
@@ -192,8 +231,22 @@ public static class ContentPoliceControl
             // No content-removal walk happened, so a dedicated Renderer-typed walk is the only
             // way to feed the prewarm here. Cheaper than the full Component[] walk above.
             Renderer[] rawRenderers = SearchAndDestroy.GetComponentsInChildren<Renderer>(true);
-            BasisShaderFallback.MaterialCorrection(rawRenderers, BundledContentHolder.Instance.UrpShader);
-            BasisShaderPrewarm.Warm(rawRenderers, SearchAndDestroy.name);
+            if (harvest != null)
+            {
+                harvest.Renderers = new List<Renderer>(rawRenderers);
+            }
+            if (MaterialCorrectionEnabled)
+            {
+                BasisShaderFallback.MaterialCorrection(rawRenderers, BundledContentHolder.Instance.UrpShader);
+            }
+            if (ShouldPrewarm)
+            {
+                BasisShaderPrewarm.Warm(rawRenderers, SearchAndDestroy.name);
+            }
+        }
+        if (harvest != null && SearchAndDestroy != null && SearchAndDestroy.TryGetComponent(out BasisContentBase contentBase))
+        {
+            contentBase.Harvest = harvest;
         }
         return SearchAndDestroy;
     }
@@ -295,17 +348,23 @@ public static class ContentPoliceControl
 
             if (checks.ScrubPersistentUnityEvents)
             {
-                ScrubDangerousPersistentListeners(roots[RootIndex], policeCheck);
+                ScrubDangerousPersistentListeners(components, policeCheck);
             }
         }
 
         // Replace materials with broken shaders before warming, so prewarm runs against the
         // fallback material instead of the magenta InternalErrorShader. Scene scrub is only
         // ever called for World content, so no avatar-skip gate is needed here.
-        BasisShaderFallback.MaterialCorrection(renderersForPrewarm, BundledContentHolder.Instance.UrpShader);
+        if (MaterialCorrectionEnabled)
+        {
+            BasisShaderFallback.MaterialCorrection(renderersForPrewarm, BundledContentHolder.Instance.UrpShader);
+        }
 
         // Warm shaders for every renderer we just collected. One call per scene scrub.
-        BasisShaderPrewarm.Warm(renderersForPrewarm, targetScene.name);
+        if (ShouldPrewarm)
+        {
+            BasisShaderPrewarm.Warm(renderersForPrewarm, targetScene.name);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -377,19 +436,96 @@ public static class ContentPoliceControl
         "SetEnvironmentVariable",
     };
 
-    private static void ScrubDangerousPersistentListeners(GameObject root, ContentPoliceSelector police)
+    private static readonly HashSet<object> EventWalkVisited = new HashSet<object>(ReferenceEqualityComparerLocal.Instance);
+
+    private static void ScrubDangerousPersistentListeners(Component[] comps, ContentPoliceSelector police)
     {
-        if (root == null) return;
+        if (comps == null) return;
         HashSet<string> approved = police != null ? police.ApprovedTypeNames : null;
 
-        Component[] comps = root.GetComponentsInChildren<Component>(true);
-        HashSet<object> visited = new HashSet<object>(ReferenceEqualityComparerLocal.Instance);
+        HashSet<object> visited = EventWalkVisited;
+        visited.Clear();
         for (int i = 0; i < comps.Length; i++)
         {
             Component c = comps[i];
             if (c == null) continue;
             WalkForUnityEvents(c, visited, approved, 0);
         }
+    }
+
+    private enum WalkFieldKind : byte { DirectEvent, EventList, RecurseList, RecurseRef }
+
+    private readonly struct WalkField
+    {
+        public readonly FieldInfo Field;
+        public readonly WalkFieldKind Kind;
+        public WalkField(FieldInfo field, WalkFieldKind kind) { Field = field; Kind = kind; }
+    }
+
+    private static readonly Dictionary<Type, WalkField[]> WalkPlanCache = new Dictionary<Type, WalkField[]>();
+
+    private static WalkField[] GetWalkPlan(Type t)
+    {
+        if (WalkPlanCache.TryGetValue(t, out WalkField[] cached)) return cached;
+
+        List<WalkField> plan = new List<WalkField>();
+        Type cursor = t;
+        while (cursor != null
+            && cursor != typeof(object)
+            && cursor != typeof(UnityEngine.Object)
+            && cursor != typeof(Component)
+            && cursor != typeof(MonoBehaviour)
+            && cursor != typeof(Behaviour))
+        {
+            FieldInfo[] fields = cursor.GetFields(
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+            for (int i = 0; i < fields.Length; i++)
+            {
+                FieldInfo f = fields[i];
+                Type ft = f.FieldType;
+
+                if (ft.IsPrimitive || ft.IsPointer || ft.IsEnum) continue;
+                if (ft == typeof(string) || ft == typeof(IntPtr) || ft == typeof(UIntPtr)) continue;
+
+                if (typeof(UnityEventBase).IsAssignableFrom(ft))
+                {
+                    plan.Add(new WalkField(f, WalkFieldKind.DirectEvent));
+                    continue;
+                }
+
+                if (typeof(UnityEngine.Object).IsAssignableFrom(ft)) continue;
+
+                if (ft.IsArray)
+                {
+                    if (ft.GetArrayRank() != 1) continue;
+                    Type et = ft.GetElementType();
+                    if (et != null && typeof(UnityEventBase).IsAssignableFrom(et))
+                        plan.Add(new WalkField(f, WalkFieldKind.EventList));
+                    else if (ShouldRecurseInto(et))
+                        plan.Add(new WalkField(f, WalkFieldKind.RecurseList));
+                    continue;
+                }
+
+                if (ft.IsGenericType && typeof(IList).IsAssignableFrom(ft))
+                {
+                    Type[] args = ft.GetGenericArguments();
+                    Type et = args.Length == 1 ? args[0] : null;
+                    if (et != null && typeof(UnityEventBase).IsAssignableFrom(et))
+                        plan.Add(new WalkField(f, WalkFieldKind.EventList));
+                    else if (et != null && ShouldRecurseInto(et))
+                        plan.Add(new WalkField(f, WalkFieldKind.RecurseList));
+                    continue;
+                }
+
+                if (!ShouldRecurseInto(ft)) continue;
+                plan.Add(new WalkField(f, WalkFieldKind.RecurseRef));
+            }
+            cursor = cursor.BaseType;
+        }
+
+        WalkField[] result = plan.ToArray();
+        WalkPlanCache[t] = result;
+        return result;
     }
 
     private static void WalkForUnityEvents(object obj, HashSet<object> visited, HashSet<string> approved, int depth)
@@ -412,47 +548,107 @@ public static class ContentPoliceControl
         // own — they lead into unrelated scene/asset graphs.
         if (obj is UnityEngine.Object && depth > 0) return;
 
-        Type cursor = t;
-        while (cursor != null
-            && cursor != typeof(object)
-            && cursor != typeof(UnityEngine.Object)
-            && cursor != typeof(Component)
-            && cursor != typeof(MonoBehaviour)
-            && cursor != typeof(Behaviour))
+        WalkField[] plan = GetWalkPlan(t);
+        for (int i = 0; i < plan.Length; i++)
         {
-            FieldInfo[] fields = cursor.GetFields(
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-            for (int i = 0; i < fields.Length; i++)
+            FieldInfo f = plan[i].Field;
+            object value;
+            try { value = f.GetValue(obj); }
+            catch { continue; }
+            if (value == null) continue;
+
+            switch (plan[i].Kind)
             {
-                FieldInfo f = fields[i];
-                Type ft = f.FieldType;
-                if (ft.IsPrimitive || ft == typeof(string) || ft.IsEnum) continue;
-
-                object value;
-                try { value = f.GetValue(obj); }
-                catch { continue; }
-                if (value == null) continue;
-
-                if (value is UnityEventBase ue)
-                {
-                    ScrubEvent(ue, approved);
-                    continue;
-                }
-
-                if (value is IList list)
-                {
-                    for (int j = 0; j < list.Count; j++)
-                        WalkForUnityEvents(list[j], visited, approved, depth + 1);
-                    continue;
-                }
-
-                if (ft.IsClass || (ft.IsValueType && !ft.IsPrimitive && !ft.IsEnum))
-                {
+                case WalkFieldKind.DirectEvent:
+                    if (value is UnityEventBase ue) ScrubEvent(ue, approved);
+                    break;
+                case WalkFieldKind.EventList:
+                    if (value is IList eventList) WalkList(eventList, true, visited, approved, depth);
+                    break;
+                case WalkFieldKind.RecurseList:
+                    if (value is IList recurseList) WalkList(recurseList, false, visited, approved, depth);
+                    break;
+                case WalkFieldKind.RecurseRef:
                     WalkForUnityEvents(value, visited, approved, depth + 1);
-                }
+                    break;
             }
-            cursor = cursor.BaseType;
         }
+    }
+
+    private static void WalkList(IList list, bool elementsAreEvents, HashSet<object> visited, HashSet<string> approved, int depth)
+    {
+        int count;
+        try { count = list.Count; }
+        catch { return; }
+        for (int j = 0; j < count; j++)
+        {
+            object element;
+            try { element = list[j]; }
+            catch { continue; }
+            if (element == null) continue;
+            if (elementsAreEvents)
+            {
+                if (element is UnityEventBase ue) ScrubEvent(ue, approved);
+            }
+            else
+            {
+                WalkForUnityEvents(element, visited, approved, depth + 1);
+            }
+        }
+    }
+
+    private static bool ShouldRecurseInto(Type t)
+    {
+        if (t == null) return false;
+        if (t.IsPointer || t.IsPrimitive || t.IsEnum) return false;
+        if (t == typeof(string) || t == typeof(IntPtr) || t == typeof(UIntPtr)) return false;
+        if (typeof(UnityEngine.Object).IsAssignableFrom(t)) return false;
+        if (typeof(Delegate).IsAssignableFrom(t)) return false;
+        if (IsBclNamespace(t)) return false;
+        if (!ContainsManagedReferences(t)) return false;
+        return true;
+    }
+
+    private static bool IsBclNamespace(Type t)
+    {
+        string ns = t.Namespace;
+        if (ns == null) return false;
+        return ns == "System" || ns.StartsWith("System.", StringComparison.Ordinal)
+            || ns == "Microsoft" || ns.StartsWith("Microsoft.", StringComparison.Ordinal);
+    }
+
+    private static readonly Dictionary<Type, bool> ManagedReferenceCache = new Dictionary<Type, bool>();
+
+    private static bool ContainsManagedReferences(Type t)
+    {
+        if (t == null) return false;
+        if (!t.IsValueType) return true;
+        if (t.IsPrimitive || t.IsEnum || t.IsPointer) return false;
+        if (t == typeof(IntPtr) || t == typeof(UIntPtr)) return false;
+
+        if (ManagedReferenceCache.TryGetValue(t, out bool cached)) return cached;
+        ManagedReferenceCache[t] = false;
+
+        bool result = false;
+        FieldInfo[] fields = t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        for (int i = 0; i < fields.Length; i++)
+        {
+            Type ft = fields[i].FieldType;
+            if (ft.IsPointer || ft.IsPrimitive || ft.IsEnum) continue;
+            if (ft == typeof(IntPtr) || ft == typeof(UIntPtr)) continue;
+            if (ft.IsValueType)
+            {
+                if (ContainsManagedReferences(ft)) { result = true; break; }
+            }
+            else
+            {
+                result = true;
+                break;
+            }
+        }
+
+        ManagedReferenceCache[t] = result;
+        return result;
     }
 
     private static void ScrubEvent(UnityEventBase evt, HashSet<string> approved)

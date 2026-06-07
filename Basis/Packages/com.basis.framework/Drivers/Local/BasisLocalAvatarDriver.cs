@@ -121,7 +121,7 @@ namespace Basis.Scripts.Drivers
             player.LocalRigDriver.CleanupBeforeContinue();
             player.LocalRigDriver.AdditionalTransforms.Clear();
             GameObject AvatarAnimatorParent = player.BasisAvatar.Animator.gameObject;
-            ScaleAvatarModification.ReInitalize(player.BasisAvatar.Animator);
+            ScaleAvatarModification.ReInitialize(player.BasisAvatar.Animator);
 
             player.BasisAvatar.Animator.updateMode = AnimatorUpdateMode.Normal;
             player.BasisAvatar.Animator.logWarnings = false;
@@ -149,6 +149,16 @@ namespace Basis.Scripts.Drivers
                 Rig.OnInitialize();
             }
 
+            // Register authored motion (drives non-humanoid transforms IK doesn't touch); rest captured at the current TPose.
+            var authoredMotions = player.BasisAvatar.AuthoredMotions;
+            if (authoredMotions != null)
+            {
+                for (int i = 0; i < authoredMotions.Length; i++)
+                {
+                    BasisAuthoredMotionSystem.Register(authoredMotions[i]);
+                }
+            }
+
             player.LocalRigDriver.Builder = BasisHelpers.GetOrAddComponent<RigBuilder>(AvatarAnimatorParent);
             player.LocalRigDriver.Builder.enabled = false;
 
@@ -162,7 +172,7 @@ namespace Basis.Scripts.Drivers
             BasisLocalEyeDriverData.Attentiveness = player.BasisAvatar.EyeAttentiveness;
             BasisLocalEyeDriverData.PersonalityDirty = true;
             BasisDebug.Log($"Eye Personality - Liveliness: {BasisLocalEyeDriverData.Liveliness:F1} | Attentiveness: {BasisLocalEyeDriverData.Attentiveness:F1}", BasisDebug.LogTag.Avatar);
-            BasisLocalEyeDriver.Initalize();
+            BasisLocalEyeDriver.Initialize();
             LocalRenderMeshSettings(BasisLayerMapper.LocalAvatarLayer, SkinnedMeshRendererLength, SkinnedMeshRenderer, player.BasisAvatar.FaceVisemeMesh);
 
             if (Mapping.Hashead)
@@ -394,7 +404,7 @@ namespace Basis.Scripts.Drivers
         {
             var Avatar = LocalPlayer.BasisAvatar;
             FindSkinnedMeshRenders(LocalPlayer);
-            BasisTransformMapping.AutoDetectReferences(LocalPlayer.BasisAvatar.Animator, Avatar.transform, ref Mapping);
+            BasisTransformMapping.AutoDetectReferences(LocalPlayer.BasisAvatar.Animator, Avatar.transform, ref Mapping, humanoidBones: Avatar.TransformStorage?.HumanoidBones);
             BasisAvatarModelCache.RecordPosesCached(Mapping, LocalPlayer.BasisAvatar.Animator);
             LocalPlayer.FaceIsVisible = false;
 
@@ -505,12 +515,12 @@ namespace Basis.Scripts.Drivers
                                 }
                                 else
                                 {
-                                    BasisDebug.LogError("cant Convert to humanbodybone " + role);
+                                    BasisDebug.LogError("can't Convert to humanbodybone " + role);
                                 }
                             }
                             else
                             {
-                                BasisDebug.LogError("cant find Fallback Bone for " + role);
+                                BasisDebug.LogError("can't find Fallback Bone for " + role);
                             }
                             break;
                         }
@@ -627,19 +637,17 @@ namespace Basis.Scripts.Drivers
         /// <param name="WorldTpose">World-space T-pose position to convert to avatar space.</param>
         public void SetInitialData(Transform Transform, BasisLocalBoneControl bone, BasisBoneTrackedRole Role, Vector3 WorldTpose, Quaternion WorldTposeRotation)
         {
-            bone.OutGoingData.position = BasisLocalBoneDriver.ConvertToAvatarSpaceInitial(Transform, WorldTpose);
-            bone.OutGoingData.rotation = Quaternion.Inverse(Transform.rotation) * WorldTposeRotation;
+            Vector3 outgoingPosition = BasisLocalBoneDriver.ConvertToAvatarSpaceInitial(Transform, WorldTpose);
+            Quaternion outgoingRotation = Quaternion.Inverse(Transform.rotation) * WorldTposeRotation;
 
             if (IsApartOfSpineVertical(Role))
             {
-                bone.OutGoingData.position.x = 0;
+                outgoingPosition.x = 0;
             }
 
-            bone.TposeLocal.rotation = bone.OutGoingData.rotation;
-            bone.TposeLocal.position = bone.OutGoingData.position;
-
-            bone.TposeLocalScaled.position = bone.TposeLocal.position;
-            bone.TposeLocalScaled.rotation = bone.TposeLocal.rotation;
+            bone.SetOutgoing(outgoingPosition, outgoingRotation);
+            bone.SetTposeLocal(outgoingPosition, outgoingRotation);
+            bone.SetTposeScaled(outgoingPosition, outgoingRotation);
         }
 
         /// <summary>
@@ -652,11 +660,11 @@ namespace Basis.Scripts.Drivers
         {
             if (BaseBoneDriver.FindBone(out BasisLocalBoneControl AssignedToAddToBone, AssignedTo) == false)
             {
-                BasisDebug.LogError("Cant Find Bone " + AssignedTo);
+                BasisDebug.LogError("Can't Find Bone " + AssignedTo);
             }
             if (BaseBoneDriver.FindBone(out BasisLocalBoneControl LockToBone, LockToBoneRole) == false)
             {
-                BasisDebug.LogError("Cant Find Bone " + LockToBoneRole);
+                BasisDebug.LogError("Can't Find Bone " + LockToBoneRole);
             }
             BaseBoneDriver.CreateRotationalLock(AssignedToAddToBone, LockToBone);
         }
@@ -667,7 +675,8 @@ namespace Basis.Scripts.Drivers
         /// <param name="LocalPlayer">The local player whose avatar meshes are scanned.</param>
         public void FindSkinnedMeshRenders(BasisLocalPlayer LocalPlayer)
         {
-            SkinnedMeshRenderer = LocalPlayer.BasisAvatar.Animator.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            SkinnedMeshRenderer = LocalPlayer.BasisAvatar.SkinnedMeshRenderers
+                ?? LocalPlayer.BasisAvatar.Animator.GetComponentsInChildren<SkinnedMeshRenderer>(true);
             SkinnedMeshRendererLength = SkinnedMeshRenderer.Length;
         }
     }

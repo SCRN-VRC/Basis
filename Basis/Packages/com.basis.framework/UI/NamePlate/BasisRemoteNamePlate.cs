@@ -4,6 +4,7 @@ using Basis.Scripts.BasisSdk.Interactions;
 using Basis.Scripts.BasisSdk.Players;
 using Basis.Scripts.Device_Management;
 using Basis.Scripts.Device_Management.Devices;
+using Basis.Scripts.Networking;
 using Basis.Scripts.Networking.Receivers;
 using Basis.Scripts.TransformBinders.BoneControl;
 using System.Threading;
@@ -32,7 +33,6 @@ namespace Basis.Scripts.UI.NamePlate
         internal int IsVisibleRaw => Volatile.Read(ref _isVisible);
 
         public bool HasProgressBarVisible = false;
-        public Mesh bakedMesh;
         public MeshRenderer Renderer;
         public Color CurrentColor;
         public Transform Self;
@@ -66,16 +66,31 @@ namespace Basis.Scripts.UI.NamePlate
         /// Whether there is an active chat message being displayed.
         /// </summary>
         private bool hasChatMessage;
+        private string currentChatMessage;
+        private readonly string[] currentChatMessageWithTyping = new string[TypingIndicatorFrames.Length];
+        private bool wantsTypingIndicator;
+        private int typingAnimationFrame = -1;
+        private double typingAnimationStartTime;
+        private string typingIndicatorText = "...";
+        private string visibleChatText;
+
+        private static readonly string[] TypingIndicatorFrames =
+        {
+            ".",
+            "..",
+            "..."
+        };
 
         // --------- Update-driven "talk pulse" state (replaces coroutine) ---------
         private bool isPulsingTalk;
         private double talkStartTime;
         private Color talkColorCached;
         private float4 talkColorFloat4;
+        private float4 restingColorFloat4;
         /// <summary>
         /// can only be called once after that the text is nuked and a mesh render is just used with a filter
         /// </summary>
-        public void Initalize(BasisRemotePlayer RemotePlayer)
+        public void Initialize(BasisRemotePlayer RemotePlayer)
         {
             BasisRemotePlayer = RemotePlayer;
             BasisRemotePlayer.ProgressReportAvatarLoad.OnProgressReport += ProgressReport;
@@ -84,20 +99,22 @@ namespace Basis.Scripts.UI.NamePlate
 
             BasisRemotePlayer.OnAvatarFailedStateChanged += RefreshFailedStateColor;
             BasisRemotePlayer.OnChatMessageReceived += SetChatText;
+            BasisRemotePlayer.OnChatTypingStateChanged += SetTypingIndicatorVisible;
             BasisRemotePlayer.OnNamePlateActiveStateShouldRefresh += RefreshActiveState;
             BasisRemotePlayer.OnRemotePlayerDestroying += HandlePlayerDestroying;
+            BasisRemotePlayer.OnTalkModeChanged += HandleTalkModeChanged;
             BasisRemotePlayer.NamePlateTransformProvider = GetSelfTransform;
 
             Self = this.transform;
             Self.localScale = new Vector3(0.02f, 0.02f, 0.02f) * BasisRemoteNamePlateDriver.NamePlateSize;
-            BasisRemoteNamePlateDriver.GenerateTextFactory(BasisRemotePlayer, this);
+            BasisRemoteNamePlateDriver.QueueTextBake(BasisRemotePlayer, this);
             LoadingText.enableVertexGradient = false;
             mpb = new MaterialPropertyBlock();
             Renderer.GetPropertyBlock(mpb, 0);
+            ApplyTalkModeColors();
             BasisRemoteNamePlateDriver.Register(this);
 
-            // Create chat text display above nameplate
-            CreateChatTextDisplay();
+            SetTypingIndicatorVisible(BasisRemotePlayer.IsChatTyping);
 
             if (!BasisRemoteNamePlateDriver.ShouldPlateBeActive(this))
             {
@@ -111,7 +128,7 @@ namespace Basis.Scripts.UI.NamePlate
 
         private void HandlePlayerDestroying()
         {
-            DeInitalize();
+            DeInitialize();
             AddressableResourceProcess.ReleaseGameobject(gameObject);
         }
 
@@ -121,12 +138,15 @@ namespace Basis.Scripts.UI.NamePlate
         /// </summary>
         public void RefreshActiveState()
         {
+            // The avatar's renderer-visibility callback can fire mid-teardown; bail if this
+            // plate has already been destroyed rather than touching its gameObject.
+            if (this == null) return;
             gameObject.SetActive(BasisRemoteNamePlateDriver.ShouldPlateBeActive(this));
         }
 
         /// <summary>
         /// Reads the persisted block state for this player and refreshes the
-        /// nameplate's active state. Fire-and-forget from <see cref="Initalize"/>.
+        /// nameplate's active state. Fire-and-forget from <see cref="Initialize"/>.
         /// </summary>
         private async Task LoadBlockStateAsync()
         {
@@ -169,18 +189,25 @@ namespace Basis.Scripts.UI.NamePlate
             }
             else
             {
-                Color normal = BasisRemoteNamePlateDriver.StaticNormalColor;
+                Color normal = BasisRemoteNamePlateDriver.GetModeRestingColor(BasisRemotePlayer != null ? BasisRemotePlayer.TalkMode : BasisTalkMode.Normal);
                 SetPlateColor(normal);
                 CurrentColor = normal;
             }
         }
+        private void EnsureChatDisplayCreated()
+        {
+            if (ChatText == null)
+            {
+                CreateChatTextDisplay();
+            }
+        }
+
         private void CreateChatTextDisplay()
         {
             // Create the chat bubble background object
             GameObject chatBubbleObj = new GameObject("ChatBubble");
             chatBubbleObj.transform.SetParent(Self, false);
-            chatBubbleObj.transform.localPosition = new Vector3(0, 12f, 0);
-            chatBubbleObj.transform.localRotation = Quaternion.identity;
+            chatBubbleObj.transform.SetLocalPositionAndRotation(new Vector3(0, 12f, 0), Quaternion.identity);
             chatBubbleObj.transform.localScale = Vector3.one;
             chatBubbleObj.layer = gameObject.layer;
 
@@ -200,8 +227,7 @@ namespace Basis.Scripts.UI.NamePlate
             GameObject chatTextObj = new GameObject("ChatText");
             chatTextObj.transform.SetParent(Self, false);
             // Position above the nameplate (nameplate is at y=0, half height ~4.5 units)
-            chatTextObj.transform.localPosition = new Vector3(0, 12f, 0.04f);
-            chatTextObj.transform.localRotation = Quaternion.Euler(0, 180, 0);
+            chatTextObj.transform.SetLocalPositionAndRotation(new Vector3(0, 12f, 0.04f), Quaternion.Euler(0, 180, 0));
             chatTextObj.transform.localScale = Vector3.one;
             chatTextObj.layer = gameObject.layer;
 
@@ -222,13 +248,15 @@ namespace Basis.Scripts.UI.NamePlate
             }
 
             // Size the rect to fit above nameplate
-            RectTransform chatRect = ChatText.GetComponent<RectTransform>();
-            chatRect.sizeDelta = new Vector2(58, 10);
+            if (ChatText.TryGetComponent(out RectTransform chatRect))
+            {
+                chatRect.sizeDelta = new Vector2(58, 10);
+            }
 
             chatTextObj.SetActive(false);
         }
 
-        public void DeInitalize()
+        public void DeInitialize()
         {
             BasisRemoteNamePlateDriver.Unregister(this);
             if (BasisRemotePlayer != null)
@@ -240,8 +268,10 @@ namespace Basis.Scripts.UI.NamePlate
 
                 BasisRemotePlayer.OnAvatarFailedStateChanged -= RefreshFailedStateColor;
                 BasisRemotePlayer.OnChatMessageReceived -= SetChatText;
+                BasisRemotePlayer.OnChatTypingStateChanged -= SetTypingIndicatorVisible;
                 BasisRemotePlayer.OnNamePlateActiveStateShouldRefresh -= RefreshActiveState;
                 BasisRemotePlayer.OnRemotePlayerDestroying -= HandlePlayerDestroying;
+                BasisRemotePlayer.OnTalkModeChanged -= HandleTalkModeChanged;
                 if (BasisRemotePlayer.NamePlateTransformProvider == GetSelfTransform)
                 {
                     BasisRemotePlayer.NamePlateTransformProvider = null;
@@ -249,12 +279,15 @@ namespace Basis.Scripts.UI.NamePlate
             }
 
             // Clean up chat display
+            if (ChatBubbleFilter != null && ChatBubbleFilter.sharedMesh != null) Destroy(ChatBubbleFilter.sharedMesh);
             if (ChatText != null) Destroy(ChatText.gameObject);
             if (ChatBubbleFilter != null) Destroy(ChatBubbleFilter.gameObject);
+            if (Filter != null && Filter.sharedMesh != null && Filter.sharedMesh.name == BasisRemoteNamePlateDriver.CombinedNameplateMeshName) Destroy(Filter.sharedMesh);
             hasChatMessage = false;
+            wantsTypingIndicator = false;
 
             // Clean up rendering resources
-            DeInitalizeCallToRender();
+            DeInitializeCallToRender();
 
             // Stop any active pulse
             isPulsingTalk = false;
@@ -264,7 +297,7 @@ namespace Basis.Scripts.UI.NamePlate
         {
             if (HasRendererCheckWiredUp)
             {
-                DeInitalizeCallToRender();
+                DeInitializeCallToRender();
             }
 
             HasRendererCheckWiredUp = false;
@@ -359,7 +392,7 @@ namespace Basis.Scripts.UI.NamePlate
                 // can't be done safely off the main thread.
                 if (!CanCurrentlyBeHeard()) return;
 
-                talkColorCached = BasisRemoteNamePlateDriver.StaticIsTalkingColor;
+                talkColorCached = BasisRemoteNamePlateDriver.GetModeTalkColor(BasisRemotePlayer != null ? BasisRemotePlayer.TalkMode : BasisTalkMode.Normal);
                 talkColorFloat4 = new float4(talkColorCached.r, talkColorCached.g, talkColorCached.b, talkColorCached.a);
 
                 // Start pulse timeline
@@ -373,9 +406,40 @@ namespace Basis.Scripts.UI.NamePlate
         internal bool GetIsPulsingForJob() => isPulsingTalk;
         internal double GetTalkStartTimeForJob() => talkStartTime;
         internal float4 GetTalkColorFloat4ForJob() => talkColorFloat4;
+        internal float4 GetRestingColorFloat4ForJob() => restingColorFloat4;
         internal void StopPulseFromJob()
         {
             isPulsingTalk = false;
+        }
+
+        private void HandleTalkModeChanged()
+        {
+            // A mode/mute change must recolor the plate immediately, even mid-pulse,
+            // so it doesn't wait for the player to talk before showing the new color.
+            isPulsingTalk = false;
+            ApplyTalkModeColors();
+        }
+
+        /// <summary>
+        /// Recomputes this plate's resting + talking colors from the player's current
+        /// talk mode and snaps to the resting color when not mid-pulse.
+        /// </summary>
+        public void ApplyTalkModeColors()
+        {
+            BasisTalkMode mode = BasisRemotePlayer != null ? BasisRemotePlayer.TalkMode : BasisTalkMode.Normal;
+
+            Color resting = BasisRemoteNamePlateDriver.GetModeRestingColor(mode);
+            restingColorFloat4 = new float4(resting.r, resting.g, resting.b, resting.a);
+
+            Color talk = BasisRemoteNamePlateDriver.GetModeTalkColor(mode);
+            talkColorCached = talk;
+            talkColorFloat4 = new float4(talk.r, talk.g, talk.b, talk.a);
+
+            if (!isPulsingTalk)
+            {
+                SetPlateColor(resting);
+                CurrentColor = resting;
+            }
         }
 
         internal void ApplyColorFromJob(Color c)
@@ -394,29 +458,30 @@ namespace Basis.Scripts.UI.NamePlate
         /// </summary>
         public void SetChatText(string message)
         {
-            if (ChatText == null) return;
-
             if (string.IsNullOrEmpty(message))
             {
-                ChatText.gameObject.SetActive(false);
-                if (ChatBubbleFilter != null)
-                    ChatBubbleFilter.gameObject.SetActive(false);
+                if (ChatText == null) return;
+
                 hasChatMessage = false;
+                currentChatMessage = null;
+                RefreshCachedChatTypingText();
+                if (wantsTypingIndicator)
+                {
+                    typingAnimationFrame = -1;
+                }
+                UpdateChatTextVisual();
+                UpdateBubbleVisual();
                 return;
             }
 
-            ChatText.text = message;
-            ChatText.gameObject.SetActive(true);
+            EnsureChatDisplayCreated();
 
-            // Rebuild chat bubble background to fit text
-            if (ChatBubbleFilter != null)
-            {
-                BasisRemoteNamePlateDriver.GenerateChatBubble(this);
-                ChatBubbleFilter.gameObject.SetActive(true);
-            }
-
+            currentChatMessage = message;
             chatMessageSetTime = Time.timeAsDouble;
             hasChatMessage = true;
+            RefreshCachedChatTypingText();
+            UpdateChatTextVisual();
+            UpdateBubbleVisual();
         }
 
         /// <summary>
@@ -432,7 +497,155 @@ namespace Basis.Scripts.UI.NamePlate
             }
         }
 
-        public void DeInitalizeCallToRender()
+        public void SetTypingIndicatorVisible(bool visible)
+        {
+            if (visible)
+            {
+                EnsureChatDisplayCreated();
+            }
+
+            wantsTypingIndicator = visible;
+            if (visible)
+            {
+                typingAnimationStartTime = Time.timeAsDouble;
+                typingAnimationFrame = -1;
+                typingIndicatorText = TypingIndicatorFrames[TypingIndicatorFrames.Length - 1];
+            }
+
+            RefreshCachedChatTypingText();
+            UpdateTypingIndicatorVisual();
+            UpdateBubbleVisual();
+        }
+
+        public bool UpdateTypingIndicatorAnimation()
+        {
+            if (!wantsTypingIndicator)
+            {
+                return false;
+            }
+
+            int frame = (int)((Time.timeAsDouble - typingAnimationStartTime) / 0.4d) % TypingIndicatorFrames.Length;
+            if (frame == typingAnimationFrame)
+            {
+                return false;
+            }
+
+            typingAnimationFrame = frame;
+            typingIndicatorText = TypingIndicatorFrames[frame];
+            return true;
+        }
+
+        public void RefreshTypingIndicatorAnimation()
+        {
+            if (UpdateTypingIndicatorAnimation())
+            {
+                UpdateChatTextVisual();
+            }
+        }
+
+        public TextMeshPro GetBubbleSourceText()
+        {
+            if (ChatText != null && ChatText.gameObject.activeSelf)
+            {
+                return ChatText;
+            }
+
+            return null;
+        }
+
+        private void UpdateTypingIndicatorVisual()
+        {
+            UpdateChatTextVisual();
+        }
+
+        private void UpdateChatTextVisual()
+        {
+            if (ChatText == null)
+            {
+                return;
+            }
+
+            if (hasChatMessage)
+            {
+                string text = wantsTypingIndicator
+                    ? currentChatMessageWithTyping[typingAnimationFrame < 0 ? TypingIndicatorFrames.Length - 1 : typingAnimationFrame]
+                    : currentChatMessage;
+                if (!ReferenceEquals(visibleChatText, text))
+                {
+                    visibleChatText = text;
+                    ChatText.text = text;
+                }
+                ChatText.gameObject.SetActive(true);
+                return;
+            }
+
+            if (wantsTypingIndicator)
+            {
+                UpdateTypingIndicatorAnimation();
+                if (!ReferenceEquals(visibleChatText, typingIndicatorText))
+                {
+                    visibleChatText = typingIndicatorText;
+                    ChatText.text = typingIndicatorText;
+                }
+                ChatText.gameObject.SetActive(true);
+                return;
+            }
+
+            visibleChatText = null;
+            ChatText.gameObject.SetActive(false);
+        }
+
+        private void RefreshCachedChatTypingText()
+        {
+            if (!wantsTypingIndicator || !hasChatMessage || string.IsNullOrEmpty(currentChatMessage))
+            {
+                for (int Index = 0; Index < currentChatMessageWithTyping.Length; Index++)
+                {
+                    currentChatMessageWithTyping[Index] = null;
+                }
+                return;
+            }
+
+            for (int Index = 0; Index < TypingIndicatorFrames.Length; Index++)
+            {
+                currentChatMessageWithTyping[Index] = currentChatMessage + "\n" + TypingIndicatorFrames[Index];
+            }
+        }
+
+        private bool HasBubbleText()
+        {
+            if (hasChatMessage)
+            {
+                return true;
+            }
+
+            return wantsTypingIndicator;
+        }
+
+        private void UpdateBubbleVisual()
+        {
+            if (ChatBubbleFilter == null)
+            {
+                return;
+            }
+
+            if (!HasBubbleText())
+            {
+                ChatBubbleFilter.gameObject.SetActive(false);
+                return;
+            }
+
+            BasisRemoteNamePlateDriver.GenerateChatBubble(this);
+            ChatBubbleFilter.gameObject.SetActive(true);
+        }
+
+        internal void RefreshChatLayout()
+        {
+            UpdateChatTextVisual();
+            UpdateBubbleVisual();
+        }
+
+        public void DeInitializeCallToRender()
         {
             if (HasRendererCheckWiredUp && BasisRemotePlayer != null && BasisRemotePlayer.FaceRenderer != null)
             {
@@ -537,7 +750,7 @@ namespace Basis.Scripts.UI.NamePlate
                 }
                 else
                 {
-                    Debug.LogWarning("Input source interacted with ReparentInteractable without highlighting first.");
+                    BasisDebug.LogWarning(nameof(BasisRemoteNamePlate) + " input source interacted without highlighting first.", BasisDebug.LogTag.Input);
                 }
             }
             else

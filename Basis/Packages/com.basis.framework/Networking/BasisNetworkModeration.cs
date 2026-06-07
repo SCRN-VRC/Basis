@@ -202,6 +202,16 @@ public static class BasisNetworkModeration
             w => w.Put(url));
     }
 
+    /// <summary>
+    /// Admin: ask the server to bundle its logs/ and CrashReports/ folders and stream them
+    /// back. <see cref="BasisLogBundleReceiver"/> reassembles, decompresses, and extracts them
+    /// into a dated folder next to the local settings. Server-gated by basis.admin.logs.
+    /// </summary>
+    public static void RequestAllLogs()
+    {
+        SendAdminRequest(AdminRequestMode.RequestAllLogs);
+    }
+
     public static void DisplayMessage(string message)
     {
         if (ValidateString(message, nameof(message)))
@@ -232,6 +242,38 @@ public static class BasisNetworkModeration
             BasisDebug.LogError(message);
         }
     }
+
+    /// <summary>
+    /// Like <see cref="DisplayMessage"/> but adds an "open folder" button that reveals
+    /// <paramref name="folderPath"/> in the OS file browser. This is an informational popup
+    /// (e.g. "logs saved"), so unlike <see cref="DisplayMessage"/> it does not log at error
+    /// level — the caller logs at whatever level fits.
+    /// </summary>
+    public static void DisplayMessageWithFolder(string message, string folderPath)
+    {
+        if (!ValidateString(message, nameof(message))) return;
+
+        bool menuWasAlreadyOpen = BasisMainMenu.Instance != null;
+        if (!menuWasAlreadyOpen)
+        {
+            BasisMainMenu.Open();
+        }
+        else if (BasisMainMenu.Instance.Dialogue)
+        {
+            BasisMainMenu.Instance.Dialogue.ReleaseInstance();
+        }
+
+        BasisMainMenu.Instance.OpenDialogue("admin", message, "open folder", "ok", accepted =>
+        {
+            if (accepted) BasisFileBrowserUtility.Reveal(folderPath);
+            // If we opened the menu solely to show this popup, close it again on dismiss.
+            if (!menuWasAlreadyOpen)
+            {
+                BasisMainMenu.Close();
+            }
+        });
+    }
+
     public static void AdminMessage(NetDataReader reader)
     {
         var request = new AdminRequest();
@@ -268,6 +310,10 @@ public static class BasisNetworkModeration
                 HandleGlobalHeadlessAudioState(reader);
                 break;
 
+            case AdminRequestMode.GlobalGetCrashReportState:
+                HandleCrashReportState(reader);
+                break;
+
             case AdminRequestMode.GlobalGetHeadlessDisallowState:
                 HandleGlobalHeadlessDisallowState(reader);
                 break;
@@ -282,6 +328,22 @@ public static class BasisNetworkModeration
 
             case AdminRequestMode.GlobalGetOpusFrameDurationState:
                 HandleGlobalOpusFrameDurationState(reader);
+                break;
+
+            case AdminRequestMode.GlobalGetAudioRangeLimits:
+                HandleAudioRangeLimits(reader);
+                break;
+
+            case AdminRequestMode.LogBundleBegin:
+                BasisLogBundleReceiver.Begin(reader);
+                break;
+
+            case AdminRequestMode.LogBundleChunk:
+                BasisLogBundleReceiver.Chunk(reader);
+                break;
+
+            case AdminRequestMode.LogBundleEnd:
+                BasisLogBundleReceiver.End(reader);
                 break;
 
             default:
@@ -305,6 +367,7 @@ public static class BasisNetworkModeration
     private static void HandleShoutModeChanged(NetDataReader reader, bool enabled)
     {
         ushort targetPlayerId = reader.GetUShort();
+        ushort initiatorPlayerId = reader.AvailableBytes >= 2 ? reader.GetUShort() : targetPlayerId;
         string state = enabled ? "enabled" : "disabled";
         BasisDebug.Log($"Shout mode {state} for player {targetPlayerId}", BasisDebug.LogTag.Networking);
 
@@ -316,14 +379,13 @@ public static class BasisNetworkModeration
             Basis.Scripts.Networking.Transmitters.BasisAudioTransmission.IsInShoutMode = enabled;
             BasisDebug.Log($"Local player shout mode {state}", BasisDebug.LogTag.Networking);
 
-            // Notify the local player with a visible dialogue
-            if (enabled)
+            bool forcedByOther = initiatorPlayerId != targetPlayerId;
+            if (forcedByOther && !BasisTalkModeManager.LocalCanShout())
             {
-                DisplayMessage("Shout mode ENABLED - your voice is now broadcast to everyone.");
-            }
-            else
-            {
-                DisplayMessage("Shout mode DISABLED - your voice is back to normal.");
+                string initiatorName = ResolveDisplayName(initiatorPlayerId);
+                DisplayMessage(enabled
+                    ? $"{initiatorName} enabled shout mode for you - your voice is now broadcast to everyone."
+                    : $"{initiatorName} disabled shout mode for you - your voice is back to normal.");
             }
         }
         else
@@ -340,6 +402,16 @@ public static class BasisNetworkModeration
         }
 
         OnShoutModeChanged?.Invoke(targetPlayerId, enabled);
+    }
+
+    private static string ResolveDisplayName(ushort playerId)
+    {
+        if (BasisNetworkPlayers.Players.TryGetValue(playerId, out var player) && player != null)
+        {
+            string name = player.SafeDisplayName;
+            if (!string.IsNullOrEmpty(name)) return name;
+        }
+        return "An admin";
     }
 
     /// <summary>
@@ -578,6 +650,26 @@ public static class BasisNetworkModeration
     public static event Action<bool> OnGlobalAdditionalAvatarDataLockChanged;
 
     /// <summary>
+    /// Server-pushed per-category camera photo-metadata disallow mask. A set bit forbids
+    /// that embedding category for every client regardless of the user's own toggles.
+    /// 0 = everything allowed. Bits are the CameraPolicy_* constants.
+    /// </summary>
+    public static byte GlobalCameraDisallowMask { get; private set; }
+
+    public const byte CameraPolicy_TagPeople = 1 << 0;
+    public const byte CameraPolicy_PersonDetails = 1 << 1;
+    public const byte CameraPolicy_CameraExif = 1 << 2;
+    public const byte CameraPolicy_CaptureInfo = 1 << 3;
+    public const byte CameraPolicy_Photographer = 1 << 4;
+    public const byte CameraPolicy_World = 1 << 5;
+
+    /// <summary>True when the server forbids the given camera metadata category (a CameraPolicy_* bit).</summary>
+    public static bool IsCameraCategoryDisallowed(byte categoryBit) => (GlobalCameraDisallowMask & categoryBit) != 0;
+
+    /// <summary>Fired when the server-pushed camera metadata policy mask changes.</summary>
+    public static event Action<byte> OnGlobalCameraPolicyChanged;
+
+    /// <summary>
     /// Current headless audio state received from the server.
     /// True means headless clients should keep BasisAudioClipPlayer off.
     /// </summary>
@@ -632,7 +724,17 @@ public static class BasisNetworkModeration
                 OnGlobalAdditionalAvatarDataLockChanged?.Invoke(GlobalAdditionalAvatarDataLock);
             }
         }
-        BasisDebug.Log($"Global lock state updated - Avatars: {GlobalAvatarsLocked}, Props: {GlobalPropsLocked}, Worlds: {GlobalWorldsLocked}, Servers: {GlobalServersLocked}, ThirdPerson: {GlobalThirdPersonDisabled}, AdditionalAvatarData: {GlobalAdditionalAvatarDataLock}", BasisDebug.LogTag.Networking);
+        // CameraMetadataDisallowMask appended after AdditionalAvatarDataLock (1 byte). Same back-compat trick.
+        if (reader.AvailableBytes >= 1)
+        {
+            byte nextCameraMask = reader.GetByte();
+            if (nextCameraMask != GlobalCameraDisallowMask)
+            {
+                GlobalCameraDisallowMask = nextCameraMask;
+                OnGlobalCameraPolicyChanged?.Invoke(GlobalCameraDisallowMask);
+            }
+        }
+        BasisDebug.Log($"Global lock state updated - Avatars: {GlobalAvatarsLocked}, Props: {GlobalPropsLocked}, Worlds: {GlobalWorldsLocked}, Servers: {GlobalServersLocked}, ThirdPerson: {GlobalThirdPersonDisabled}, AdditionalAvatarData: {GlobalAdditionalAvatarDataLock}, CameraMask: {GlobalCameraDisallowMask}", BasisDebug.LogTag.Networking);
         OnGlobalLockStateChanged?.Invoke(GlobalAvatarsLocked, GlobalPropsLocked, GlobalWorldsLocked, GlobalServersLocked);
     }
 
@@ -687,11 +789,75 @@ public static class BasisNetworkModeration
         SendAdminRequest(AdminRequestMode.GlobalToggleAdditionalAvatarDataLock);
     }
 
+    /// <summary>
+    /// Admin: set the per-category camera photo-metadata disallow mask. A set bit forbids
+    /// that embedding category for every client. The server stores it and rebroadcasts it
+    /// in GlobalGetLockState.
+    /// </summary>
+    public static void SetGlobalCameraPolicy(byte disallowMask)
+    {
+        SendAdminRequest(
+            AdminRequestMode.SetGlobalCameraPolicy,
+            w => w.Put(disallowMask));
+    }
+
     private static void HandleGlobalHeadlessAudioState(NetDataReader reader)
     {
         GlobalHeadlessAudioOff = reader.GetBool();
         BasisDebug.Log($"Global headless audio state updated - Headless audio off: {GlobalHeadlessAudioOff}", BasisDebug.LogTag.Networking);
         OnGlobalHeadlessAudioStateChanged?.Invoke(GlobalHeadlessAudioOff);
+    }
+
+    /// <summary>
+    /// Server-pushed flag: whether clients may report errors/exceptions. Defaults false so
+    /// nothing is sent until a server explicitly enables it (older servers never do).
+    /// </summary>
+    public static bool CrashReportingEnabled { get; private set; }
+
+    /// <summary>Fired when the server-pushed crash-reporting state changes.</summary>
+    public static event Action<bool> OnCrashReportingStateChanged;
+
+    private static void HandleCrashReportState(NetDataReader reader)
+    {
+        CrashReportingEnabled = reader.GetBool();
+        BasisDebug.Log($"Crash reporting {(CrashReportingEnabled ? "enabled" : "disabled")} by server", BasisDebug.LogTag.Networking);
+        OnCrashReportingStateChanged?.Invoke(CrashReportingEnabled);
+    }
+
+    /// <summary>
+    /// Server-pushed ceiling (metres) for the local microphone (voice transmit) range. Clients clamp
+    /// their Microphone Range slider and effective range to this. Defaults to 25 until a server pushes it.
+    /// </summary>
+    public static float ServerMaxMicrophoneRangeMeters { get; private set; } = 25f;
+
+    /// <summary>Server-pushed ceiling (metres) for the local hearing (audio receive) range.</summary>
+    public static float ServerMaxHearingRangeMeters { get; private set; } = 25f;
+
+    /// <summary>Fired when the server pushes new audio range limits (microphone, hearing) in metres.</summary>
+    public static event Action<float, float> OnAudioRangeLimitsChanged;
+
+    private static void HandleAudioRangeLimits(NetDataReader reader)
+    {
+        ServerMaxMicrophoneRangeMeters = reader.GetFloat();
+        ServerMaxHearingRangeMeters = reader.GetFloat();
+        SMModuleDistanceBasedReductions.SetMicrophoneRangeCapMeters(ServerMaxMicrophoneRangeMeters);
+        SMModuleDistanceBasedReductions.SetHearingRangeCapMeters(ServerMaxHearingRangeMeters);
+        BasisDebug.Log($"Audio range limits from server → microphone {ServerMaxMicrophoneRangeMeters} m, hearing {ServerMaxHearingRangeMeters} m", BasisDebug.LogTag.Networking);
+        OnAudioRangeLimitsChanged?.Invoke(ServerMaxMicrophoneRangeMeters, ServerMaxHearingRangeMeters);
+    }
+
+    /// <summary>
+    /// Admin: set the server-wide maximum microphone and hearing range (metres). Persisted to
+    /// config.xml and broadcast to every client.
+    /// </summary>
+    public static void SetGlobalAudioRangeLimits(float microphoneMeters, float hearingMeters)
+    {
+        if (microphoneMeters < 1f) microphoneMeters = 1f;
+        if (hearingMeters < 1f) hearingMeters = 1f;
+        SendAdminRequest(
+            AdminRequestMode.SetGlobalAudioRangeLimits,
+            w => w.Put(microphoneMeters),
+            w => w.Put(hearingMeters));
     }
 
     private static void HandleGlobalHeadlessDisallowState(NetDataReader reader)
@@ -709,6 +875,17 @@ public static class BasisNetworkModeration
         SendAdminRequest(
             AdminRequestMode.SetGlobalHeadlessAudio,
             w => w.Put(headlessAudioOff));
+    }
+
+    /// <summary>
+    /// Admin: enable or disable client error/exception reporting server-wide. Persisted to
+    /// config.xml and broadcast to every client.
+    /// </summary>
+    public static void SetGlobalCrashReporting(bool enabled)
+    {
+        SendAdminRequest(
+            AdminRequestMode.SetGlobalCrashReporting,
+            w => w.Put(enabled));
     }
 
     /// <summary>

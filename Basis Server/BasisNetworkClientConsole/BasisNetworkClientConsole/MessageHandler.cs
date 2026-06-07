@@ -1,5 +1,4 @@
 using Basis.Network.Core;
-using BasisNetworkClient;
 using static SerializableBasis;
 
 namespace Basis.Network
@@ -11,16 +10,20 @@ namespace Basis.Network
             BNL.LogError($"Peer {peer.Id} disconnected.");
         }
 
-        public static void OnReceive(NetPeer peer, NetPacketReader reader, byte channel, DeliveryMethod method)
+        public static void OnReceive(ConsoleClientIdentity identity, NetPeer peer, NetPacketReader reader, byte channel, DeliveryMethod method)
         {
             if (peer.Id != 0) return;
 
             switch (channel)
             {
                 case BasisNetworkCommons.AuthIdentityChannel:
-                    AuthIdentityMessage(peer, reader, channel);
+                    AuthIdentityMessage(identity, peer, reader);
                     return; // already recycled inside
                 case BasisNetworkCommons.metaDataChannel:
+                    if (identity != null)
+                    {
+                        identity.Authenticated = true;
+                    }
                     break;
                 case BasisNetworkCommons.PlayerAvatarVeryLowChannel:
                 case BasisNetworkCommons.PlayerAvatarVeryLowAdditionalChannel:
@@ -43,21 +46,17 @@ namespace Basis.Network
             reader.Recycle();
         }
 
-        public static void AuthIdentityMessage(NetPeer peer, NetPacketReader Reader, byte channel)
+        public static void AuthIdentityMessage(ConsoleClientIdentity identity, NetPeer peer, NetPacketReader reader)
         {
-            BNL.Log("Validated Size " + Reader.AvailableBytes);
-            if (BasisDIDAuthIdentityClient.IdentityMessage(peer, Reader, out NetDataWriter Writer))
+            if (identity != null && identity.TryRespondToChallenge(reader, out NetDataWriter writer))
             {
-                BNL.Log("Sent Identity To Server!");
-                peer.Send(Writer, BasisNetworkCommons.AuthIdentityChannel, DeliveryMethod.ReliableOrdered);
-                Reader.Recycle();
+                peer.Send(writer, BasisNetworkCommons.AuthIdentityChannel, DeliveryMethod.ReliableOrdered);
             }
             else
             {
-                BNL.LogError("Failed Identity Message!");
-                Reader.Recycle();
+                BNL.LogError("Failed to respond to auth challenge!");
             }
-            BNL.Log("Completed");
+            reader.Recycle();
         }
     }
 }

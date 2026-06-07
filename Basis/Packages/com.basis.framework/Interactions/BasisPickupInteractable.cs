@@ -326,6 +326,7 @@ namespace Basis.Scripts.BasisSdk.Interactions
                     if (HighlightClone.TryGetComponent(out MeshRenderer meshRenderer))
                     {
                         meshRenderer.material = ColliderHighlightMat;
+                        BasisPickupHighlightColor.Register(meshRenderer);
                     }
                     else
                     {
@@ -376,6 +377,10 @@ namespace Basis.Scripts.BasisSdk.Interactions
             if (colliders != null && colliders.Length > 0 && HighlightClone)
             {
                 HighlightClone.SetActive(highlight);
+                if (highlight && HighlightClone.TryGetComponent(out MeshRenderer meshRenderer))
+                {
+                    BasisPickupHighlightColor.ApplyTo(meshRenderer);
+                }
             }
         }
 
@@ -581,7 +586,7 @@ namespace Basis.Scripts.BasisSdk.Interactions
                     RequiresUpdateLoop = false;
                     _pickupUseLastEffectiveState = false;
                     _pickupUsePendingReleaseAfterUI = false;
-                    // cleanup Desktop Manipulation since InputUpdate isnt run again till next pickup
+                    // cleanup Desktop Manipulation since InputUpdate isn't run again till next pickup
                     targetOffset = Vector3.zero;
                     if (pauseHead)
                     {
@@ -1027,6 +1032,10 @@ namespace Basis.Scripts.BasisSdk.Interactions
         {
             OnInteractStartEvent.RemoveListener(OnInteractionEventFired);
 
+            if (HighlightClone != null && HighlightClone.TryGetComponent(out MeshRenderer highlightRenderer))
+            {
+                BasisPickupHighlightColor.Unregister(highlightRenderer);
+            }
             Destroy(HighlightClone);
             if (asyncOperationHighlightMat.IsValid())
             {
@@ -1125,8 +1134,9 @@ namespace Basis.Scripts.BasisSdk.Interactions
 
             Vector3 offset = useMagicNumberHandOffset * BasisHeightDriver.ScaledToMatchValue;
 
-            hand.IncomingData.position = eye.IncomingData.position + eye.IncomingData.rotation * offset;
-            hand.IncomingData.rotation = eye.IncomingData.rotation * useMagicNumberHandRotation;
+            hand.SetIncoming(
+                eye.IncomingData.position + eye.IncomingData.rotation * offset,
+                eye.IncomingData.rotation * useMagicNumberHandRotation);
         }
 
         private void UpdateDominantHandValues()

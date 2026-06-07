@@ -3,6 +3,7 @@ using Basis.Scripts.BasisSdk.Helpers;
 using Basis.Scripts.BasisSdk.Interactions;
 using Basis.Scripts.BasisSdk.Players;
 using Basis.Scripts.Device_Management;
+using Basis.Scripts.Device_Management.Devices.Desktop;
 using Basis.Scripts.Drivers;
 using Basis.Scripts.Networking;
 using System;
@@ -19,7 +20,7 @@ using UnityEngine.Rendering.Universal;
 /// post-processing integration (Tonemapping/DoF/Bloom/Color), and UI plumbing.
 /// Extends <see cref="BasisHandHeldCameraInteractable"/> for pin/fly modes.
 /// </summary>
-public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
+public partial class BasisHandHeldCamera : BasisHandHeldCameraInteractable
 {
     [Header("Camera Components")]
     /// <summary>URP camera data (AA, stack, etc.).</summary>
@@ -109,6 +110,10 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
     /// <summary>Shader path used to initialize <see cref="clearMaterial"/>.</summary>
     private const string CLEAR_SHADER_PATH = "Unlit/Color";
 
+    /// <summary>Number of handheld cameras currently out. The desktop reticle is suppressed
+    /// while this is greater than zero and restored when the last camera closes.</summary>
+    private static int _activeHandHeldCount;
+
     /// <summary>Folder where screenshots are written (platform-dependent).</summary>
     private string picturesFolder;
 
@@ -127,13 +132,19 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
     /// </summary>
     public new async void Awake()
     {
+        // Take the desktop reticle down immediately on bring-out — before the awaits below —
+        // destroyed rather than hidden, and restored when the last camera closes. Ref-counted
+        // for multi-camera setups; no-op in VR. Done synchronously so it can't race OnDestroy.
+        _activeHandHeldCount++;
+        ApplyReticleSuppression();
+
         InitializeCameraSettings();
         InitializeMaterial();
         InitializeMeshRendererCheck();
         await InitializeUI();
         InitializeTonemapping();
         InitializeDepthOfField();
-        InitalizeVolumetrics();
+        InitializeVolumetrics();
         InitializeFolders();
         await HandHeld.SaveSettings();
         SetupUILayerMask();
@@ -147,6 +158,11 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
         BasisDeviceManagement.OnBootModeChanged += OnBootModeChanged;
         BasisLocalCameraDriver.RenderSettingsApplied += SyncBackgroundFromMainCamera;
 
+        if (BasisLocalCameraDriver.HasInstance)
+        {
+            BasisLocalCameraDriver.Instance.ExitThirdPerson();
+        }
+
         // Notify network that PIP camera was created
         if (BasisNetworkConnection.LocalPlayerPeer != null)
         {
@@ -154,7 +170,7 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
             BasisNetworkPIPCameraDriver.SendPIPState(true, pipPos, pipRot);
         }
     }
-    public void InitalizeVolumetrics()
+    public void InitializeVolumetrics()
     {
 #if Basis_VOLUMETRIC_SUPPORTED
         if (MetaData.Profile.TryGet(out MetaData.VolumetricFogVolume))
@@ -175,16 +191,22 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
             BasisNetworkPIPCameraDriver.SendPIPState(false, Vector3.zero, Quaternion.identity);
         }
 
+        // Camera is closing: drop the ref count and lift reticle suppression once the
+        // last camera is gone, so it returns if the user still wants it.
+        _activeHandHeldCount = Mathf.Max(0, _activeHandHeldCount - 1);
+        ApplyReticleSuppression();
+
         string myLoadedNetId = gameObject.name;
         UnRegisterLoadedNetID(myLoadedNetId);
 
         UnsubscribeMeshRendererCheck();
         ReleaseRenderTexture();
+        if (pooledScreenshot != null) { Destroy(pooledScreenshot); pooledScreenshot = null; }
+        if (actualMaterial != null) { Destroy(actualMaterial); actualMaterial = null; }
 
         if (HandHeld != null)
         {
             HandHeld.ReleaseUILock(); // we should release locks if for whatever reason we get destroyed
-            await HandHeld.SaveSettings();
         
         }
         
@@ -194,6 +216,11 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
         OnPickupUse.RemoveListener( OnPickupUseCapture );
 
         base.OnDestroy();
+
+        if (HandHeld != null)
+        {
+            await HandHeld.SaveSettings();
+        }
     }
 
     /// <summary>
@@ -204,6 +231,18 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
         SetResolution(PreviewCaptureWidth, PreviewCaptureHeight, AntialiasingQuality.Low);
         BasisDebug.Log($"[HandHeldCamera] Preview reset to {PreviewCaptureWidth}x{PreviewCaptureHeight} @ {AntialiasingQuality.Low}");
         captureCamera.targetTexture = renderTexture;
+    }
+
+    /// <summary>
+    /// Suppresses (destroys) or restores the desktop reticle based on how many handheld
+    /// cameras are currently out. No-op in VR, where there is no desktop eye/reticle.
+    /// </summary>
+    private static void ApplyReticleSuppression()
+    {
+        if (BasisDesktopEye.Instance != null)
+        {
+            BasisDesktopEye.Instance.Reticle?.SetSuppressed(_activeHandHeldCount > 0);
+        }
     }
 
     /// <summary>Initializes base camera properties (HDR, MSAA, physical cam, targets).</summary>
@@ -244,6 +283,7 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
     /// <summary>Instantiates a unique material used for the preview mesh.</summary>
     private void InitializeMaterial()
     {
+        if (actualMaterial != null) Destroy(actualMaterial);
         actualMaterial = Instantiate(Material);
     }
 
@@ -354,7 +394,10 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
         if (renderTexture == null || renderTexture.width != width || renderTexture.height != height || renderTexture.format != RenderTextureFormat)
         {
             if (renderTexture != null)
+            {
                 renderTexture.Release();
+                Destroy(renderTexture);
+            }
 
             var descriptor = new RenderTextureDescriptor(width, height, RenderTextureFormat, depth)
             {
@@ -403,6 +446,8 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
 
         captureCamera.Render();
 
+        BasisHandHeldCameraPhotoMetadata.PhotoMetadata photoMetadata = BasisHandHeldCameraPhotoMetadata.CollectMetadata(captureCamera, transform);
+
         EnsureTexturePool(renderTexture.width, renderTexture.height, TextureFormat);
 
         AsyncGPUReadback.Request(renderTexture, 0, request =>
@@ -419,7 +464,7 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
             pooledScreenshot.Apply(false);
 
             SetNormalAfterCapture();
-            SaveScreenshotAsync(pooledScreenshot);
+            SaveScreenshotAsync(pooledScreenshot, photoMetadata);
         });
     }
 
@@ -428,6 +473,8 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
     {
         if (pooledScreenshot == null || pooledScreenshot.width != width || pooledScreenshot.height != height || pooledScreenshot.format != format)
         {
+            if (pooledScreenshot != null)
+                Destroy(pooledScreenshot);
             pooledScreenshot = new Texture2D(width, height, format, false);
         }
     }
@@ -480,7 +527,10 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
             AudioSource.PlayClipAtPoint(BasisDeviceManagement.Instance.CameraShutterSound, captureCamera.transform.position, SMModuleAudio.ActivePropVolume);
         }
 
-        StartCoroutine(TakeScreenshot(format, renderFormat));
+        if (capture360Enabled)
+            StartCoroutine(TakeScreenshot360(captureFormat == "EXR"));
+        else
+            StartCoroutine(TakeScreenshot(format, renderFormat));
         countdownText.text = ((int)delaySeconds).ToString();
     }
 
@@ -530,6 +580,12 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
             BasisNetworkPIPCameraDriver.SendShutterSound();
         }
 
+        if (capture360Enabled)
+        {
+            StartCoroutine(TakeScreenshot360(captureFormat == "EXR"));
+            return;
+        }
+
         StartCoroutine(TakeScreenshot(format, renderFormat));
     }
     bool IsOverridingDesktopView = false;
@@ -575,6 +631,8 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
             actualMaterial.mainTexture = renderTexture;
             actualMaterial.SetTexture("_MainTex", renderTexture);
         }
+
+        VisibilityFlag(Renderer != null && Renderer.isVisible);
     }
 
     /// <summary>UI callback to toggle recording view and apply <see cref="OverrideDesktopOutput"/>.</summary>
@@ -587,7 +645,9 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
     /// Encodes and writes the screenshot to disk asynchronously using the selected format.
     /// </summary>
     /// <param name="screenshot">CPU-side texture to encode.</param>
-    public async void SaveScreenshotAsync(Texture2D screenshot)
+    public void SaveScreenshotAsync(Texture2D screenshot) => SaveScreenshotAsync(screenshot, null);
+
+    public async void SaveScreenshotAsync(Texture2D screenshot, BasisHandHeldCameraPhotoMetadata.PhotoMetadata photoMetadata)
     {
         string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
         string extension = captureFormat == "EXR" ? "exr" : "png";
@@ -597,6 +657,9 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
         byte[] imageData = captureFormat == "EXR"
             ? screenshot.EncodeToEXR(Texture2D.EXRFlags.CompressZIP)
             : screenshot.EncodeToPNG();
+
+        if (photoMetadata != null)
+            imageData = BasisHandHeldCameraPhotoMetadata.Embed(imageData, captureFormat, photoMetadata, screenshot.width, screenshot.height);
 
         await File.WriteAllBytesAsync(path, imageData);
     }
@@ -661,7 +724,11 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
     private void ReleaseRenderTexture()
     {
         if (renderTexture != null)
+        {
             renderTexture.Release();
+            Destroy(renderTexture);
+            renderTexture = null;
+        }
     }
 
     private async void UnRegisterLoadedNetID(string myLoadedNetId)
@@ -688,21 +755,14 @@ public class BasisHandHeldCamera : BasisHandHeldCameraInteractable
     /// </summary>
     private void VisibilityFlag(bool isVisible)
     {
-        if (!isVisible)
-        {
-            if (LastVisibilityState && BasisLocalPlayer.Instance != null)
-            {
-                captureCamera.enabled = false;
-                LastVisibilityState = false;
-            }
-        }
-        else
-        {
-            if (!LastVisibilityState && BasisLocalPlayer.Instance != null)
-            {
-                captureCamera.enabled = true;
-                LastVisibilityState = true;
-            }
-        }
+        if (BasisLocalPlayer.Instance == null)
+            return;
+
+        bool shouldRender = isVisible || IsOverridingDesktopView;
+        if (shouldRender == LastVisibilityState)
+            return;
+
+        captureCamera.enabled = shouldRender;
+        LastVisibilityState = shouldRender;
     }
 }

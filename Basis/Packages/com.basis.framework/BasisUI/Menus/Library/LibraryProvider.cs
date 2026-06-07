@@ -81,7 +81,7 @@ namespace Basis.BasisUI
 
         public override string Title => BasisLocalization.Get("menu.provider.library");
         public override string IconAddress => AddressableAssets.Sprites.Library;
-        public override int Order => 2; // after Mute
+        public override int Order => 15; // after Settings
         public override bool Hidden => false;
         private static protected bool IsProtected = false; // we use this to determine if the user is admin for admin related queries on the library provider
         public static BasisMenuPanel panel;
@@ -238,6 +238,10 @@ namespace Basis.BasisUI
             tabGroup.SetValue((int)_currentPage); // this will trigger the tab selection and associated content loading
 
             await RefreshCurrentTab(); // refresh the current active tab i.e what is defined by default above _currentPage
+
+            // The panel can be released while we await the refresh (e.g. the user closes
+            // the library menu); don't rebuild a panel that's already gone.
+            if (panel == null || panel.IsReleased) return;
 
             panel.Descriptor.ForceRebuild();
         }
@@ -453,7 +457,15 @@ namespace Basis.BasisUI
 
         public static PanelTabPage GetTabFromPage(Page page)
         {
-            return tabMap[page];
+            // tabMap is only populated while the menu is open, and its pages are Unity
+            // objects that may already be destroyed. Return null (rather than throwing
+            // KeyNotFoundException or handing back a destroyed object) so callers can
+            // simply null-check the result.
+            if (tabMap != null && tabMap.TryGetValue(page, out PanelTabPage tab) && tab != null)
+            {
+                return tab;
+            }
+            return null;
         }
 
         public static async Task RefreshTabAsync(Page page, bool clearSearch = false)
@@ -1545,6 +1557,8 @@ namespace Basis.BasisUI
         /// <returns></returns>
         public static async Task LoadSelectedItem(BasisDataStoreItemKeys.ItemKey item, BundledContentHolder.NetworkType networkType = BundledContentHolder.NetworkType.Local, bool persistence = false, bool modifyScale = false)
         {
+            await PersistServerProvidedItemOnLoad(item);
+
             // At this point the item should be fully loaded and ready to use. What happens next is up to you and your application needs.
             // For example, you could raise an event that other parts of your app listen for, or directly instantiate the loaded content if it's a prefab.
             //BasisDebug.Log($"Attempting to load selected item: {item.Url} item type {item.Mode} with network type {networkType} persistent = {persistence} modifyScale = {modifyScale}");
@@ -1574,6 +1588,32 @@ namespace Basis.BasisUI
             }
         }
 
+        /// <summary>
+        /// Copies a server-provided default-library item into the local key store the first time it is loaded.
+        /// </summary>
+        private static async Task PersistServerProvidedItemOnLoad(BasisDataStoreItemKeys.ItemKey item)
+        {
+            if (item == null || item.EmbeddedSettings.IsEmbedded) return;
+            if (!BasisServerProvidedItems.IsServerProvided(item)) return;
+
+            try
+            {
+                await BasisDataStoreItemKeys.AddNewKey(new BasisDataStoreItemKeys.ItemKey
+                {
+                    Mode = item.Mode,
+                    PlacementType = item.PlacementType,
+                    Url = item.Url,
+                    Pass = item.Pass,
+                    EmbeddedSettings = item.EmbeddedSettings,
+                    PinnedSettings = item.PinnedSettings,
+                });
+            }
+            catch (Exception ex)
+            {
+                BasisDebug.LogError(ex);
+            }
+        }
+
         #endregion
 
         #region InstantiatedListElement
@@ -1586,6 +1626,13 @@ namespace Basis.BasisUI
 
         private static void UpdateInstantiatedTab()
         {
+            // Spawn-registry change events can arrive after the library panel is closed
+            // or released (a networked item unloading after a server round-trip is the
+            // common case). The tab pages are destroyed by then but the static
+            // OnRegistryChanged subscription can still be live, so don't rebuild UI that
+            // no longer exists.
+            if (panel == null || panel.IsReleased) return;
+
             // get the data
             IReadOnlyCollection<BasisRuntimeSpawnRegistry.SpawnInstance> collections = BasisRuntimeSpawnRegistry.GetAll();
 
@@ -1738,6 +1785,7 @@ namespace Basis.BasisUI
 
             // get the page
             PanelTabPage page = GetTabFromPage(Page.Instantiated);
+            if (page == null) return; // tab missing or destroyed; nothing to rebuild
 
             // clear the page
             ClearTabContent(page.Descriptor.ContentParent);
@@ -1916,17 +1964,21 @@ namespace Basis.BasisUI
             itemTextInfo.Descriptor.SetHeight(50);
             itemTextInfo.Descriptor.SetWidth(400);
 
-            PanelButton selectItem = PanelButton.CreateNew(ButtonStyles.AcceptButton, itemListPanel.TabButtonParent);
-            selectItem.Descriptor.SetTitle(hasSelected ? BasisLocalization.Get("library.deselect") : BasisLocalization.Get("library.select"));
-            selectItem.SetSize(new Vector2(200, 60));
-
-            // determine if we can select this item
-            if (selectItem.Descriptor.gameObject.TryGetComponent<Button>(out Button selectButtonComponent))
+            if (itemKey.SpawnMethod == BasisRuntimeSpawnRegistry.SpawnMethod.Embedded)
             {
-                // for the moment disable selecting embedded items
-                selectButtonComponent.interactable = (itemKey.SpawnMode != BasisRuntimeSpawnRegistry.SpawnMode.Scene) && !(itemKey.SpawnMethod == BasisRuntimeSpawnRegistry.SpawnMethod.Embedded);
+                return;
             }
 
+            bool isScene = itemKey.SpawnMode == BasisRuntimeSpawnRegistry.SpawnMode.Scene;
+
+            PanelButton selectItem = PanelButton.CreateNew(ButtonStyles.AcceptButton, itemListPanel.TabButtonParent);
+            selectItem.Descriptor.SetTitle(string.Empty);
+            selectItem.SetIcon(AddressableAssets.Sprites.Select);
+            selectItem.SetSize(new Vector2(80, 80));
+            // Inset the icon so its strokes stay clear of the bevel — matches PE Image Simple Square's pattern.
+            selectItem.Descriptor.IconImage.rectTransform.sizeDelta = new Vector2(-30, -30);
+
+            selectItem.Descriptor.SetActive(!isScene);
             selectItem.OnClicked += async () =>
             {
                 if(hasSelected)
@@ -1947,15 +1999,12 @@ namespace Basis.BasisUI
             };
 
             PanelButton TeleportToItem = PanelButton.CreateNew(ButtonStyles.StandardButton, itemListPanel.TabButtonParent);
-            TeleportToItem.Descriptor.SetTitle(BasisLocalization.Get("library.teleportTo"));
-            TeleportToItem.SetSize(new Vector2(200, 60));
-            // dont let the teleport button work for scenes yet
-            if (TeleportToItem.Descriptor.gameObject.TryGetComponent<Button>(out Button teleportButtonComponent))
-            {
-                // if the item is embedded only allow an admin to interact
-                teleportButtonComponent.interactable = !(itemKey.SpawnMode == BasisRuntimeSpawnRegistry.SpawnMode.Scene);
-            }
+            TeleportToItem.Descriptor.SetTitle(string.Empty);
+            TeleportToItem.SetIcon(AddressableAssets.Sprites.TeleportTo);
+            TeleportToItem.SetSize(new Vector2(80, 80));
+            TeleportToItem.Descriptor.IconImage.rectTransform.sizeDelta = new Vector2(-30, -30);
 
+            TeleportToItem.Descriptor.SetActive(!isScene);
             TeleportToItem.OnClicked += () =>
             {
 
@@ -1985,8 +2034,10 @@ namespace Basis.BasisUI
             };
 
             PanelButton removeItem = PanelButton.CreateNew(ButtonStyles.CancelButton, itemListPanel.TabButtonParent);
-            removeItem.Descriptor.SetTitle(BasisLocalization.Get("library.remove"));
-            removeItem.SetSize(new Vector2(200, 60));
+            removeItem.Descriptor.SetTitle(string.Empty);
+            removeItem.SetIcon(AddressableAssets.Sprites.Trash);
+            removeItem.SetSize(new Vector2(80, 80));
+            removeItem.Descriptor.IconImage.rectTransform.sizeDelta = new Vector2(-30, -30);
 
             // only apply this to items that are spawned on the network
             if(itemKey.SpawnMethod == BasisRuntimeSpawnRegistry.SpawnMethod.Network)

@@ -43,6 +43,31 @@ namespace Basis.Network.Core
         public event OnNetworkError NetworkErrorEvent;
         public event OnPeerConnected PeerConnectedEvent;
         public event OnNetworkReceiveUnconnected NetworkReceiveUnconnectedEvent;
+
+        public void RaiseConnectionRequest(ConnectionRequest request)
+        {
+            ConnectionRequestEvent?.Invoke(request);
+        }
+
+        public void RaisePeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
+        {
+            PeerDisconnectedEvent?.Invoke(peer, disconnectInfo);
+        }
+
+        public void RaiseNetworkReceive(NetPeer peer, NetPacketReader reader, byte channel, DeliveryMethod deliveryMethod)
+        {
+            NetworkReceiveEvent?.Invoke(peer, reader, channel, deliveryMethod);
+        }
+
+        public void RaisePeerConnected(NetPeer peer)
+        {
+            PeerConnectedEvent?.Invoke(peer);
+        }
+
+        public void RaiseNetworkReceiveUnconnected(IPEndPoint remoteEndPoint, NetPacketReader reader)
+        {
+            NetworkReceiveUnconnectedEvent?.Invoke(remoteEndPoint, reader);
+        }
     }
 
     public interface ConnectionRequest
@@ -74,6 +99,8 @@ namespace Basis.Network.Core
         // avatar bundle compressor to size compressed payloads to fit one datagram.
         public int Mtu { get; }
 
+        public object Tag { get; set; }
+
         // public readonly NetStatistics Statistics;
     }
 
@@ -88,6 +115,20 @@ namespace Basis.Network.Core
             Start(IPAddress.Any, IPAddress.IPv6Any, SetPort);
         }
         public void Start(IPAddress IPv4Address, IPAddress IPv6Address, int SetPort);
+        public void StartManual()
+        {
+            StartManual(0);
+        }
+        public void StartManual(int SetPort)
+        {
+            StartManual(IPAddress.Any, IPAddress.IPv6Any, SetPort);
+        }
+        public void StartManual(IPAddress IPv4Address, IPAddress IPv6Address, int SetPort)
+            => throw new NotSupportedException("This transport does not support manual mode.");
+        public void PollEvents()
+            => throw new NotSupportedException("This transport does not support manual mode.");
+        public void ManualUpdate(float elapsedMilliseconds)
+            => throw new NotSupportedException("This transport does not support manual mode.");
         public void Stop();
         public Basis.Network.Core.NetPeer Connect(string sIP, int port, NetDataWriter Writer);
         public bool SendUnconnectedMessage(NetDataWriter writer, IPEndPoint remoteEndPoint);
@@ -99,6 +140,10 @@ namespace Basis.Network.Core
 
     public sealed partial class NetStatistics
     {
+        public NetStatistics()
+        {
+        }
+
         public long PacketsSent;
         public long PacketsReceived;
         public long BytesSent;
@@ -114,6 +159,20 @@ namespace Basis.Network.Core
 		internal byte channel;
 		internal DeliveryMethod method;
 #endif
+
+        public NetPacketReader()
+        {
+        }
+
+        public NetPacketReader(byte[] source, int offset, int maxSize, Action recycle) : base(source, offset, maxSize)
+        {
+            RecycleInternal = recycle;
+        }
+
+        public static NetPacketReader Create(byte[] source, int offset, int maxSize, Action recycle)
+        {
+            return new NetPacketReader(source, offset, maxSize, recycle);
+        }
 
         public void Recycle(bool IsOkTOHaveEmptyData = false)
         {

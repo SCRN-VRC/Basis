@@ -55,9 +55,9 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
         // Hot loops iterating ReceiversSnapshot can read Player.X directly without
         // a null check; only initialization, UI, or async-lookup paths that may
         // race a despawn need <see cref="TryGetPlayer"/> (the safe accessor).
-        [System.NonSerialized] internal BasisPlayer _player;
+        [System.NonSerialized] internal IBasisPlayer _player;
 
-        public BasisPlayer Player
+        public IBasisPlayer Player
         {
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
             get => _player;
@@ -71,7 +71,7 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
         /// Hot per-frame paths should read <see cref="Player"/> directly.
         /// </summary>
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-        public bool TryGetPlayer(out BasisPlayer player)
+        public bool TryGetPlayer(out IBasisPlayer player)
         {
             player = _player;
             return player != null;
@@ -99,7 +99,7 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
         // gather, etc.). Auto-property compiles to a get_playerId() method call
         // that Mono in the editor does not inline, showing up in the profiler as
         // a measurable per-call cost at 1k+ remotes. Subclasses still assign it
-        // directly (Receiver/Transmitter/UnInitalized constructors).
+        // directly (Receiver/Transmitter/UnInitialized constructors).
         public ushort playerId;
 
         // Compatibility for already-compiled Cilbox content that was built when
@@ -114,7 +114,7 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
         /// Used to sort the players UI by arrival order and to display "joined Xs ago".
         /// Captured here because the server doesn't send a join timestamp.
         /// </summary>
-        public float JoinTime = Time.realtimeSinceStartup;
+        public double JoinTime = Time.realtimeSinceStartupAsDouble;
         public Dictionary<byte, ServerAvatarDataMessageQueue> NextMessages = new Dictionary<byte, ServerAvatarDataMessageQueue>();
         public struct ServerAvatarDataMessageQueue
         {
@@ -247,11 +247,11 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
             BasisNetworkConnection.LocalPlayerPeer.Send(netDataWriter, BasisNetworkCommons.AvatarChannel, DeliveryMethod);
             BasisNetworkProfiler.AddToCounter(BasisNetworkProfilerCounter.AvatarDataMessage, netDataWriter.Length);
         }
-        public static bool AvatarToPlayer(BasisAvatar Avatar, out BasisPlayer BasisPlayer)
+        public static bool AvatarToPlayer(BasisAvatar Avatar, out IBasisPlayer BasisPlayer)
         {
             return BasisNetworkPlayers.AvatarToPlayer(Avatar, out BasisPlayer);
         }
-        public static bool PlayerToNetworkedPlayer(BasisPlayer BasisPlayer, out BasisNetworkPlayer BasisNetworkPlayer)
+        public static bool PlayerToNetworkedPlayer(IBasisPlayer BasisPlayer, out BasisNetworkPlayer BasisNetworkPlayer)
         {
             return BasisNetworkPlayers.PlayerToNetworkedPlayer(BasisPlayer, out BasisNetworkPlayer);
         }
@@ -490,33 +490,33 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
         // BasisNetworkManagement.SimulateNetworkApply (and SetFilteredHipsOverride).
         // Same reasoning as playerId: auto-property getters were showing up in
         // the profiler at scale because Mono editor builds don't inline them.
-        // Writes are still funneled through OverridenDestinationOfRoot /
+        // Writes are still funneled through OverriddenDestinationOfRoot /
         // ProvidedDestinationOfRoot, so the "private set" intent is preserved
         // by convention even though the field is technically writable.
-        public bool HasOverridenDestination = false;
-        public float3 OverridenPosition = float3.zero;
-        public Quaternion OverridenRotation = Quaternion.identity;
-        public void OverridenDestinationOfRoot(bool hasOverridenDestination)
+        public bool HasOverriddenDestination = false;
+        public float3 OverriddenPosition = float3.zero;
+        public Quaternion OverriddenRotation = Quaternion.identity;
+        public void OverriddenDestinationOfRoot(bool hasOverriddenDestination)
         {
             if (Player.IsLocal)
             {
-                BasisDebug.LogError("cant set root for localplayer use  BasisLocalPlayer.Instance.LocalRigDriver.SetOverrideUsage(HumanBodyBones.Hips, enabled);", BasisDebug.LogTag.Networking);
+                BasisDebug.LogError("can't set root for localplayer use  BasisLocalPlayer.Instance.LocalRigDriver.SetOverrideUsage(HumanBodyBones.Hips, enabled);", BasisDebug.LogTag.Networking);
             }
             else
             {
-                HasOverridenDestination = hasOverridenDestination;
+                HasOverriddenDestination = hasOverriddenDestination;
             }
         }
         public void ProvidedDestinationOfRoot(float3 Position,Quaternion Rotation)
         {
             if (Player.IsLocal)
             {
-                BasisDebug.LogError("cant set root for localplayer use BasisLocalPlayer.Instance.LocalRigDriver.SetOverrideData(Overidenbone, Position, Rotation);", BasisDebug.LogTag.Networking);
+                BasisDebug.LogError("can't set root for localplayer use BasisLocalPlayer.Instance.LocalRigDriver.SetOverrideData(Overriddenbone, Position, Rotation);", BasisDebug.LogTag.Networking);
             }
             else
             {
-                OverridenPosition = Position;
-                OverridenRotation = Rotation;
+                OverriddenPosition = Position;
+                OverriddenRotation = Rotation;
             }
         }
 

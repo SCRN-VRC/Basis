@@ -16,8 +16,15 @@ namespace Basis.Scripts.UI
         public BasisDeviceManagement BasisDeviceManagement;
         public List<BasisInput> Inputs;
         public bool HasEvent = false;
+        public const float TriggerReleaseThreshold = 0.5f;
 
-        public void Initalize()
+        private static bool IsTriggerDown(BasisInput input, bool wasDown)
+        {
+            float trigger = input.CurrentInputState.Trigger;
+            return wasDown ? trigger >= TriggerReleaseThreshold : trigger >= 1f;
+        }
+
+        public void Initialize()
         {
             BasisDeviceManagement = BasisDeviceManagement.Instance;
             if (!HasEvent)
@@ -28,7 +35,7 @@ namespace Basis.Scripts.UI
             AllInputDevices();
         }
 
-        public void OnDeInitalize()
+        public void OnDeInitialize()
         {
             if (HasEvent && BasisDeviceManagement != null)
             {
@@ -83,7 +90,7 @@ namespace Basis.Scripts.UI
 
                     bool hasActiveUITarget = input.BasisUIRaycast.WasCorrectLayer && input.BasisUIRaycast.HadRaycastUITarget;
 
-                    bool isDownThisFrame = input.CurrentInputState.Trigger == 1;
+                    bool isDownThisFrame = IsTriggerDown(input, eventData.WasLastDown);
 
                     // Track down-transition for deselection later
                     if (input.BasisUIRaycast.WasCorrectLayer)
@@ -184,7 +191,7 @@ namespace Basis.Scripts.UI
             // Always keep latest raycast, so movement / scroll / hover use up-to-date info
             currentEventData.pointerCurrentRaycast = raycastResult;
 
-            bool IsDownThisFrame = BaseInput.CurrentInputState.Trigger == 1;
+            bool IsDownThisFrame = IsTriggerDown(BaseInput, currentEventData.WasLastDown);
 
             Shader.SetGlobalVector(CursorPos, hit.worldHitPosition);
 
@@ -193,13 +200,22 @@ namespace Basis.Scripts.UI
             {
                 if (!currentEventData.WasLastDown)
                 {
-                    // First frame of this press: set pressPosition & press raycast
-                    currentEventData.pressPosition = hit.screenPosition;
-                    currentEventData.pointerPressRaycast = raycastResult;
+                    GameObject pressTarget = hit.graphic.gameObject;
+                    if (currentEventData.pointerEnter == pressTarget)
+                    {
+                        currentEventData.pressPosition = hit.screenPosition;
+                        currentEventData.pointerPressRaycast = raycastResult;
 
-                    CheckOrApplySelectedGameobject(hit, currentEventData);
-                    currentEventData.WasLastDown = true;
-                    EffectiveMouseDown(hit, currentEventData);
+                        CheckOrApplySelectedGameobject(hit, currentEventData);
+                        currentEventData.WasLastDown = true;
+                        EffectiveMouseDown(hit, currentEventData);
+                    }
+                    else
+                    {
+                        currentEventData.WasLastDown = true;
+                        currentEventData.eligibleForClick = false;
+                        currentEventData.pointerPress = null;
+                    }
                 }
             }
             // Button UP is handled in Simulate() based on trigger state
@@ -284,22 +300,27 @@ namespace Basis.Scripts.UI
                 ExecuteEvents.Execute(target, CurrentEventData, ExecuteEvents.pointerUpHandler);
             }
 
-            // Where did we "release"?
+            // Where did we "release"? Still needed for the drop handler below.
             GameObject releaseGameObject = CurrentEventData.pointerCurrentRaycast.gameObject;
-
-            GameObject pointerUpHandler = null;
-            if (releaseGameObject != null)
-            {
-                pointerUpHandler = ExecuteEvents.GetEventHandler<IPointerClickHandler>(releaseGameObject);
-            }
 
             var pointerDrag = CurrentEventData.pointerDrag;
 
-            if (target == pointerUpHandler && CurrentEventData.eligibleForClick && pointerUpHandler != null)
+            // Accept the click on release as long as the press began on a clickable
+            // element and is still click-eligible — even if the pointer has since
+            // drifted off it. The release no longer has to land back on the pressed
+            // element, which helps users whose hands move slightly between pressing
+            // and releasing the trigger (issue #826). A press that turned into a drag
+            // off its target clears eligibleForClick (see ProcessPointerButtonDrag),
+            // so dragging a scrollbar/slider still won't fire a stray click.
+            GameObject pressClickHandler = target != null
+                ? ExecuteEvents.GetEventHandler<IPointerClickHandler>(target)
+                : null;
+
+            if (pressClickHandler != null && CurrentEventData.eligibleForClick)
             {
                 BaseInput.PlayHaptic(0.1f, 1f, 0.5f);
                 // BaseInput.PlaySoundEffect("press", SMModuleAudio.ActiveMenusVolume / 80);
-                ExecuteEvents.Execute(target, CurrentEventData, ExecuteEvents.pointerClickHandler);
+                ExecuteEvents.Execute(pressClickHandler, CurrentEventData, ExecuteEvents.pointerClickHandler);
             }
             else if (CurrentEventData.dragging && pointerDrag != null && releaseGameObject != null)
             {

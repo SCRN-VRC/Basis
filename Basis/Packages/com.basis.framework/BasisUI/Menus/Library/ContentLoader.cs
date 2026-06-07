@@ -240,8 +240,13 @@ namespace Basis.BasisUI
                         finalScale = placementResult.spawnScale;
                         break;
                     case BundledContentHolder.PlacementType.SpawnInFrontOfPlayer:
-                        Vector3 playerPosReference = BasisLocalCameraDriver.Position;
-                        Vector3 forward = BasisLocalCameraDriver.Forward();
+                        // Spawn at the player's head ("eye height and in front of them", per the
+                        // PlacementType doc). HeadPosition/HeadForward equal the camera pose in
+                        // first-person, but in third-person they stay on the head bone instead of
+                        // the orbiting camera — otherwise the prop lands out where the third-person
+                        // camera is rather than in front of the player.
+                        Vector3 playerPosReference = BasisLocalCameraDriver.HeadPosition;
+                        Vector3 forward = BasisLocalCameraDriver.HeadForward();
 
                         finalPos = EmbeddedItems.GetOffsetForEmbeddedItem(item, playerPosReference, forward);
                         finalRot = Quaternion.LookRotation(forward, Vector3.up);
@@ -301,7 +306,7 @@ namespace Basis.BasisUI
                                         BasisDebug.Log($"{item.Url} already exists in the scene!");
 
                                         // lets delete it
-                                        // if the gameobject is not null then lets remove its registery
+                                        // if the gameobject is not null then lets remove its registry
                                         bool success = await BasisRuntimeSpawnRegistry.RemoveByLoadedNetId(singleInstance.LoadedNetID);
                                         if (success)
                                         {
@@ -317,9 +322,8 @@ namespace Basis.BasisUI
                                 }
                                 else
                                 {
-                                    AsyncOperationHandle<GameObject> op = Addressables.LoadAssetAsync<GameObject>(item.Url);
-                                    GameObject CreatedObject = op.WaitForCompletion();
-                                    GameObject instance = GameObject.Instantiate(CreatedObject, finalPos, finalRot, parentTarget);
+                                    AsyncOperationHandle<GameObject> op = Addressables.InstantiateAsync(item.Url, finalPos, finalRot, parentTarget);
+                                    GameObject instance = op.WaitForCompletion();
                                     BasisRuntimeSpawnRegistry.AddGameObject(
                                         item.Url,
                                         instance.name,
