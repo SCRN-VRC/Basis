@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
+using Basis.Scripts.BasisSdk.Players;
 using HVR.Basis.Comms;
 using UnityEngine;
 
@@ -15,8 +17,8 @@ namespace HVR.Vixxy
 
         [SerializeField] internal HVRVixxyControl control;
 
-        // [SerializeField] internal HVRVixxyRememberScope remember = HVRVixxyRememberScope.RememberAcrossAvatars;
-        // [SerializeField] internal string rememberTag = "";
+        [SerializeField] internal HVRVixxyRememberScope remember = HVRVixxyRememberScope.RememberInThisAvatar;
+        [SerializeField] internal string rememberTag = "";
 
         private float _value;
         private HVRAvatarComms _comms;
@@ -49,11 +51,53 @@ namespace HVR.Vixxy
             control = TryResolveActualControl(out var actualControl) ? actualControl : null;
 
             _value = control != null ? control.defaultValue : 0f;
+
+            if (control != null && isActiveAndEnabled) StartCoroutine(RestoreNextFrame());
         }
 
         public void OnHVRReadyBothAvatarAndNetwork(bool isWearer)
         {
             if (!isWearer) return;
+        }
+
+        private IEnumerator RestoreNextFrame()
+        {
+            yield return null;
+            if (control == null) yield break;
+
+            var saved = 0f;
+            var found = TryResolvePersistenceKey(out var key) && HVRVixxyPersistentStore.TryGet(key, out saved);
+            if (found)
+            {
+                _value = saved;
+                var addressId = control.IsInitialized ? control.AddressId : HVRAddress.AddressToId(control.CalculateAddress());
+                _comms.VariableStore.SubmitOrDefineDefaultValue(addressId, saved);
+            }
+        }
+
+        private bool TryResolvePersistenceKey(out string key)
+        {
+            key = null;
+            if (control == null) return false;
+
+            var address = control.IsInitialized ? control.Address : control.CalculateAddress();
+
+            switch (remember)
+            {
+                case HVRVixxyRememberScope.RememberInThisAvatar:
+                    if (string.IsNullOrEmpty(BasisLocalPlayer.CurrentAvatarUniqueID)) return false;
+                    key = $"avatar:{BasisLocalPlayer.CurrentAvatarUniqueID}|{address}";
+                    return true;
+                case HVRVixxyRememberScope.RememberInThisTag:
+                    if (string.IsNullOrEmpty(rememberTag)) return false;
+                    key = $"tag:{rememberTag}";
+                    return true;
+                case HVRVixxyRememberScope.RememberAcrossAvatars:
+                    key = $"global:{address}";
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         public string ResolveTitle()
@@ -110,6 +154,11 @@ namespace HVR.Vixxy
             {
                 var actualAddress = control.IsInitialized ? control.AddressId : HVRAddress.AddressToId(control.CalculateAddress());
                 _comms.VariableStore.SubmitOrDefineDefaultValue(actualAddress, _value);
+
+                if (TryResolvePersistenceKey(out var key))
+                {
+                    HVRVixxyPersistentStore.Set(key, _value, control.defaultValue);
+                }
             }
         }
 

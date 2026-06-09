@@ -53,7 +53,7 @@ namespace Basis.BasisUI
         {
             if (BasisMainMenu.ActiveMenuTitle == Title)
             {
-                BasisMainMenu.Instance.ActiveMenu.ReleaseInstance();
+                BasisMainMenu.CloseActivePanel();
                 return;
             }
 
@@ -61,11 +61,12 @@ namespace Basis.BasisUI
                 new BasisMenuPanel.PanelData
                 {
                     Title = this.Title,
-                    PanelSize = new Vector2(440, 720),
+                    PanelSize = new Vector2(440, 820),
                     PanelPosition = new Vector3(530, -150, 0),
                 },
                 BasisMenuPanel.PanelStyles.Page);
             BoundButton?.BindActiveStateToAddressablesInstance(panel);
+            panel.OnInstanceReleased += CancelActiveCalibration;
 
             RectTransform container = panel.Descriptor.ContentParent;
 
@@ -75,6 +76,7 @@ namespace Basis.BasisUI
             Button = PanelButton.CreateNew(PanelButton.ButtonStyles.Default, container);
             Button.OnClicked += Calibrate;
             Button.Descriptor.SetTitle(BasisLocalization.Get("calibration.calibrate"));
+            Button.Descriptor.SetTooltip(BasisLocalization.Get("calibration.calibrate.tooltip"));
 
             HeightDescription = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
             HeightDescription.SetTitle(BasisLocalization.Get("calibration.additionalHeight"));
@@ -86,25 +88,51 @@ namespace Basis.BasisUI
             var MinusButton = PanelButton.CreateNew(Description.ContentParent);
             MinusButton.OnClicked += DecreasePlayerSize;
             MinusButton.Descriptor.SetTitle(BasisLocalization.Get("calibration.decreaseHeight"));
+            MinusButton.Descriptor.SetTooltip(BasisLocalization.Get("calibration.decreaseHeight.tooltip"));
 
             var PlusButton = PanelButton.CreateNew(Description.ContentParent);
             PlusButton.OnClicked += IncreasePlayerSize;
             PlusButton.Descriptor.SetTitle(BasisLocalization.Get("calibration.increaseHeight"));
+            PlusButton.Descriptor.SetTooltip(BasisLocalization.Get("calibration.increaseHeight.tooltip"));
+
+            // Avatar scale
+            var customScaleToggle = PanelToggle.CreateNewEntry(container);
+            customScaleToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.customScale"));
+            customScaleToggle.Descriptor.SetTooltip(BasisLocalization.Get("calibration.customScale.tooltip"));
+            customScaleToggle.AssignBinding(BasisSettingsDefaults.CustomScale);
+
+            var avatarScaleSlider = PanelSlider.CreateAndBind(
+                container,
+                PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("settings.bodyTracking.avatarHeightScale"), 0.1f, 5f, false, 2, ValueDisplayMode.Meters),
+                BasisSettingsDefaults.SelectedScale);
+            if (avatarScaleSlider != null)
+            {
+                avatarScaleSlider.Descriptor.SetTooltip(FormatScaleMeters(avatarScaleSlider.Value));
+                avatarScaleSlider.OnValueChanged += value => avatarScaleSlider.Descriptor.SetTooltip(FormatScaleMeters(value));
+                avatarScaleSlider.gameObject.SetActive(BasisSettingsDefaults.CustomScale.RawValue);
+                customScaleToggle.OnValueChanged += visible =>
+                {
+                    avatarScaleSlider.gameObject.SetActive(visible);
+                    layout.ForceRebuild();
+                };
+            }
 
             // Pitch calibration toggle
             _pitchToggleButton = PanelButton.CreateNew(PanelButton.ButtonStyles.Default, container);
             _pitchToggleButton.OnClicked += TogglePitchCalibration;
+            _pitchToggleButton.Descriptor.SetTooltip(BasisLocalization.Get("calibration.pitchLabel.tooltip"));
             UpdatePitchToggleLabel();
 
             // Navigate to Body Tracking settings
             var bodyTrackingSettingsButton = PanelButton.CreateNew(PanelButton.ButtonStyles.Default, container);
             bodyTrackingSettingsButton.Descriptor.SetTitle(BasisLocalization.Get("calibration.bodyTrackingSettings"));
+            bodyTrackingSettingsButton.Descriptor.SetTooltip(BasisLocalization.Get("calibration.bodyTrackingSettings.tooltip"));
             bodyTrackingSettingsButton.OnClicked += () => SettingsProvider.OpenBodyTrackingTab();
 
             // Reset Calibration (restores defaults for calibration-only state, including hidden pitch data)
             var resetButton = PanelButton.CreateNew(PanelButton.ButtonStyles.Default, container);
             resetButton.Descriptor.SetTitle(BasisLocalization.Get("calibration.reset"));
-            resetButton.Descriptor.SetDescription(BasisLocalization.Get("calibration.resetDescription"));
+            resetButton.Descriptor.SetTooltip(BasisLocalization.Get("calibration.resetDescription"));
             resetButton.OnClicked += PromptResetCalibration;
         }
 
@@ -163,6 +191,8 @@ namespace Basis.BasisUI
             BasisHeightDriver.ApplyScaleAndHeight();
         }
 
+        private static string FormatScaleMeters(float meters) => meters.ToString("0.##") + " m";
+
         private void TogglePitchCalibration()
         {
             SMModuleCalibration.PitchCalibrationEnabled = !SMModuleCalibration.PitchCalibrationEnabled;
@@ -180,12 +210,11 @@ namespace Basis.BasisUI
 
         public void Calibrate()
         {
-            if (BasisLocalAvatarDriver.CurrentlyTposing)
+            var localplayer = BasisLocalPlayer.Instance;
+            if (localplayer == null)
             {
                 return;
             }
-
-            var localplayer = BasisLocalPlayer.Instance;
             BasisUINeedsVisibleTrackers.Add(localplayer);
             // kept because you had it (even if unused)
             var localBoneDriver = localplayer.LocalBoneDriver;
@@ -254,6 +283,32 @@ namespace Basis.BasisUI
             _rightHand = null;
         }
 
+        private void CancelActiveCalibration()
+        {
+            UnsubscribeAll();
+            _pitchStep = PitchCalibrationStep.None;
+            _leftPressed = false;
+            _rightPressed = false;
+
+            if (BasisLocalPlayer.Instance == null)
+            {
+                return;
+            }
+
+            if (!_calibrated && BasisLocalAvatarDriver.CurrentlyTposing)
+            {
+                BasisLocalPlayer.Instance.LocalAvatarDriver.ResetAvatarAnimator();
+                BasisLocalPlayer.Instance.LocalRigDriver.RigLayer.active = true;
+            }
+
+            BasisUINeedsVisibleTrackers.Remove(BasisLocalPlayer.Instance);
+
+            if (Button != null && !Button.IsReleased)
+            {
+                Button.Descriptor.SetTitle(BasisLocalization.Get("calibration.calibrate"));
+            }
+        }
+
         private void OnTriggerChanged(BasisInput device)
         {
             // The calibration panel (and its Button) can be released while trigger
@@ -262,7 +317,7 @@ namespace Basis.BasisUI
             // dereference a destroyed Button.
             if (Button == null || Button.IsReleased)
             {
-                UnsubscribeAll();
+                CancelActiveCalibration();
                 return;
             }
 

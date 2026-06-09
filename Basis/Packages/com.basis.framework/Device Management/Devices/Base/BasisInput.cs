@@ -205,7 +205,6 @@ namespace Basis.Scripts.Device_Management.Devices
             {
                 BasisLocalPlayer.Instance.OnLatePollData += LatePollData;
                 BasisLocalPlayer.Instance.OnRenderPollData += RenderPollData;
-                BasisLocalPlayer.AfterSimulateOnRender.AddAction(98, ApplyFinalMovement);
                 HasEvents = true;
             }
             else
@@ -311,6 +310,7 @@ namespace Basis.Scripts.Device_Management.Devices
             BasisInverseOffsetData.InitialControlRotation = Control.OutgoingWorldData.rotation;
 
             Vector3 Offset = Control.OutgoingWorldData.position - BasisInverseOffsetData.TrackerPosition;
+            Control.CalibratedHorizontalLever = Vector3.ProjectOnPlane(Offset, Vector3.up).magnitude;
             Control.SetInverseOffset(
                 BasisInverseOffsetData.InitialInverseTrackRotation * (Offset),
                 BasisInverseOffsetData.InitialInverseTrackRotation * BasisInverseOffsetData.InitialControlRotation);
@@ -438,7 +438,6 @@ namespace Basis.Scripts.Device_Management.Devices
                 //deassign
                 BasisLocalPlayer.Instance.OnLatePollData -= LatePollData;
                 BasisLocalPlayer.Instance.OnRenderPollData -= RenderPollData;
-                BasisLocalPlayer.AfterSimulateOnRender.RemoveAction(98, ApplyFinalMovement);
                 HasEvents = false;
             }
         }

@@ -45,29 +45,30 @@ namespace Basis.BasisUI
         {
             var euroGroup = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
             euroGroup.SetTitle(BasisLocalization.Get("settings.developer.euroFilter"));
-            euroGroup.SetDescription(BasisLocalization.Get("settings.developer.euroFilter.description"));
 
-            PanelSlider.CreateEntryAndBind(
+            var minCutoffSlider = PanelSlider.CreateEntryAndBind(
                 euroGroup,
                 PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("settings.network.euro.minCutoff"), 0.01f, 10f, false, 2, ValueDisplayMode.Raw),
                 BasisSettingsDefaults.NetEuroMinCutoff);
+            minCutoffSlider.Descriptor.SetTooltip(BasisLocalization.Get("settings.network.euro.minCutoff.tooltip"));
 
-            PanelSlider.CreateEntryAndBind(
+            var betaSlider = PanelSlider.CreateEntryAndBind(
                 euroGroup,
                 PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("settings.network.euro.beta"), 0f, 10f, false, 2, ValueDisplayMode.Raw),
                 BasisSettingsDefaults.NetEuroBeta);
+            betaSlider.Descriptor.SetTooltip(BasisLocalization.Get("settings.network.euro.beta.tooltip"));
 
-            PanelSlider.CreateEntryAndBind(
+            var derivativeCutoffSlider = PanelSlider.CreateEntryAndBind(
                 euroGroup,
                 PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("settings.network.euro.derivativeCutoff"), 0.1f, 10f, false, 2, ValueDisplayMode.Raw),
                 BasisSettingsDefaults.NetEuroDerivativeCutoff);
+            derivativeCutoffSlider.Descriptor.SetTooltip(BasisLocalization.Get("settings.network.euro.derivativeCutoff.tooltip"));
         }
 
         public static void BuildNetworkStatsGroup(RectTransform container, out NetworkStatsPanelUpdater updater)
         {
             var netGroup = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
             netGroup.SetTitle(BasisLocalization.Get("settings.developer.netStats"));
-            netGroup.SetDescription(BasisLocalization.Get("settings.developer.netStats.description"));
 
             // Connection status
             var connectionField = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, netGroup.ContentParent);
@@ -103,6 +104,8 @@ namespace Basis.BasisUI
             var metaField = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, netGroup.ContentParent);
             metaField.SetTitle(BasisLocalization.Get("settings.network.serverMetadata"));
             metaField.SetDescription("...");
+
+            netGroup.IsolateAsCanvas();
 
             // Create a holder GO for the updater MonoBehaviour
             var holderGO = new GameObject("NetworkStatsUpdater");

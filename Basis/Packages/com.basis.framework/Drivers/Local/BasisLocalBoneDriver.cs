@@ -156,6 +156,14 @@ namespace Basis.Scripts.Drivers
         private readonly Vector3[][] _skeletonChainPositions = new Vector3[SkeletonChainCount][];
         private bool _skeletonChainsCreated;
 
+        // One text label per skeleton chain (the chain name), shown when the shared
+        // Gizmo Labels toggle is on. -1 = not created. Calibration-region labels live
+        // on each GizmoBone instead (one per role).
+        private readonly int[] _skeletonChainLabelIds = { -1, -1, -1, -1, -1 };
+        private const float LabelBaseScale = 0.02f;
+        private static readonly Color SkeletonLabelColor = Color.white;
+        private static readonly Color CalibrationLabelColor = new Color(1f, 0.85f, 0.4f, 1f);
+
         private static readonly BasisBoneTrackedRole[] SpineChainOrder =
         {
             BasisBoneTrackedRole.CenterEye,
@@ -244,7 +252,7 @@ namespace Basis.Scripts.Drivers
         /// <param name="parentMatrix">Parent transform matrix that seeds world-space computation.</param>
         public void Simulate(float deltaTime, Matrix4x4 parentMatrix)
         {
-            RunSimulation(parentMatrix, deltaTime, seedLastRunFromOutgoing: false);
+            RunSimulation(parentMatrix, deltaTime, seedLastRunFromOutgoing: false, instantSnap: false);
             // Gizmo drawing intentionally deferred to AfterSimulateOnRender —
             // running it here would read bone Transform.position before Unity's
             // Animator has updated bones for this frame, leaving the spheres a
@@ -258,14 +266,14 @@ namespace Basis.Scripts.Drivers
         /// <param name="parentMatrix">Parent transform matrix for world calculations.</param>
         public void SimulateWithoutLerp(Matrix4x4 parentMatrix)
         {
-            RunSimulation(parentMatrix, Time.deltaTime, seedLastRunFromOutgoing: true);
+            RunSimulation(parentMatrix, Time.deltaTime, seedLastRunFromOutgoing: true, instantSnap: true);
             if (SMModuleDebugOptions.UseGizmos)
             {
                 DrawGizmos();
             }
         }
 
-        private void RunSimulation(Matrix4x4 parentMatrix, float deltaTime, bool seedLastRunFromOutgoing)
+        private void RunSimulation(Matrix4x4 parentMatrix, float deltaTime, bool seedLastRunFromOutgoing, bool instantSnap)
         {
             if (ControlsLength == 0)
             {
@@ -285,12 +293,13 @@ namespace Basis.Scripts.Drivers
 
             float4x4 parentMatrix44 = parentMatrix;
             quaternion parentRot = parentMatrix.rotation;
+            byte snap = instantSnap ? (byte)1 : (byte)0;
 
             // Schedule: spine first; limb chains depend on spine; "other" depends on spine.
             JobHandle spineHandle = default;
             if (_spineChainIndices.IsCreated && _spineChainIndices.Length > 0)
             {
-                spineHandle = MakeJob(_spineChainIndices, parentMatrix44, parentRot, deltaTime).Schedule();
+                spineHandle = MakeJob(_spineChainIndices, parentMatrix44, parentRot, deltaTime, snap).Schedule();
             }
 
             JobHandle leftArmHandle = default;
@@ -301,23 +310,23 @@ namespace Basis.Scripts.Drivers
 
             if (_leftArmChainIndices.IsCreated && _leftArmChainIndices.Length > 0)
             {
-                leftArmHandle = MakeJob(_leftArmChainIndices, parentMatrix44, parentRot, deltaTime).Schedule(spineHandle);
+                leftArmHandle = MakeJob(_leftArmChainIndices, parentMatrix44, parentRot, deltaTime, snap).Schedule(spineHandle);
             }
             if (_rightArmChainIndices.IsCreated && _rightArmChainIndices.Length > 0)
             {
-                rightArmHandle = MakeJob(_rightArmChainIndices, parentMatrix44, parentRot, deltaTime).Schedule(spineHandle);
+                rightArmHandle = MakeJob(_rightArmChainIndices, parentMatrix44, parentRot, deltaTime, snap).Schedule(spineHandle);
             }
             if (_leftLegChainIndices.IsCreated && _leftLegChainIndices.Length > 0)
             {
-                leftLegHandle = MakeJob(_leftLegChainIndices, parentMatrix44, parentRot, deltaTime).Schedule(spineHandle);
+                leftLegHandle = MakeJob(_leftLegChainIndices, parentMatrix44, parentRot, deltaTime, snap).Schedule(spineHandle);
             }
             if (_rightLegChainIndices.IsCreated && _rightLegChainIndices.Length > 0)
             {
-                rightLegHandle = MakeJob(_rightLegChainIndices, parentMatrix44, parentRot, deltaTime).Schedule(spineHandle);
+                rightLegHandle = MakeJob(_rightLegChainIndices, parentMatrix44, parentRot, deltaTime, snap).Schedule(spineHandle);
             }
             if (_otherChainIndices.IsCreated && _otherChainIndices.Length > 0)
             {
-                otherHandle = MakeJob(_otherChainIndices, parentMatrix44, parentRot, deltaTime).Schedule(spineHandle);
+                otherHandle = MakeJob(_otherChainIndices, parentMatrix44, parentRot, deltaTime, snap).Schedule(spineHandle);
             }
 
             JobHandle armsCombined = JobHandle.CombineDependencies(leftArmHandle, rightArmHandle);
@@ -334,7 +343,7 @@ namespace Basis.Scripts.Drivers
             worldHandle.Complete();
         }
 
-        private BasisBoneSimChainJob MakeJob(NativeArray<int> chain, float4x4 parentMatrix44, quaternion parentRot, float deltaTime)
+        private BasisBoneSimChainJob MakeJob(NativeArray<int> chain, float4x4 parentMatrix44, quaternion parentRot, float deltaTime, byte instantSnap)
         {
             return new BasisBoneSimChainJob
             {
@@ -344,6 +353,7 @@ namespace Basis.Scripts.Drivers
                 ParentMatrix = parentMatrix44,
                 ParentRotation = parentRot,
                 DeltaTime = deltaTime,
+                InstantSnap = instantSnap,
             };
         }
 
@@ -594,13 +604,30 @@ namespace Basis.Scripts.Drivers
         /// </summary>
         public void DrawGizmos()
         {
+            bool labels = SMModuleDebugOptions.UseGizmoLabels;
+            Vector3 camPos = BasisLocalCameraDriver.Position;
+            float labelScale = LabelBaseScale * Mathf.Max(0.01f, BasisHeightDriver.ScaledToMatchValue);
+
             if (SMModuleDebugOptions.UseSkeletonLines && _skeletonChainsCreated)
             {
                 for (int chainIdx = 0; chainIdx < SkeletonChainCount; chainIdx++)
                 {
                     UpdateSkeletonChainPositions(chainIdx);
                 }
+                if (labels)
+                {
+                    UpdateSkeletonChainLabels(camPos, labelScale);
+                }
+                else
+                {
+                    DestroySkeletonLabels();
+                }
             }
+            else
+            {
+                DestroySkeletonLabels();
+            }
+
             if (SMModuleDebugOptions.UseCalibrationSpheres
                 && GizmoBones.Count > 0
                 && BasisAvatarIKStageCalibration.TryGetCalibrationVisualizationFrame(
@@ -646,6 +673,80 @@ namespace Basis.Scripts.Drivers
                         worldPos,
                         bodyRot,
                         scale);
+
+                    if (labels)
+                    {
+                        Quaternion rot = BasisGizmoManager.BillboardRotation(worldPos, camPos);
+                        if (GizmoBone.LabelReference <= 0)
+                        {
+                            BasisGizmoManager.CreateTextGizmo($"CalibLabel_{GizmoBone.Control}",
+                                out GizmoBone.LabelReference, worldPos, GizmoBone.Control.ToString(), CalibrationLabelColor);
+                        }
+                        BasisGizmoManager.UpdateTextGizmo(GizmoBone.LabelReference, worldPos, rot, labelScale,
+                            GizmoBone.Control.ToString(), CalibrationLabelColor);
+                    }
+                    else if (GizmoBone.LabelReference > 0)
+                    {
+                        BasisGizmoManager.DestroyGizmo(GizmoBone.LabelReference);
+                        GizmoBone.LabelReference = -1;
+                    }
+                }
+            }
+            else
+            {
+                DestroyCalibrationLabels();
+            }
+        }
+
+        private void UpdateSkeletonChainLabels(Vector3 camPos, float labelScale)
+        {
+            for (int chainIdx = 0; chainIdx < SkeletonChainCount; chainIdx++)
+            {
+                Vector3[] positions = _skeletonChainPositions[chainIdx];
+                if (_skeletonChainIds[chainIdx] < 0 || positions == null || positions.Length == 0)
+                {
+                    if (_skeletonChainLabelIds[chainIdx] > 0)
+                    {
+                        BasisGizmoManager.DestroyGizmo(_skeletonChainLabelIds[chainIdx]);
+                        _skeletonChainLabelIds[chainIdx] = -1;
+                    }
+                    continue;
+                }
+
+                // Anchor on the chain's middle joint so the label rides the line.
+                Vector3 anchor = positions[positions.Length / 2];
+                string text = SkeletonChainNames[chainIdx];
+                if (_skeletonChainLabelIds[chainIdx] <= 0)
+                {
+                    BasisGizmoManager.CreateTextGizmo($"SkeletonLabel_{text}",
+                        out _skeletonChainLabelIds[chainIdx], anchor, text, SkeletonLabelColor);
+                }
+                Quaternion rot = BasisGizmoManager.BillboardRotation(anchor, camPos);
+                BasisGizmoManager.UpdateTextGizmo(_skeletonChainLabelIds[chainIdx], anchor, rot, labelScale, text, SkeletonLabelColor);
+            }
+        }
+
+        private void DestroySkeletonLabels()
+        {
+            for (int i = 0; i < SkeletonChainCount; i++)
+            {
+                if (_skeletonChainLabelIds[i] > 0)
+                {
+                    BasisGizmoManager.DestroyGizmo(_skeletonChainLabelIds[i]);
+                    _skeletonChainLabelIds[i] = -1;
+                }
+            }
+        }
+
+        private void DestroyCalibrationLabels()
+        {
+            for (int i = 0; i < GizmoBones.Count; i++)
+            {
+                GizmoBone gb = GizmoBones[i];
+                if (gb.LabelReference > 0)
+                {
+                    BasisGizmoManager.DestroyGizmo(gb.LabelReference);
+                    gb.LabelReference = -1;
                 }
             }
         }
@@ -861,6 +962,9 @@ namespace Basis.Scripts.Drivers
                     _skeletonChainIds[i] = -1;
                 }
             }
+            // The chain labels are anchored to the old joints — drop them too so the
+            // rebuild re-creates them against the fresh chain.
+            DestroySkeletonLabels();
 
             float lineWidth = 0.05f * size;
 
@@ -946,6 +1050,9 @@ namespace Basis.Scripts.Drivers
                 _skeletonChainIds[i] = -1;
                 _skeletonChainControls[i] = null;
                 _skeletonChainPositions[i] = null;
+                // GameObjects are already gone (manager pool wiped on master-off, or
+                // recreated on rebuild) — just drop the cached label IDs.
+                _skeletonChainLabelIds[i] = -1;
             }
             _skeletonChainsCreated = false;
         }
@@ -968,6 +1075,10 @@ namespace Basis.Scripts.Drivers
                 for (int i = 0; i < GizmoBones.Count; i++)
                 {
                     BasisGizmoManager.DestroyGizmo(GizmoBones[i].GizmoReference);
+                    if (GizmoBones[i].LabelReference > 0)
+                    {
+                        BasisGizmoManager.DestroyGizmo(GizmoBones[i].LabelReference);
+                    }
                 }
             }
             GizmoBones.Clear();
@@ -1140,6 +1251,7 @@ namespace Basis.Scripts.Drivers
         public class GizmoBone
         {
             public int GizmoReference;
+            public int LabelReference;   // text label (role name); 0/-1 = none
             public BasisBoneTrackedRole Control;
             public float ExpectedHeight;   // ratio: y / eyeHeight at the role's expected position
             public float ExpectedLateral;  // ratio: signed x / eyeHeight (+x = body right)
