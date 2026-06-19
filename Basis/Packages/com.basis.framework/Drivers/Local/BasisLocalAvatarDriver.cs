@@ -167,8 +167,6 @@ namespace Basis.Scripts.Drivers
 
             Calibration(player);
 
-            // Mapping is freshly re-detected and the avatar is in T-pose but still at its spawn
-            // orientation here — this is the frame the offset capture reads from.
             RecordCalibrationStage("TPose", player);
 
             // Capture T-pose bone rotations for network compression (while still in T-pose)
@@ -193,6 +191,8 @@ namespace Basis.Scripts.Drivers
 
             CollectHeadChopEntries(harvestedHeadChop);
 
+            player.AvatarTransform.rotation = player.transform.rotation;
+            player.LocalBoneDriver.SimulateAndApplyWithoutLerp(player);
             player.LocalRigDriver.SetBodySettings();
 
 
@@ -234,6 +234,8 @@ namespace Basis.Scripts.Drivers
             {
                 AddJiggleRigColliders(Mapping);
             }
+            // Avatar swap reuses the last genuine standing eye height (no live re-poll) so fit is stance-independent.
+            BasisHeightDriver.CapturePlayerHeight(recaptureEyeHeight: false);
             BasisHeightDriver.ApplyScaleAndHeight();
 
             RecordCalibrationStage("Final", player);
@@ -399,9 +401,6 @@ namespace Basis.Scripts.Drivers
             var localPlayer = BasisLocalPlayer.Instance;
             if (localPlayer?.BasisAvatar != null)
             {
-                // Use the authored/avatar-configured eye height here.
-                // This value is user-editable and survives avatar swap ordering,
-                // while rig/control data can be stale during recalibration.
                 return localPlayer.BasisAvatar.AvatarEyePosition.x;
             }
             else

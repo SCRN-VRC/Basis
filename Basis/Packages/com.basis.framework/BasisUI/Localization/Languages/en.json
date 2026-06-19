@@ -19,6 +19,10 @@
       "value": "Flip the avatar preview so it faces you like a mirror."
     },
     {
+      "key": "settings.general.cameraHud.tooltip",
+      "value": "VR only: spawns a grabbable, resizable screen by your handheld camera showing its view, while the camera is in direct-to-screen (recording) mode."
+    },
+    {
       "key": "settings.general.thirdPerson.tooltip",
       "value": "View your avatar from behind with a third-person desktop camera."
     },
@@ -225,6 +229,14 @@
     {
       "key": "settings.graphics.bloom.intensity.tooltip",
       "value": "How strong the glow effect is around bright lights."
+    },
+    {
+      "key": "settings.graphics.fog.override.tooltip",
+      "value": "Manually control the volumetric fog in the scene."
+    },
+    {
+      "key": "settings.graphics.fog.density.tooltip",
+      "value": "How thick the fog is. Zero turns the fog off."
     },
     {
       "key": "settings.graphics.cameraClip.override.tooltip",
@@ -599,6 +611,10 @@
       "value": "Keep elbows from bending the wrong way during arm collisions."
     },
     {
+      "key": "settings.bodyTracking.collideTrackedElbow.title.tooltip",
+      "value": "Let body collision push the elbow even when an elbow tracker is driving it."
+    },
+    {
       "key": "settings.bodyTracking.handCapsule.title.tooltip",
       "value": "Use a capsule shape instead of a point for hand collisions."
     },
@@ -715,14 +731,6 @@
       "value": "How far your body shifts backward as you crouch down."
     },
     {
-      "key": "settings.bodyTracking.hipTiltStabilization.title",
-      "value": "Hip Tilt Stabilization"
-    },
-    {
-      "key": "settings.bodyTracking.hipTiltStabilization.title.tooltip",
-      "value": "Reduces wobble from a hip tracker worn on the front or belly by keeping its yaw and borrowing lean from your torso. Side-of-hip mounts are auto-exempt. 0 = off."
-    },
-    {
       "key": "settings.bodyTracking.swingSmoothRate.title.tooltip",
       "value": "How quickly body swing motion settles; higher reacts faster."
     },
@@ -737,6 +745,14 @@
     {
       "key": "settings.bodyTracking.spineCcdRelax.title.tooltip",
       "value": "How loosely the spine solves; lower makes it follow more strictly."
+    },
+    {
+      "key": "settings.bodyTracking.spineTwistKeep.title.tooltip",
+      "value": "How much the lower back may twist to reach. Lower bends sideways instead of corkscrewing when your head is off to one side."
+    },
+    {
+      "key": "settings.bodyTracking.spineNeckTwistKeep.title.tooltip",
+      "value": "How much the neck may twist to follow your head. Higher lets the neck turn freely."
     },
     {
       "key": "settings.bodyTracking.chestArmSwingFactor.title.tooltip",
@@ -891,6 +907,14 @@
       "value": "Route pelvic twist through the spine for more lifelike turning."
     },
     {
+      "key": "settings.bodyTracking.anat.legSwivelSmoothing.title.tooltip",
+      "value": "Stop the legs twisting when you stand still."
+    },
+    {
+      "key": "settings.bodyTracking.anat.trackerBendNormal.title.tooltip",
+      "value": "Bend the knee the way your leg tracker is actually facing."
+    },
+    {
       "key": "settings.bodyTracking.debugInfo.tooltip",
       "value": "Show live body tracking measurements for troubleshooting."
     },
@@ -985,6 +1009,10 @@
     {
       "key": "trackerLinking.tuning.rotationHalfLife.tooltip",
       "value": "How much the paired tracker's rotation is smoothed to reduce jitter."
+    },
+    {
+      "key": "trackerLinking.tuning.calibrationTolerance.tooltip",
+      "value": "Widen every tracker's calibration accept zone. Raise this if a tracker won't bind during full-body calibration."
     },
     {
       "key": "settings.nameplates.show.tooltip",
@@ -1237,6 +1265,18 @@
     {
       "key": "settings.perf.colliders.slider.tooltip",
       "value": "Maximum number of physics colliders allowed per avatar."
+    },
+    {
+      "key": "settings.perf.jiggleFrustumCull.toggle.tooltip",
+      "value": "Skip jiggle collisions for colliders that are outside every camera's view."
+    },
+    {
+      "key": "settings.perf.jiggleDistanceCull.toggle.tooltip",
+      "value": "Skip jiggle collisions for colliders far from every camera."
+    },
+    {
+      "key": "settings.perf.jiggleDistanceCull.slider.tooltip",
+      "value": "Maximum distance from a camera at which jiggle collisions still run."
     },
     {
       "key": "settings.perf.cloth.toggle.tooltip",
@@ -1529,6 +1569,10 @@
     {
       "key": "settings.admin.title.whitelistOnly.tooltip",
       "value": "Allow only whitelisted players to connect to this server."
+    },
+    {
+      "key": "settings.admin.title.rejoinLockOnly.tooltip",
+      "value": "Lock the server to the players connected now — they can rejoin, but nobody new can join. Admins can still join; clears on restart."
     },
     {
       "key": "settings.admin.title.whitelistUuid.tooltip",
@@ -1831,6 +1875,10 @@
       "value": "Pair with another tracker. Calibration uses their midpoint."
     },
     {
+      "key": "trackerLinking.linkUnlinked",
+      "value": "(unlinked)"
+    },
+    {
       "key": "trackerLinking.roleOverrideLabel",
       "value": "Force role"
     },
@@ -1967,6 +2015,14 @@
       "value": "Temporal smoothing for the linked pair's fused rotation. Higher = smoother hips but more rotational lag; lower = snappier when the two trackers flex apart. 0 = no smoothing. Default: 0.08 s."
     },
     {
+      "key": "trackerLinking.tuning.calibrationTolerance",
+      "value": "Calibration Tolerance"
+    },
+    {
+      "key": "trackerLinking.tuning.calibrationTolerance.description",
+      "value": "Multiplies the size of every body-part accept zone used when matching trackers to roles during full-body calibration. Higher = more forgiving of unusual body proportions, high-mounted trackers, a wide stance, or an imperfect T-pose, at the cost of occasional mis-assignment. Default: 1."
+    },
+    {
       "key": "menu.exit.dialog.title",
       "value": "Basis VR"
     },
@@ -2011,6 +2067,26 @@
       "value": "Increase Height"
     },
     {
+      "key": "calibration.nudgeStandingHeight",
+      "value": "Nudge Standing Height"
+    },
+    {
+      "key": "calibration.nudgeStandingHeight.tooltip",
+      "value": "Manually raise or lower your calibrated standing height in small steps."
+    },
+    {
+      "key": "calibration.nudgeWarning",
+      "value": "Warning: nudging over 0.2 m can throw off tracker matching."
+    },
+    {
+      "key": "calibration.lockInGuides",
+      "value": "Show Lock-In Guides"
+    },
+    {
+      "key": "calibration.lockInGuides.tooltip",
+      "value": "While calibrating, show a shrinking sphere at each tracker's prime spot plus a foot-forward guide that turns green when the foot points forward and flat. Line trackers up before pulling the triggers."
+    },
+    {
       "key": "calibration.bodyTrackingSettings",
       "value": "Body Tracking Settings"
     },
@@ -2047,6 +2123,10 @@
       "value": "Username"
     },
     {
+      "key": "menu.servers.username.hint",
+      "value": "Enter a username to connect"
+    },
+    {
       "key": "menu.servers.connect",
       "value": "Connect"
     },
@@ -2060,7 +2140,7 @@
     },
     {
       "key": "menu.servers.ipAddress",
-      "value": "IP Address"
+      "value": "Server Address"
     },
     {
       "key": "menu.servers.port",
@@ -2327,6 +2407,10 @@
       "value": "{0} (You)"
     },
     {
+      "key": "menu.players.cannotSelectSelf",
+      "value": "This is you."
+    },
+    {
       "key": "menu.individualPlayer.player",
       "value": "Player"
     },
@@ -2413,6 +2497,18 @@
     {
       "key": "menu.individualPlayer.avatarLoadError",
       "value": "Avatar Load Error"
+    },
+    {
+      "key": "menu.individualPlayer.matchEyeHeight",
+      "value": "Match Eye Height"
+    },
+    {
+      "key": "menu.individualPlayer.matchEyeHeight.description",
+      "value": "Scale your avatar to match this player's current body scale ({0:0.###} m target eye height)."
+    },
+    {
+      "key": "menu.individualPlayer.matchEyeHeight.unavailable",
+      "value": "This player's current avatar eye height is not available yet."
     },
     {
       "key": "menu.individualPlayer.hideAvatar",
@@ -2597,6 +2693,10 @@
     {
       "key": "menu.individualPlayer.directConnection.disabledDialog.body",
       "value": "You have direct connections disabled in General settings. Enable them there to request a peer-to-peer link."
+    },
+    {
+      "key": "menu.individualPlayer.directConnection.serverLockedDialog.body",
+      "value": "Direct connections are disabled on this server by an admin."
     },
     {
       "key": "menu.individualPlayer.directConnection.accept",
@@ -3027,6 +3127,22 @@
       "value": "You are already in this avatar"
     },
     {
+      "key": "library.disabled.notConnected",
+      "value": "Connect to a server to use this."
+    },
+    {
+      "key": "library.disabled.embedded",
+      "value": "This item is embedded and can't be changed."
+    },
+    {
+      "key": "library.disabled.protected",
+      "value": "This item is protected and can only be removed by an admin."
+    },
+    {
+      "key": "library.disabled.local",
+      "value": "Local files only exist on your device, so they can't be shared or networked."
+    },
+    {
       "key": "library.load",
       "value": "Load"
     },
@@ -3083,6 +3199,10 @@
       "value": "Everyone (Instant)"
     },
     {
+      "key": "library.networkType.loadOnBoot",
+      "value": "Load on Boot"
+    },
+    {
       "key": "library.networkType.local.description",
       "value": "If the item is set to local, it will only be visible and interactive for you."
     },
@@ -3095,12 +3215,84 @@
       "value": "Downloads to all players, then spawns simultaneously once everyone is ready. Has a 5 minute timeout for slow connections."
     },
     {
+      "key": "library.networkType.loadOnBoot.description",
+      "value": "Loads this for you now and automatically every time you launch. Remove it from the Instantiated tab to stop it loading on startup."
+    },
+    {
       "key": "library.networkType.unknown.description",
       "value": "Unknown network type."
     },
     {
       "key": "library.instantiated.createdAgoBy",
       "value": "Created {0} ago by {1}"
+    },
+    {
+      "key": "library.instantiated.static.tooltip",
+      "value": "Not locked. Click to lock so no one can pick it up or move it (vehicles can't be driven). Creator or moderators only."
+    },
+    {
+      "key": "library.instantiated.static.lockedTooltip",
+      "value": "Locked — no one can move this item. Click to unlock. Moderators can click to make it admin-locked."
+    },
+    {
+      "key": "library.instantiated.static.adminTooltip",
+      "value": "Admin-locked — no one can move this item, and only a moderator can unlock it. Click to unlock."
+    },
+    {
+      "key": "library.instantiated.static.noPermission",
+      "value": "Only the item's creator or a moderator can lock this item."
+    },
+    {
+      "key": "library.instantiated.static.adminOnly",
+      "value": "This item is admin-locked; only a moderator can change it."
+    },
+    {
+      "key": "library.instantiated.select.tooltip",
+      "value": "Highlight this item in the world with a selection outline. Click again to clear it."
+    },
+    {
+      "key": "library.instantiated.teleport.tooltip",
+      "value": "Teleport yourself to this item."
+    },
+    {
+      "key": "library.instantiated.remove.tooltip",
+      "value": "Remove this item."
+    },
+    {
+      "key": "library.instantiated.icon.admin.tooltip",
+      "value": "Protected — only an admin can remove this item."
+    },
+    {
+      "key": "library.instantiated.icon.type.avatar.tooltip",
+      "value": "Avatar"
+    },
+    {
+      "key": "library.instantiated.icon.type.gameObject.tooltip",
+      "value": "Prop / game object"
+    },
+    {
+      "key": "library.instantiated.icon.type.scene.tooltip",
+      "value": "Scene / world"
+    },
+    {
+      "key": "library.instantiated.icon.method.embedded.tooltip",
+      "value": "Embedded — shipped with the build."
+    },
+    {
+      "key": "library.instantiated.icon.method.local.tooltip",
+      "value": "Local — spawned only on your client."
+    },
+    {
+      "key": "library.instantiated.icon.method.network.tooltip",
+      "value": "Networked — spawned for everyone."
+    },
+    {
+      "key": "library.instantiated.icon.persistent.tooltip",
+      "value": "Persistent — stays when the instance empties."
+    },
+    {
+      "key": "library.instantiated.icon.ephemeral.tooltip",
+      "value": "Temporary — removed when the instance empties."
     },
     {
       "key": "library.dialog.add.title",
@@ -3112,7 +3304,7 @@
     },
     {
       "key": "library.dialog.add.urlPlaceholder",
-      "value": "URL"
+      "value": "URL or local file path"
     },
     {
       "key": "library.dialog.add.passwordPlaceholder",
@@ -3120,7 +3312,7 @@
     },
     {
       "key": "library.dialog.add.urlDescription",
-      "value": "This should be a direct link to your BEE file."
+      "value": "A direct link to your BEE file, or the full path to a local .bee file on this device."
     },
     {
       "key": "library.dialog.add.addButton",
@@ -3423,6 +3615,18 @@
       "value": "Prevent sitting in seats placed in the world."
     },
     {
+      "key": "settings.general.disablePropPickup",
+      "value": "Disable Prop Pickup"
+    },
+    {
+      "key": "settings.general.disablePropPickup.tooltip",
+      "value": "Stop yourself from picking up props placed around the world."
+    },
+    {
+      "key": "settings.general.disablePropPickup.description",
+      "value": "Prevent picking up props placed in the world."
+    },
+    {
       "key": "settings.general.hud.title",
       "value": "HUD"
     },
@@ -3449,6 +3653,14 @@
     {
       "key": "settings.general.avatarPreviewMirror.description",
       "value": "Flip the avatar preview horizontally so it reads like a mirror."
+    },
+    {
+      "key": "settings.general.cameraHud",
+      "value": "Camera Preview Screen"
+    },
+    {
+      "key": "settings.general.cameraHud.description",
+      "value": "In VR, spawn a movable, resizable screen next to your handheld camera that shows its view while the camera is in direct-to-screen (recording) mode. Grab with both hands to resize."
     },
     {
       "key": "settings.general.camera.title",
@@ -3561,6 +3773,22 @@
     {
       "key": "settings.audio.mixer.description",
       "value": "Control individual channel volumes."
+    },
+    {
+      "key": "settings.audio.output.title",
+      "value": "Output"
+    },
+    {
+      "key": "settings.audio.outputDevice",
+      "value": "Output Device"
+    },
+    {
+      "key": "settings.audio.outputDevice.tooltip",
+      "value": "Routes this app's audio to a specific playback device without changing your system default. Choose Default to follow the system device."
+    },
+    {
+      "key": "settings.audio.outputDevice.systemDefault",
+      "value": "Default (System Setting)"
     },
     {
       "key": "settings.audio.mainVolume",
@@ -3825,6 +4053,22 @@
     {
       "key": "settings.graphics.bloom.intensity",
       "value": "Bloom Intensity"
+    },
+    {
+      "key": "settings.graphics.fog.title",
+      "value": "Volumetric Fog"
+    },
+    {
+      "key": "settings.graphics.fog.override",
+      "value": "Override Volumetric Fog"
+    },
+    {
+      "key": "settings.graphics.fog.override.description",
+      "value": "Override the scene volumetric fog."
+    },
+    {
+      "key": "settings.graphics.fog.density",
+      "value": "Fog Density"
     },
     {
       "key": "settings.graphics.cameraClip.title",
@@ -4184,15 +4428,15 @@
     },
     {
       "key": "settings.bodyTracking.seatedMode",
-      "value": "Seated / Standing Mode"
+      "value": "Seated / Standing"
     },
     {
       "key": "settings.bodyTracking.ikMode",
-      "value": "Full Body IK Mode"
+      "value": "Avatar Scaling"
     },
     {
       "key": "settings.bodyTracking.spineLockMode",
-      "value": "Spine Lock Mode"
+      "value": "Spine Lock"
     },
     {
       "key": "settings.bodyTracking.customScale",
@@ -4229,6 +4473,158 @@
     {
       "key": "settings.bodyTracking.disableAnimFbt",
       "value": "Disable Animations in FBT"
+    },
+    {
+      "key": "settings.bodyTracking.butterflyKnees",
+      "value": "Butterfly Knees"
+    },
+    {
+      "key": "settings.bodyTracking.butterflyKnees.tooltip",
+      "value": "With foot trackers (and no knee trackers), tilt your feet outward and pull them in to let your knees fall open — both laying on your back and sitting upright (cross-legged). Default: On"
+    },
+    {
+      "key": "settings.bodyTracking.butterflyKneeMaxOpen.title",
+      "value": "Butterfly Knee Max Open (deg)"
+    },
+    {
+      "key": "settings.bodyTracking.butterflyKneeMaxOpen.title.tooltip",
+      "value": "How far the knees may fall open in the butterfly pose, clamped to the hip's natural range. Default: 60"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.title",
+      "value": "Playspace Mover"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.description",
+      "value": "Grab and drag your play space with your VR controllers."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.enable",
+      "value": "Enable Playspace Mover"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.enable.tooltip",
+      "value": "Hold the chosen controller input to drag yourself through the world. VR only; passes through geometry."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input",
+      "value": "Activation Input"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.tooltip",
+      "value": "Which controller input you hold to grab the play space."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.grip",
+      "value": "Grip"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.trigger",
+      "value": "Trigger"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.primary",
+      "value": "Primary Button"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.secondary",
+      "value": "Secondary Button"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.hand",
+      "value": "Controller"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.hand.tooltip",
+      "value": "Which controller(s) can grab. Both lets you use two hands at once to rotate and scale."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.hand.both",
+      "value": "Both"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.hand.left",
+      "value": "Left"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.hand.right",
+      "value": "Right"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.rotate",
+      "value": "Allow Rotate (two hands)"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.rotate.tooltip",
+      "value": "When grabbing with both hands, turn yourself by twisting your hands (yaw only, horizon stays level)."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.scale",
+      "value": "Allow Scale (two hands)"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.scale.tooltip",
+      "value": "When grabbing with both hands, resize yourself by spreading or closing your hands."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.vertical",
+      "value": "Allow Vertical (up / down)"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.vertical.tooltip",
+      "value": "Let the grab move you up and down as well as sideways, and stay at the height you let go of (like OVR Advanced Settings' Space Drag). Use the Reset button to return to the floor."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.flip",
+      "value": "Flip Playspace"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.flip.tooltip",
+      "value": "Rotate your whole view (and avatar) by the amount below so the world appears tipped or upside down. Your collision and walking stay upright. Turn this off or press Reset to return."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.flipAxis",
+      "value": "Flip Axis"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.flipAxis.tooltip",
+      "value": "Which way to tip: Roll (sideways / upside down), Pitch (front-back), or Yaw (spin your view left-right)."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.flipAxis.roll",
+      "value": "Roll (upside down)"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.flipAxis.pitch",
+      "value": "Pitch (front / back)"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.flipAxis.yaw",
+      "value": "Yaw (spin)"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.flipAngle",
+      "value": "Flip Amount"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.flipAngle.tooltip",
+      "value": "How far to rotate, 0 to 360 degrees. 180 is fully upside down."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.rotateInput",
+      "value": "Rotation Input"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.rotateInput.tooltip",
+      "value": "Hold this input on both controllers to rotate (yaw). Use a different input than the activation input so rotate and scale stay separate."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.reset",
+      "value": "Reset Playspace Offset"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.reset.tooltip",
+      "value": "Undo the play space drag and return to where you were. Your normal walking is kept."
     },
     {
       "key": "settings.bodyTracking.debugInfo",
@@ -4348,19 +4744,19 @@
     },
     {
       "key": "settings.bodyTracking.lowerArmTwist.title",
-      "value": "Forearm Twist Fraction"
+      "value": "Forearm Twist Distribution"
     },
     {
       "key": "settings.bodyTracking.lowerArmTwist.description",
-      "value": "Fraction of the wrist's roll absorbed by the forearm twist bone. Default: 0.5"
+      "value": "How evenly the forearm twist bone spreads the wrist's roll along the bone. 1 = even gradient (no wrist pinch); 0 = off. Default: 1.0"
     },
     {
       "key": "settings.bodyTracking.upperArmTwist.title",
-      "value": "Upper Arm Twist Fraction"
+      "value": "Upper Arm Twist Distribution"
     },
     {
       "key": "settings.bodyTracking.upperArmTwist.description",
-      "value": "Fraction of the elbow's roll absorbed by the upper arm twist bone. Default: 0.3"
+      "value": "How evenly the upper arm twist bone spreads the elbow's roll along the bone. 1 = even gradient; 0 = off. Default: 1.0"
     },
     {
       "key": "settings.bodyTracking.section.anatomy.title",
@@ -4401,6 +4797,22 @@
     {
       "key": "settings.bodyTracking.anat.pelvicTwistRouting.description",
       "value": "Forces hip-to-chest twist to distribute 75% upper chest / 25% spine — the real anatomical ratio for axial rotation."
+    },
+    {
+      "key": "settings.bodyTracking.anat.legSwivelSmoothing.title",
+      "value": "Leg Swivel Smoothing"
+    },
+    {
+      "key": "settings.bodyTracking.anat.legSwivelSmoothing.description",
+      "value": "Damps the leg's roll about the hip-to-foot axis so a still, near-straight standing leg doesn't twist with tracking jitter. Real turning still tracks without lag."
+    },
+    {
+      "key": "settings.bodyTracking.anat.trackerBendNormal.title",
+      "value": "Tracker Bend Direction"
+    },
+    {
+      "key": "settings.bodyTracking.anat.trackerBendNormal.description",
+      "value": "Bends the knee in the plane your lower-leg tracker is actually facing instead of a fixed body-relative guess, so the knee stops snapping backward and follows your leg as you turn it. Also drops an old upward nudge on the chest so the spine follows your real chest position. Off restores the previous forward-pole behavior."
     },
     {
       "key": "settings.bodyTracking.fbt.description",
@@ -4445,6 +4857,14 @@
     {
       "key": "settings.bodyTracking.protectElbow.description",
       "value": "Pushes elbows outward when they penetrate the chest capsule."
+    },
+    {
+      "key": "settings.bodyTracking.collideTrackedElbow.title",
+      "value": "Collide Tracked Elbow"
+    },
+    {
+      "key": "settings.bodyTracking.collideTrackedElbow.description",
+      "value": "Allow body collision to push the elbow even when an elbow tracker is driving it. Off lets the tracker fully control a tracked elbow."
     },
     {
       "key": "settings.bodyTracking.handCapsule.title",
@@ -4693,6 +5113,22 @@
     {
       "key": "settings.bodyTracking.spineCcdRelax.description",
       "value": "Under-relaxation for the spine CCD aim. Lower = smoother but softer reach; 1 = full step. Default: 0.8"
+    },
+    {
+      "key": "settings.bodyTracking.spineTwistKeep.title",
+      "value": "Spine Twist – Lower Back"
+    },
+    {
+      "key": "settings.bodyTracking.spineTwistKeep.description",
+      "value": "Axial twist the lower back (lumbar) may use to reach an off-center head. A real lumbar barely twists — lower bends sideways instead of corkscrewing. Default: 0.25"
+    },
+    {
+      "key": "settings.bodyTracking.spineNeckTwistKeep.title",
+      "value": "Spine Twist – Neck"
+    },
+    {
+      "key": "settings.bodyTracking.spineNeckTwistKeep.description",
+      "value": "Axial twist the neck (cervical) may use; the joints between interpolate. Higher lets the neck turn freely like a real spine. Default: 0.9"
     },
     {
       "key": "settings.bodyTracking.chestArmSwingFactor.title",
@@ -4952,7 +5388,7 @@
     },
     {
       "key": "settings.bodyTracking.smoothingStrength.title",
-      "value": "Smoothing Strength"
+      "value": "work"
     },
     {
       "key": "settings.bodyTracking.smoothingStrength.description",
@@ -5603,6 +6039,54 @@
       "value": "Replace broken or unsupported shaders with the URP fallback shader. Off by default; mainly needed during graphics API changes."
     },
     {
+      "key": "settings.developer.gridSnap.title",
+      "value": "Grid Snap"
+    },
+    {
+      "key": "settings.developer.gridSnap.description",
+      "value": "Snap held props to a world-space position grid and to fixed rotation increments. Forces snapping on every pickup locally, overriding each prop's own settings."
+    },
+    {
+      "key": "settings.developer.gridSnap.force",
+      "value": "Force Grid Snap"
+    },
+    {
+      "key": "settings.developer.gridSnap.force.tooltip",
+      "value": "When on, every prop you pick up snaps to the grid while held, even if the prop has grid snap disabled."
+    },
+    {
+      "key": "settings.developer.gridSnap.size",
+      "value": "Grid Snap Size"
+    },
+    {
+      "key": "settings.developer.gridSnap.size.description",
+      "value": "Spacing of the world-space grid used when forcing grid snap, in meters."
+    },
+    {
+      "key": "settings.developer.gridSnap.size.tooltip",
+      "value": "Distance between grid snap points in meters."
+    },
+    {
+      "key": "settings.developer.gridSnap.forceRotation",
+      "value": "Force Rotation Snap"
+    },
+    {
+      "key": "settings.developer.gridSnap.forceRotation.tooltip",
+      "value": "When on, every prop you pick up snaps its rotation to fixed angle increments while held, even if the prop has rotation snap disabled."
+    },
+    {
+      "key": "settings.developer.gridSnap.rotation",
+      "value": "Rotation Snap Angle"
+    },
+    {
+      "key": "settings.developer.gridSnap.rotation.description",
+      "value": "Angular increment held props snap to when forcing rotation snap, in degrees."
+    },
+    {
+      "key": "settings.developer.gridSnap.rotation.tooltip",
+      "value": "Size of each rotation snap step in degrees."
+    },
+    {
       "key": "settings.developer.cameraRates.title",
       "value": "Camera Render Rates"
     },
@@ -5717,6 +6201,14 @@
     {
       "key": "settings.developer.calibrationCsv.tooltip",
       "value": "Write a CSV of every calibration stage (scales, positions, rotation eulers and offsets) to persistentDataPath/CalibrationDebug on the next avatar calibration. Use to debug flipped/inverted bones."
+    },
+    {
+      "key": "settings.developer.calibrationDebug",
+      "value": "Calibration Debug Tools"
+    },
+    {
+      "key": "settings.developer.calibrationDebug.tooltip",
+      "value": "Show the calibration report and lock-in guide controls in the Calibration panel."
     },
     {
       "key": "settings.developer.remoteAudioDebug.title",
@@ -6515,6 +7007,18 @@
       "value": "Max Colliders"
     },
     {
+      "key": "settings.perf.jiggleFrustumCull.toggle",
+      "value": "Cull Off-Screen Collisions"
+    },
+    {
+      "key": "settings.perf.jiggleDistanceCull.toggle",
+      "value": "Cull Distant Collisions"
+    },
+    {
+      "key": "settings.perf.jiggleDistanceCull.slider",
+      "value": "Max Collision Distance"
+    },
+    {
       "key": "settings.perf.cloth.toggle",
       "value": "Limit Unity Cloth"
     },
@@ -6791,6 +7295,10 @@
       "value": "Arm Distance"
     },
     {
+      "key": "settings.bodyTracking.ikMode.disabledSeated",
+      "value": "Disabled in Seated Mode. Switch to Standing Mode to choose Eye Height or Arm Distance."
+    },
+    {
       "key": "settings.bodyTracking.spineLock.hips",
       "value": "Lock Hips"
     },
@@ -6979,6 +7487,38 @@
       "value": "Max Hearing Range"
     },
     {
+      "key": "settings.admin.title.lockPlayspaceMover",
+      "value": "Lock Playspace Mover"
+    },
+    {
+      "key": "settings.admin.title.lockPlayspaceMover.tooltip",
+      "value": "Stop non-admin players from grabbing and dragging their play space. Admins are unaffected."
+    },
+    {
+      "key": "settings.admin.title.lockDirectConnect",
+      "value": "Lock Direct Connections"
+    },
+    {
+      "key": "settings.admin.title.lockDirectConnect.tooltip",
+      "value": "Stop non-admin players from opening direct peer-to-peer connections. Admins are unaffected."
+    },
+    {
+      "key": "settings.admin.minAvatarHeight",
+      "value": "Min Avatar Height"
+    },
+    {
+      "key": "settings.admin.minAvatarHeight.tooltip",
+      "value": "Smallest avatar eye height non-admin players may scale to. 0.1 m = effectively no minimum."
+    },
+    {
+      "key": "settings.admin.maxAvatarHeight",
+      "value": "Max Avatar Height"
+    },
+    {
+      "key": "settings.admin.maxAvatarHeight.tooltip",
+      "value": "Largest avatar eye height non-admin players may scale to. 100 m = effectively no maximum."
+    },
+    {
       "key": "settings.main.title.searchMenus",
       "value": "Search Menus"
     },
@@ -7091,6 +7631,10 @@
       "value": "Whitelist Only"
     },
     {
+      "key": "settings.admin.title.rejoinLockOnly",
+      "value": "Lockdown — Rejoin Only"
+    },
+    {
       "key": "settings.admin.title.whitelistUuid",
       "value": "Whitelist UUID"
     },
@@ -7113,6 +7657,14 @@
     {
       "key": "settings.admin.title.requestAllLogs",
       "value": "Request all logs"
+    },
+    {
+      "key": "settings.admin.title.resetAllLogs",
+      "value": "Reset all logs"
+    },
+    {
+      "key": "settings.admin.title.resetAllLogs.tooltip",
+      "value": "Permanently delete the server's logs and crash reports."
     },
     {
       "key": "settings.admin.title.beeUrl",

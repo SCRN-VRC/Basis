@@ -29,7 +29,8 @@ typedef enum basis_codec {
     BASIS_CODEC_NONE = 0,
     BASIS_CODEC_H264 = 1,
     BASIS_CODEC_H265 = 2,
-    BASIS_CODEC_AAC  = 10
+    BASIS_CODEC_AAC  = 10,
+    BASIS_CODEC_LPCM = 11   /* Blu-ray HDMV LPCM (TS stream_type 0x80) */
 } basis_codec_t;
 
 /* Sink the demuxers push into. All callbacks are invoked from the demux thread.
@@ -179,6 +180,10 @@ basis_decoder_t* basis_engine_get_decoder(basis_media_engine_t* engine);
  * audio reads; running going to 0 tells decode/demux loops to unwind. */
 int basis_engine_is_paused(basis_media_engine_t* engine);
 int basis_engine_is_running(basis_media_engine_t* engine);
+
+/* Non-zero when the source opened in paced (VOD) mode: the platform backend
+ * presents on a fixed 1x-from-first-PTS clock instead of the live-edge clock. */
+int basis_engine_is_paced(basis_media_engine_t* engine);
 
 #ifdef __cplusplus
 }

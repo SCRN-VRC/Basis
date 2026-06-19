@@ -75,6 +75,11 @@ public static class NetworkServer
         StopServer();
         Configuration = configuration;
 
+        // Rejoin-only lockdown means "the players here right now" — meaningless after a restart, and a
+        // persisted RejoinOnly would boot with an empty snapshot and lock everyone out. Reset to Normal.
+        if (configuration.BasisUserRestrictionMode == BasisNetworkCore.Security.BasisUserRestrictionMode.RejoinOnly)
+            configuration.BasisUserRestrictionMode = BasisNetworkCore.Security.BasisUserRestrictionMode.Normal;
+
         HighQualityLength = BasisAvatarBitPacking.ConvertToSize(BitQuality.High);
         InitializePulseSettings();
         InitializeAuth();
@@ -82,6 +87,7 @@ public static class NetworkServer
         BasisNetworkServer.Security.BasisGlobalLockManager.InitializeFromConfig(configuration);
         BasisNetworkServer.Security.BasisCrashReportStateManager.InitializeFromConfig(configuration);
         BasisNetworkServer.Security.BasisAudioRangeLimitManager.InitializeFromConfig(configuration);
+        BasisNetworkServer.Security.BasisAvatarScaleLimitManager.InitializeFromConfig(configuration);
         SetupServer(configuration);
         SubscribeEvents(Configuration);
 
@@ -182,29 +188,30 @@ public static class NetworkServer
 
     public static void StartListening(Configuration configuration)
     {
+        IPAddress ipv4, ipv6;
         if (configuration.OverrideAutoDiscoveryOfIpv)
         {
-            IPAddress? IPv4Address, IPv6Address;
-            if (!IPAddress.TryParse(Configuration.IPv4Address, out IPv4Address))
+            if (!IPAddress.TryParse(Configuration.IPv4Address, out ipv4))
             {
-                BNL.LogWarning("Failed to parse IPv4 bind address, falling back to 0.0.0.0");
-                IPv4Address = IPAddress.Parse("0.0.0.0");
+                BNL.LogWarning($"Failed to parse IPv4 bind address '{Configuration.IPv4Address}', falling back to 0.0.0.0");
+                ipv4 = IPAddress.Any;
             }
-
-            if (!IPAddress.TryParse(Configuration.IPv6Address, out IPv6Address))
+            if (!IPAddress.TryParse(Configuration.IPv6Address, out ipv6))
             {
-                BNL.LogWarning("Failed to parse IPv6 bind address, falling back to ::1");
-                IPv6Address = IPAddress.Parse("::1");
+                BNL.LogWarning($"Failed to parse IPv6 bind address '{Configuration.IPv6Address}', falling back to [::]");
+                ipv6 = IPAddress.IPv6Any;
             }
-
-            BNL.Log($"Server Wiring up SetPort {Configuration.SetPort} IPv6Address {Configuration.IPv6Address}");
-            Server.Start(IPv4Address, IPv6Address, Configuration.SetPort);
         }
         else
         {
-            BNL.Log($"Server Wiring up SetPort {Configuration.SetPort}");
-            Server.Start(IPAddress.Any, IPAddress.IPv6Any, Configuration.SetPort);
+            ipv4 = IPAddress.Any;
+            ipv6 = IPAddress.IPv6Any;
         }
+
+        Server.Start(ipv4, ipv6, configuration.SetPort);
+        BNL.Log($"Listening on UDP port {configuration.SetPort}");
+        BNL.Log($"  IPv4 bind: {ipv4}");
+        BNL.Log($"  IPv6 bind: [{ipv6}]");
     }
     #endregion
     public static void BroadcastMessageToClients(NetDataWriter writer, byte channel, NetPeer sender, ReadOnlySpan<NetPeer> clients, DeliveryMethod deliveryMethod = DeliveryMethod.Sequenced, int maxMessages = 70)

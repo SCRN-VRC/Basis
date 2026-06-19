@@ -118,6 +118,19 @@ namespace BasisNetworkCore.Serializable
             LogBundleBegin,   // server→client: start of a transfer. Payload: [string serverNameSafe][string fileName][bool isCompressed][int payloadBytes][int rawBytes][int totalChunks]
             LogBundleChunk,   // server→client: one ordered chunk. Payload: [int chunkIndex][lenPrefixed bytes]
             LogBundleEnd,     // server→client: end of transfer. Payload: [bool ok][string message]
+
+            // server→client: clear all locally loaded scenes regardless of netId.
+            // No payload. Handles orphaned scenes the server doesn't know about.
+            ClearAllScenes,
+
+            DeleteAllLogs,    // client→server (admin): delete every file under logs/ + CrashReports/. Gated by basis.admin.logs. No payload. Server replies with a status Message.
+
+            // ── Instance restriction policies (persisted; gated by basis.moderation.globallock) ──
+            GlobalTogglePlayspaceMover, // admin: toggle the global playspace-mover lockout. State appended to GlobalGetLockState. Non-admins cannot grab/drag their play space while set.
+            GlobalToggleDirectConnect,  // admin: toggle the global direct-connect (P2P) lockout. State appended to GlobalGetLockState. The server also refuses to broker P2P requests from non-admins while set.
+
+            GlobalGetAvatarScaleLimits, // server→client: min/max avatar eye height in metres. Payload: [float minMeters][float maxMeters]
+            SetGlobalAvatarScaleLimits, // admin: set min/max avatar eye height in metres (persisted). Non-admins are clamped to this range; admins bypass it. Payload: [float minMeters][float maxMeters]
         }
     }
 }

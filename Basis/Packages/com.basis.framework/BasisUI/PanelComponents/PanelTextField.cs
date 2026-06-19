@@ -1,6 +1,7 @@
 using Basis.BTween;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Basis.BasisUI
 {
@@ -8,6 +9,8 @@ namespace Basis.BasisUI
     {
 
         [SerializeField] public TMP_InputField _inputField;
+
+        protected override Selectable InteractableTarget => _inputField;
         [SerializeField] public TextMeshProUGUI _placeholderLabel;
         [SerializeField] protected string _placeholderText;
         [SerializeField] protected string _defaultValue;
@@ -65,7 +68,7 @@ namespace Basis.BasisUI
         private void OnFieldFocused()
         {
             if (!Application.isPlaying) return;
-            if (_focusTween != null && _focusTween.Active) _focusTween.Reset();
+            if (_focusTween != null && _focusTween.Active && _focusTween.Target == transform) _focusTween.Reset();
 
             _focusTween = transform.TweenScale(0.12f, transform.localScale, Vector3.one * 1.02f)
                 .SetEase(Easing.OutCubic);
@@ -74,7 +77,7 @@ namespace Basis.BasisUI
         private void OnFieldUnfocused()
         {
             if (!Application.isPlaying) return;
-            if (_focusTween != null && _focusTween.Active) _focusTween.Reset();
+            if (_focusTween != null && _focusTween.Active && _focusTween.Target == transform) _focusTween.Reset();
 
             _focusTween = transform.TweenScale(0.15f, transform.localScale, Vector3.one)
                 .SetEase(Easing.OutCubic);
@@ -88,7 +91,7 @@ namespace Basis.BasisUI
             // Punch on submit
             if (Application.isPlaying)
             {
-                if (_focusTween != null && _focusTween.Active) _focusTween.Reset();
+                if (_focusTween != null && _focusTween.Active && _focusTween.Target == transform) _focusTween.Reset();
                 _focusTween = transform.TweenScale(0.06f, transform.localScale, Vector3.one * 1.03f)
                     .SetEase(Easing.OutCubic)
                     .AddCallback(() =>

@@ -284,6 +284,17 @@ namespace BasisServerHandle
                 return;
             }
 
+            // Rejoin-only lockdown: only UUIDs captured when the mode was enabled may (re)connect.
+            // Config-editor admins always bypass so an admin can't lock themselves out.
+            if (NetworkServer.Configuration.BasisUserRestrictionMode == BasisUserRestrictionMode.RejoinOnly
+                && !BasisRejoinLockManager.IsAllowed(UUID)
+                && !PermissionIntegration.HasValidRequirement(UUID, PermNodes.ConfigurationEditor))
+            {
+                BNL.Log($"Rejecting peer {PeerId} (UUID {UUID}) — server locked to current players (rejoin-only).");
+                RejectWithReason(newPeer, "The server is locked — only players already here may rejoin.");
+                return;
+            }
+
             bool added = NetworkServer.AuthenticatedPeers.TryAdd(PeerId, newPeer);
             if (!added)
             {
@@ -361,6 +372,7 @@ namespace BasisServerHandle
                 BasisNetworkServer.Security.BasisUserOpusBitrateStateManager.SendStateToPeer(newPeer);
                 BasisNetworkServer.Security.BasisCrashReportStateManager.SendStateToPeer(newPeer);
                 BasisNetworkServer.Security.BasisAudioRangeLimitManager.SendStateToPeer(newPeer);
+                BasisNetworkServer.Security.BasisAvatarScaleLimitManager.SendStateToPeer(newPeer);
                 SendShoutStateToPeer(newPeer);
             }
             else
@@ -955,6 +967,14 @@ namespace BasisServerHandle
             //returns a message with the ushort back to the client, or it sends it to everyone if its new.
             BasisNetworkResourceManagement.UnloadResource(UnLoadResource, Peer);
             //we need to convert the string int a  ushort.
+        }
+        public static void HandleModifyResource(NetPacketReader Reader, NetPeer Peer)
+        {
+            ModifyResource modifyResource = new ModifyResource();
+            modifyResource.Deserialize(Reader);
+            Reader.Recycle();
+            // Authorization (creator or moderator) is enforced inside SetStatic.
+            BasisNetworkResourceManagement.SetStatic(modifyResource, Peer);
         }
         #endregion
         public static void HandleStoreDatabase(NetPacketReader reader, NetPeer peer)

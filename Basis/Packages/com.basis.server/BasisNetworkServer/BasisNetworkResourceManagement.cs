@@ -130,6 +130,25 @@ public static class BasisNetworkResourceManagement
             BNL.LogError("Already have Object Loaded With " + LocalLoadResource.LoadedNetID);
         }
     }
+    // Server-authoritative path — skips IsAdminLocked peer check because the caller
+    // (REST API, etc.) is already authenticated at a higher level than any game peer.
+    // Returns false if the resource was not found (TryRemove failed atomically).
+    public static bool UnloadResource(UnLoadResource unLoadResource)
+    {
+        if (!UshortNetworkDatabase.TryRemove(unLoadResource.LoadedNetID, out _))
+        {
+            BNL.LogError($"[Server] Trying to unload an object that does not exist: {unLoadResource.LoadedNetID}");
+            return false;
+        }
+
+        NetDataWriter writer = NetworkServer.RentWriter();
+        unLoadResource.Serialize(writer);
+        BNL.Log("Removing Object (server) " + unLoadResource.LoadedNetID);
+        NetworkServer.BroadcastMessageToClients(writer, BasisNetworkCommons.UnloadResourceChannel, NetworkServer.PeerSnapshot, DeliveryMethod.ReliableOrdered);
+        NetworkServer.ReturnWriter(writer);
+        return true;
+    }
+
     public static void UnloadResource(UnLoadResource unLoadResource, NetPeer peer)
     {
         if (!UshortNetworkDatabase.TryGetValue(unLoadResource.LoadedNetID, out LocalLoadResource resource))
@@ -159,6 +178,66 @@ public static class BasisNetworkResourceManagement
         NetworkServer.BroadcastMessageToClients(
             writer,
             BasisNetworkCommons.UnloadResourceChannel,
+            NetworkServer.PeerSnapshot,
+            DeliveryMethod.ReliableOrdered
+        );
+        NetworkServer.ReturnWriter(writer);
+    }
+
+    /// <summary>
+    /// Toggle the server-authoritative "Static" flag on an already-spawned resource.
+    /// Only the item's creator or a moderator (protection permission) may change it.
+    /// On success the new state is stored and rebroadcast to every client (and replayed
+    /// to late joiners via <see cref="SendOutAllResources"/>, which serializes the whole record).
+    /// </summary>
+    public static void SetStatic(ModifyResource modifyResource, NetPeer peer)
+    {
+        if (!UshortNetworkDatabase.TryGetValue(modifyResource.LoadedNetID, out LocalLoadResource resource))
+        {
+            BNL.LogError($"Trying to modify an object that does not exist! ID Provided was [{modifyResource.LoadedNetID}]");
+            return;
+        }
+
+        // Admin-lock implies frozen — a request can't ask for "admin-locked but movable".
+        bool targetAdminLocked = modifyResource.StaticAdminLocked;
+        bool targetStatic = modifyResource.Static || targetAdminLocked;
+
+        // Authorize. Any transition that touches the admin tier (entering OR leaving it) requires a
+        // moderator — the item's creator can't set or clear an admin lock. Plain static toggles
+        // (the non-admin tier) also allow the creator.
+        bool involvesAdminTier = resource.StaticAdminLocked || targetAdminLocked;
+        bool isModerator = PermissionIntegration.HasValidRequirement(peer, PermNodes.protection);
+        bool isCreator = NetworkServer.AuthIdentity.NetIDToUUID(peer, out string requesterUuid)
+            && !string.IsNullOrEmpty(resource.UUIDOfCreator)
+            && requesterUuid == resource.UUIDOfCreator;
+        bool allowed = involvesAdminTier ? isModerator : (isCreator || isModerator);
+        if (!allowed)
+        {
+            return;
+        }
+
+        // No-op if nothing changes, to avoid spamming the network.
+        if (resource.Static == targetStatic && resource.StaticAdminLocked == targetAdminLocked)
+        {
+            return;
+        }
+
+        // LocalLoadResource is a value type, so mutate a copy and write it back.
+        resource.Static = targetStatic;
+        resource.StaticAdminLocked = targetAdminLocked;
+        UshortNetworkDatabase[modifyResource.LoadedNetID] = resource;
+
+        // Normalize the broadcast so every client agrees on the resolved state + routing.
+        modifyResource.Static = targetStatic;
+        modifyResource.StaticAdminLocked = targetAdminLocked;
+        modifyResource.Mode = resource.Mode;
+
+        NetDataWriter writer = NetworkServer.RentWriter();
+        modifyResource.Serialize(writer);
+        BNL.Log($"Set Static={targetStatic} AdminLocked={targetAdminLocked} on Object {modifyResource.LoadedNetID}");
+        NetworkServer.BroadcastMessageToClients(
+            writer,
+            BasisNetworkCommons.ModifyResourceChannel,
             NetworkServer.PeerSnapshot,
             DeliveryMethod.ReliableOrdered
         );

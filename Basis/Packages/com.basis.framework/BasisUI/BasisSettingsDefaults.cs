@@ -1,4 +1,5 @@
 using System;
+using Basis.Scripts.Drivers;
 using Basis.Scripts.TransformBinders.BoneControl;
 using Basis.Scripts.Settings;
 using Basis.Streaming;
@@ -147,10 +148,24 @@ namespace Basis.BasisUI
 
         public static BasisSettingsBinding<float> SmoothTurnSpeed = new("smoothturnspeed", new BasisPlatformDefault<float>(200f));
 
+        // ---------------- PLAYSPACE MOVER ----------------
+        // VR-only grab-and-drag of the play space. Off by default; opt-in under Body Tracking.
+        public static BasisSettingsBinding<bool> EnablePlayspaceMover = new("enableplayspacemover", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<string> PlayspaceMoverInput = new("playspacemoverinput", new BasisPlatformDefault<string>(BasisLocalPlayspaceMover.InputGrip));
+        public static BasisSettingsBinding<string> PlayspaceMoverRotateInput = new("playspacemoverrotateinput", new BasisPlatformDefault<string>(BasisLocalPlayspaceMover.InputTrigger));
+        public static BasisSettingsBinding<string> PlayspaceMoverHand = new("playspacemoverhand", new BasisPlatformDefault<string>(BasisLocalPlayspaceMover.HandBoth));
+        public static BasisSettingsBinding<bool> PlayspaceMoverRotate = new("playspacemoverrotate", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> PlayspaceMoverScale = new("playspacemoverscale", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> PlayspaceMoverVertical = new("playspacemoververtical", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> PlayspaceMoverFlip = new("playspacemoverflip", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<float> PlayspaceMoverFlipAngle = new("playspacemoverflipangle", new BasisPlatformDefault<float>(180f));
+        public static BasisSettingsBinding<string> PlayspaceMoverFlipAxis = new("playspacemoverflipaxis", new BasisPlatformDefault<string>(BasisLocalPlayspaceMover.AxisRoll));
+
         public static BasisSettingsBinding<string> QualityLevel = new("qualitylevel", new BasisPlatformDefault<string>
         {
             windows = "Ultra",
             android = "Very Low",
+            ios = "Very Low",
             linux = "Ultra",
             other = "Ultra"
         });
@@ -159,6 +174,7 @@ namespace Basis.BasisUI
         {
             windows = "Ultra",
             android = "Very Low",
+            ios = "Very Low",
             linux = "Ultra",
             other = "Ultra"
         });
@@ -167,6 +183,7 @@ namespace Basis.BasisUI
         {
             windows = "64bit",
             android = "Off",
+            ios = "Off",
             linux = "64bit",
             other = "64bit"
         });
@@ -187,6 +204,21 @@ namespace Basis.BasisUI
         public const float BLOOM_INTENSITY_MAX = 5f;
 
         /// <summary>
+        /// When enabled, the volumetric fog density override is applied to all
+        /// VolumetricFogVolumeComponent overrides on existing Volumes in the scene.
+        /// </summary>
+        public static BasisSettingsBinding<bool> UseVolumetricFogOverride = new("usevolumetricfogoverride", new BasisPlatformDefault<bool>(false));
+
+        /// <summary>
+        /// Volumetric fog density override. 0 = fog disabled, higher = denser fog.
+        /// Only applied when <see cref="UseVolumetricFogOverride"/> is enabled.
+        /// </summary>
+        public static BasisSettingsBinding<float> VolumetricFogDensity = new("volumetricfogdensity", new BasisPlatformDefault<float>(0.2f));
+
+        public const float FOG_DENSITY_MIN = 0f;
+        public const float FOG_DENSITY_MAX = 1f;
+
+        /// <summary>
         /// When enabled, ReflectionProbe components in the scene whose mode is Realtime are
         /// driven by Basis at the rate selected by <see cref="RealtimeReflectionProbeRate"/>.
         /// When disabled, Basis does not modify any probe state.
@@ -204,6 +236,7 @@ namespace Basis.BasisUI
         {
             windows = true,
             android = false,
+            ios = false,
             linux = false,
             other = false
         });
@@ -281,10 +314,11 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<bool> DevDebugFaceTracking = new("devdebugfacetracking", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> DevDebugEyeTracking = new("devdebugeyetracking", new BasisPlatformDefault<bool>(false));
 
-        public static BasisSettingsBinding<bool> DevShowBuildInfo = new("devshowbuildinfo", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> DevShowBuildInfo = new("devshowbuildinfo_v2", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<bool> DevShowConsole = new("devshowconsole", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> DevShowEuroFilter = new("devshowfilter", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> DevShowNetStats = new("devshownetstats", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> DevShowCalibrationDebug = new("devshowcalibrationdebug", new BasisPlatformDefault<bool>(false));
 
         // When on, the local avatar calibration pipeline dumps every stage's scales/positions/
         // rotation eulers + offsets to a CSV under persistentDataPath/CalibrationDebug. Read once
@@ -329,7 +363,8 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<string> MemoryAllocation = new("memoryallocation", new BasisPlatformDefault<string>
         {
             windows = "Dynamic",
-            android = "Dnamic",
+            android = "Dynamic",
+            ios = "Dynamic",
             linux = "Dynamic",
             other = "Dynamic"
         });
@@ -337,6 +372,8 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<bool> AvatarPreview = new("avatarpreview", new BasisPlatformDefault<bool>(false));
 
         public static BasisSettingsBinding<bool> AvatarPreviewMirror = new("avatarpreviewmirror", new BasisPlatformDefault<bool>(true));
+
+        public static BasisSettingsBinding<bool> CameraHud = new("camerahud", new BasisPlatformDefault<bool>(false));
 
         public static BasisSettingsBinding<bool> LimitHandHeldCameraRate = new("limithandheldcamerarate", new BasisPlatformDefault<bool>(false));
 
@@ -367,6 +404,29 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<string> IKLockMode = new("iklockmode_v2", new BasisPlatformDefault<string>("lock both"));
 
         public static BasisSettingsBinding<bool> PitchCalibration = new("pitchcalibration", new BasisPlatformDefault<bool>(false));
+
+        // Systematic correction (metres) added to the measured standing eye height before DeviceScale.
+        // It bridges a backend's HMD-pose-origin vs true-eye gap that CenterEyeVerticalOffset under-reports
+        // (seen on OpenVR: avatar renders too tall). Default 0 = no-op; persists, so the gap is corrected once.
+        // Read the "true-eye estimate vs DeviceScale" calibration log to dial in the real value.
+        public static BasisSettingsBinding<float> CalibrationStandingEyeHeightMeters = new("calibrationstandingeyeheightmeters", new BasisPlatformDefault<float>(0f));
+
+        // Gate for the standing eye-height correction above. When off, the correction is ignored (treated as 0)
+        // regardless of the stored metres, and the slider is hidden in the calibration panel. Off by default.
+        public static BasisSettingsBinding<bool> EnableStandingEyeHeightCorrection = new("enablestandingeyeheightcorrection", new BasisPlatformDefault<bool>(false));
+
+        // Gate for the standing-height nudge in the calibration window: shows the ± buttons AND applies the value
+        // below. Off by default.
+        public static BasisSettingsBinding<bool> EnableStandingHeightNudge = new("enablestandingheightnudge", new BasisPlatformDefault<bool>(false));
+
+        // Standing-height nudge (the historical "AdditionalPlayerHeight"): metres fed straight into the DeviceScale
+        // denominator (BasisCalibrationMath.StandingEyeDenominator), separate from the eye-height modifier. The ±
+        // buttons step this; gated by EnableStandingHeightNudge.
+        public static BasisSettingsBinding<float> AdditionalPlayerHeight = new("additionalplayerheight", new BasisPlatformDefault<float>(0f));
+
+        // Estimate a ballpark scale from the live HMD/controllers while the player hasn't calibrated yet, so an
+        // uncalibrated VR session isn't wildly mis-sized. A real calibration overrides it. See BasisAutoScaleEstimator.
+        public static BasisSettingsBinding<bool> AutoScaleEstimateEnabled = new("autoscaleestimateenabled_v2", new BasisPlatformDefault<bool>(false));
 
         public static BasisSettingsBinding<string> SelectedBone = new("selectedbone", new BasisPlatformDefault<string>("selectedbone"));
 
@@ -446,6 +506,10 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<bool> UsePerfLimitJiggleColliders = new("useperflimitjigglecolliders", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<float> MaxPerfJiggleColliders = new("maxperfjigglecolliders", new BasisPlatformDefault<float>(64));
 
+        public static BasisSettingsBinding<bool> UseJiggleCollisionFrustumCull = new("usejigglecollisionfrustumcull", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> UseJiggleCollisionDistanceCull = new("usejigglecollisiondistancecull", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<float> JiggleCollisionCullDistance = new("jigglecollisionculldistance", new BasisPlatformDefault<float>(20));
+
         // Animators default on at 1 — extras are a common perf trap (every child
         // Animator ticks every frame). Excess Animators are trimmed, not blocked.
         public static BasisSettingsBinding<bool> UsePerfLimitAnimators = new("useperflimitanimators", new BasisPlatformDefault<bool>(true));
@@ -493,6 +557,7 @@ namespace Basis.BasisUI
         {
             windows = 0.05f,
             android = 0.1f,
+            ios = 0.1f,
             linux = 0.05f,
             other = 0.05f
         });
@@ -501,6 +566,7 @@ namespace Basis.BasisUI
         {
             windows = 0,
             android = 30,
+            ios = 30,
             linux = 0,
             other = 0
         });
@@ -521,6 +587,7 @@ namespace Basis.BasisUI
         {
             windows = "On",
             android = "On",
+            ios = "On",
             linux = "Capped",
             other = "On"
         });
@@ -541,6 +608,7 @@ namespace Basis.BasisUI
         {
             windows = true,
             android = true,
+            ios = true,
             linux = true,
             other = true
         });
@@ -573,6 +641,11 @@ namespace Basis.BasisUI
 
         // ---------------- INTERACTIONS ----------------
         public static BasisSettingsBinding<bool> DisableSeats = new("disableseats", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> DisablePropPickup = new("disableproppickup", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> ForceGridSnap = new("forcegridsnap", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<float> GridSnapSize = new("gridsnapsize", new BasisPlatformDefault<float>(0.25f));
+        public static BasisSettingsBinding<bool> ForceRotationSnap = new("forcerotationsnap", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<float> RotationSnapDegrees = new("rotationsnapdegrees", new BasisPlatformDefault<float>(15f));
 
         // ---------------- NOTIFICATIONS ----------------
         public static BasisSettingsBinding<bool> JoinNotifications = new("joinnotifications", new BasisPlatformDefault<bool>(false));
@@ -625,7 +698,7 @@ namespace Basis.BasisUI
             new("fbikrotationsmoothinghz", new BasisPlatformDefault<float>(25f));
 
         public static BasisSettingsBinding<float> FBIKSmoothingStrength =
-            new("fbiksmoothingstrength", new BasisPlatformDefault<float>(1f));
+            new("fbiksmoothingstrength", new BasisPlatformDefault<float>(2.5f));
 
         // ---------------- HIPS ----------------
         public static BasisSettingsBinding<bool> FBIKHipsSmoothPos =
@@ -833,6 +906,13 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<bool> FBIKLeftShoulderUseCalibration = new("fbikleftshoulderusecalibration", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> FBIKRightShoulderUseCalibration = new("fbikrightshoulderusecalibration", new BasisPlatformDefault<bool>(false));
 
+        // ---------------- CALIBRATION TOLERANCE ----------------
+        // Sigma multiplier for the FBIK constellation classifier. 1 = stock acceptance
+        // regions; higher widens every role's accept band so players with atypical body
+        // proportions, high-mounted trackers, or an imperfect calibration pose can still
+        // bind. Read in BasisAvatarIKStageCalibration.BuildPriors via GetCalibrationTolerance.
+        public static BasisSettingsBinding<float> CalibrationTolerance = new("fbikcalibrationtolerance", new BasisPlatformDefault<float>(1f));
+
         /// <summary>
         /// Returns the per-role "use for calibration" binding, or null for roles that have
         /// no UI entry (e.g. CenterEye, Neck, Spine, UpperArm/UpperLeg, Mouth).
@@ -875,6 +955,7 @@ namespace Basis.BasisUI
         {
             windows = "120",
             android = "60",
+            ios = "60",
             linux = "120",
             other = "120"
         });
@@ -903,14 +984,28 @@ namespace Basis.BasisUI
 
         // Steam Audio - Occlusion
         public static BasisSettingsBinding<bool> RAOcclusion = new("ra_occlusion", new BasisPlatformDefault<bool>(true));
-        public static BasisSettingsBinding<string> RAOcclusionType = new("ra_occlusiontype", new BasisPlatformDefault<string>("volumetric"));
+        public static BasisSettingsBinding<string> RAOcclusionType = new("ra_occlusiontype_v2", new BasisPlatformDefault<string>("volumetric"));
         public static BasisSettingsBinding<float> RAOcclusionRadius = new("ra_occlusionradius", new BasisPlatformDefault<float>(0.15f));
-        public static BasisSettingsBinding<float> RAOcclusionSamples = new("ra_occlusionsamples", new BasisPlatformDefault<float>(16f));
+        public static BasisSettingsBinding<float> RAOcclusionSamples = new("ra_occlusionsamples_v2", new BasisPlatformDefault<float>
+        {
+            windows = 32f,
+            android = 16f,
+            linux = 32f,
+            ios = 16f,
+            other = 32f
+        });
 
         // Steam Audio - Transmission
         public static BasisSettingsBinding<bool> RATransmission = new("ra_transmission", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<string> RATransmissionType = new("ra_transmissiontype", new BasisPlatformDefault<string>("frequency dependent"));
-        public static BasisSettingsBinding<float> RAMaxTransmissionSurfaces = new("ra_maxtransmissionsurfaces", new BasisPlatformDefault<float>(4f));
+        public static BasisSettingsBinding<float> RAMaxTransmissionSurfaces = new("ra_maxtransmissionsurfaces_v2", new BasisPlatformDefault<float>
+        {
+            windows = 2f,
+            android = 1f,
+            linux = 2f,
+            ios = 1f,
+            other = 2f
+        });
 
         // AudioSource - Rolloff
         public static BasisSettingsBinding<string> RARolloffMode = new("ra_rolloffmode", new BasisPlatformDefault<string>("custom"));
@@ -973,6 +1068,7 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<bool> FBIKAdvancedVisible = new("fbikadvancedvisible", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> FBIKCollisionsEnabled = new("fbikcollisionsenabled", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<bool> FBIKProtectElbow = new("fbikprotectelbow", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> FBIKCollideTrackedElbow = new("fbikcollidetrackedelbow", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> FBIKUseHandCapsule = new("fbikusehandcapsule", new BasisPlatformDefault<bool>(true));
         // Collision capsule dimensions in meters at default (1.6m) avatar height; runtime
         // multiplies by AvatarToDefaultRatioScaledWithAvatarScale. Keys bumped to _v2 so existing
@@ -990,9 +1086,11 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<float> FBIKStruggleEnd = new("fbikstruggleend", new BasisPlatformDefault<float>(1f));
         public static BasisSettingsBinding<float> FBIKMaxChestDelta = new("fbikmaxchestdelta", new BasisPlatformDefault<float>(90f));
         public static BasisSettingsBinding<float> FBIKMaxHipDelta = new("fbikmaxhipdelta", new BasisPlatformDefault<float>(90f));
-        // Master strength for adaptive hip-tilt stabilization (0 = use the hip tracker's raw pitch/roll
-        // as-is; 1 = fully stabilize long-lever/front mounts). Side mounts are auto-exempt by lever.
-        public static BasisSettingsBinding<float> FBIKHipTiltStabilization = new("fbikhiptiltstabilization", new BasisPlatformDefault<float>(1f));
+        // Butterfly knees: with foot trackers (no knee tracker), tilting the feet outward and pulling them in lets
+        // the knees fall open -- both laying on your back and sitting upright (cross-legged). MaxOpenDeg clamps the
+        // splay to the hip's natural abduction.
+        public static BasisSettingsBinding<bool> FBIKButterflyKnees = new("fbikbutterflyknees", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<float> FBIKButterflyKneeMaxOpenDeg = new("fbikbutterflykneemaxopendeg", new BasisPlatformDefault<float>(60f));
 
         // Spine relax: per-axis bend distribution onto lumbar (spine) and thoracic (upperChest)
         public static BasisSettingsBinding<float> FBIKSpineBendPitch = new("fbikspinebendpitch", new BasisPlatformDefault<float>(0.45f));
@@ -1007,6 +1105,16 @@ namespace Basis.BasisUI
         // Spine relax: chest follow spring (velocity lag)
         public static BasisSettingsBinding<float> FBIKChestSpringHz = new("fbikchestspringhz", new BasisPlatformDefault<float>(12f));
         public static BasisSettingsBinding<float> FBIKChestSpringDamping = new("fbikchestspringdamping", new BasisPlatformDefault<float>(1f));
+        // Hip relax: hip-frame follow spring -- decouples the no-elbow-tracker derived elbow pole from hip
+        // jitter/sway (lower Hz = more decoupling; 0 = off). No effect for users WITH elbow trackers.
+        public static BasisSettingsBinding<float> FBIKHipFrameSpringHz = new("fbikhipframespringhz", new BasisPlatformDefault<float>(8f));
+        public static BasisSettingsBinding<float> FBIKHipFrameSpringDamping = new("fbikhipframespringdamping", new BasisPlatformDefault<float>(1f));
+        // Arm: chicken-wing elbow flare (no elbow tracker) -- turning the controllers inward pushes the derived
+        // elbow OUT to the half-T-pose mark and caps it there. MaxDeg = the cap; InwardGain is signed (negative
+        // flips the roll direction, 0 = off); FullRollDeg = the controller roll that is a full chicken-wing.
+        public static BasisSettingsBinding<float> FBIKElbowFlareMaxDeg = new("fbikelbowflaremaxdeg", new BasisPlatformDefault<float>(45f));
+        public static BasisSettingsBinding<float> FBIKElbowFlareInwardGain = new("fbikelbowflareinwardgain", new BasisPlatformDefault<float>(1f));
+        public static BasisSettingsBinding<float> FBIKElbowFlareFullRollDeg = new("fbikelbowflarefullrolldeg", new BasisPlatformDefault<float>(70f));
         // Spine relax: asymmetric flexion clamps (apply to spine + upperChest contributions)
         public static BasisSettingsBinding<float> FBIKSpineMaxForwardDeg = new("fbikspinemaxforwarddeg", new BasisPlatformDefault<float>(60f));
         public static BasisSettingsBinding<float> FBIKSpineMaxBackwardDeg = new("fbikspinemaxbackwarddeg", new BasisPlatformDefault<float>(25f));
@@ -1017,15 +1125,23 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<float> FBIKMoveBodyBackWhenCrouching = new("fbikmovebodybackwhencrouching", new BasisPlatformDefault<float>(1f));
         // Swing continuity: max elbow/knee swing speed (deg/s); lower = smoother, 0 = off
         public static BasisSettingsBinding<float> FBIKSwingSmoothRate = new("fbikswingsmoothrate", new BasisPlatformDefault<float>(720f));
+        // On/off for the swing continuity above (off forces the rate to 0). Lets the elbow swing free.
+        public static BasisSettingsBinding<bool> FBIKElbowSwingEnabled = new("fbikelbowswingenabled", new BasisPlatformDefault<bool>(true));
         // Spine relax: CCD solve smoothing + neck overbend cone limit
         public static BasisSettingsBinding<float> FBIKSpineCCDRelax = new("fbikspineccdrelax", new BasisPlatformDefault<float>(0.8f));
         public static BasisSettingsBinding<float> FBIKNeckMaxConeDeg = new("fbikneckmaxconedeg", new BasisPlatformDefault<float>(45f));
+        // Spine CCD axial-twist allowance, graded lumbar (lower) -> cervical (neck). Lower lumbar = a sideways
+        // head reach bends instead of corkscrewing. Key bumped to _v2 to re-default the grading on existing installs.
+        public static BasisSettingsBinding<float> FBIKSpineTwistKeep = new("fbikspinetwistkeep_v2", new BasisPlatformDefault<float>(0.25f));
+        public static BasisSettingsBinding<float> FBIKSpineNeckTwistKeep = new("fbikspinenecktwistkeep", new BasisPlatformDefault<float>(0.9f));
         // Spine relax: arm-swing chest follow (only when no chest tracker)
         public static BasisSettingsBinding<float> FBIKChestArmSwingFactor = new("fbikchestarmswingfactor", new BasisPlatformDefault<float>(0.3f));
         public static BasisSettingsBinding<float> FBIKChestArmSwingMaxDeg = new("fbikchestarmswingmaxdeg", new BasisPlatformDefault<float>(15f));
-        // Arm twist distribution: fraction of wrist/elbow roll absorbed by twist bones
-        public static BasisSettingsBinding<float> FBIKLowerArmTwistFraction = new("fbiklowerarmtwistfraction", new BasisPlatformDefault<float>(0.5f));
-        public static BasisSettingsBinding<float> FBIKUpperArmTwistFraction = new("fbikupperarmtwistfraction", new BasisPlatformDefault<float>(0.3f));
+        // Arm twist DISTRIBUTION STRENGTH (1 = fully even: each twist bone takes a share equal to its position
+        // along the bone -> linear roll gradient; 0 = no twist bone, roll piles up at the wrist). Key bumped to
+        // _v2 because the meaning changed from a raw roll fraction (old 0.5/0.3) to a position-scaled strength.
+        public static BasisSettingsBinding<float> FBIKLowerArmTwistFraction = new("fbiklowerarmtwistfraction_v2", new BasisPlatformDefault<float>(1f));
+        public static BasisSettingsBinding<float> FBIKUpperArmTwistFraction = new("fbikupperarmtwistfraction_v2", new BasisPlatformDefault<float>(1f));
 
         // Anatomy — IK refinements modeled on real biomechanics. Persistence keys are versioned
         // (_v2) so existing installs with the old off-by-default values saved pick up the new
@@ -1034,6 +1150,8 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<bool> FBIKAnatShoulderSlide = new("fbikanatshoulderslide_v2", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<bool> FBIKAnatCervicalLordosis = new("fbikanatcervicallordosis_v2", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<bool> FBIKAnatPelvicTwistRouting = new("fbikanatpelvictwistrouting_v2", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> FBIKLegSwivelSmoothing = new("fbiklegswivelsmoothing", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> FBIKTrackerBendNormal = new("fbiktrackerbendnormal", new BasisPlatformDefault<bool>(true));
 
         // Cervical lordosis pitch coupling: when AnatCervicalLordosis is on, the base 5° forward
         // bend gets extra angle proportional to head pitch-down. 0 = constant 5°; positive = more
@@ -1088,6 +1206,14 @@ namespace Basis.BasisUI
         // BasisLocalVirtualSpineDriver.ComputeRealisticHipsXZ.)
         public static BasisSettingsBinding<float> VSpineHipsForwardBias = new("vspinehipsforwardbias", new BasisPlatformDefault<float>(0.02f));
 
+        // Spine compression: the synthesized hips Y is neck - rigid spine length, so lowering the head
+        // (leaning to touch toes, sitting) drags the pelvis straight down the full rest length and the
+        // leg IK folds the knees to keep the planted feet. These two let the spine SHORTEN instead:
+        // once the head drops below standing, the hips' downward travel saturates toward MaxDrop so the
+        // chest scrunches and the pelvis stays up. Strength 0 = rigid (legacy), 1 = full saturation.
+        public static BasisSettingsBinding<float> VSpineHipsCompressionStrength = new("vspinehipscompressionstrength", new BasisPlatformDefault<float>(0.85f));
+        public static BasisSettingsBinding<float> VSpineHipsMaxDropMeters = new("vspinehipsmaxdropmeters", new BasisPlatformDefault<float>(0.3f));
+
         // Torso yaw "play": degrees the head can turn before the synthesized chest/spine/hips begin
         // following. The torso holds inside this cone, catches up once the head leaves it, then the
         // cone re-centers when the head stops. 0 = follow immediately (legacy behavior).
@@ -1141,8 +1267,11 @@ namespace Basis.BasisUI
         // midpoint snaps. Higher = more reactive (catches glitches faster but
         // jitters more); lower = smoother (longer to recover from a glitch).
         public static BasisSettingsBinding<float> PairingWeightSmoothing = new("pairing_weightsmoothing", new BasisPlatformDefault<float>(0.25f));
-        // Half-life (seconds) of the low-pass on the fused midpoint rotation; 0 = raw.
-        public static BasisSettingsBinding<float> PairingRotationHalfLife = new("pairing_rothalflife", new BasisPlatformDefault<float>(0.08f));
+        // Half-life (seconds) of the low-pass on the fused midpoint rotation; 0 = raw (default). Off by
+        // default because the bone sim already slerp-smooths the rotation -- a second low-pass here just
+        // lags the hip behind a fast turn (~46 deg at 0.08s), which a single tracker never does. Key bumped
+        // to _v2 so installs that persisted the old 0.08 pick up the new default.
+        public static BasisSettingsBinding<float> PairingRotationHalfLife = new("pairing_rothalflife_v2", new BasisPlatformDefault<float>(0f));
 
         // ---------------- REMOTE NAMEPLATE ----------------
         public static BasisSettingsBinding<bool> NPEnabled = new("np_enabled", new BasisPlatformDefault<bool>(true));
@@ -1300,6 +1429,11 @@ namespace Basis.BasisUI
             IKMode.LoadBindingValue();
             IKLockMode.LoadBindingValue();
             PitchCalibration.LoadBindingValue();
+            CalibrationStandingEyeHeightMeters.LoadBindingValue();
+            EnableStandingEyeHeightCorrection.LoadBindingValue();
+            EnableStandingHeightNudge.LoadBindingValue();
+            AdditionalPlayerHeight.LoadBindingValue();
+            AutoScaleEstimateEnabled.LoadBindingValue();
             SitStand.LoadBindingValue();
             EnableFBT.LoadBindingValue();
             EnableOSC.LoadBindingValue();
@@ -1308,6 +1442,16 @@ namespace Basis.BasisUI
             FootIKEnabled.LoadBindingValue();
             DisableAnimationsInFBT.LoadBindingValue();
             LocalHeadBlendShapes.LoadBindingValue();
+            EnablePlayspaceMover.LoadBindingValue();
+            PlayspaceMoverInput.LoadBindingValue();
+            PlayspaceMoverRotateInput.LoadBindingValue();
+            PlayspaceMoverHand.LoadBindingValue();
+            PlayspaceMoverRotate.LoadBindingValue();
+            PlayspaceMoverScale.LoadBindingValue();
+            PlayspaceMoverVertical.LoadBindingValue();
+            PlayspaceMoverFlip.LoadBindingValue();
+            PlayspaceMoverFlipAngle.LoadBindingValue();
+            PlayspaceMoverFlipAxis.LoadBindingValue();
 
             // Rendering / Graphics
             QualityLevel.LoadBindingValue();
@@ -1316,6 +1460,8 @@ namespace Basis.BasisUI
             Antialiasing.LoadBindingValue();
             UseBloomOverride.LoadBindingValue();
             BloomIntensity.LoadBindingValue();
+            UseVolumetricFogOverride.LoadBindingValue();
+            VolumetricFogDensity.LoadBindingValue();
             UseRealtimeReflectionProbes.LoadBindingValue();
             RealtimeReflectionProbeRate.LoadBindingValue();
             ShowGizmos.LoadBindingValue();
@@ -1340,6 +1486,8 @@ namespace Basis.BasisUI
             DevShowConsole.LoadBindingValue();
             DevShowEuroFilter.LoadBindingValue();
             DevShowNetStats.LoadBindingValue();
+            DevShowCalibrationDebug.LoadBindingValue();
+            DumpCalibrationCsv.LoadBindingValue();
             DisableLogging.LoadBindingValue();
             BasisDebug.LoggingDisabled = DisableLogging.RawValue;
             DisableLogging.OnChanged += value => BasisDebug.LoggingDisabled = value;
@@ -1405,6 +1553,9 @@ namespace Basis.BasisUI
             MaxPerfJiggleBones.LoadBindingValue();
             UsePerfLimitJiggleColliders.LoadBindingValue();
             MaxPerfJiggleColliders.LoadBindingValue();
+            UseJiggleCollisionFrustumCull.LoadBindingValue();
+            UseJiggleCollisionDistanceCull.LoadBindingValue();
+            JiggleCollisionCullDistance.LoadBindingValue();
             UsePerfLimitAnimators.LoadBindingValue();
             MaxPerfAnimators.LoadBindingValue();
             UsePerfLimitBones.LoadBindingValue();
@@ -1447,6 +1598,7 @@ namespace Basis.BasisUI
             // UI
             AvatarPreview.LoadBindingValue();
             AvatarPreviewMirror.LoadBindingValue();
+            CameraHud.LoadBindingValue();
             LimitHandHeldCameraRate.LoadBindingValue();
             HandHeldCameraRenderHz.LoadBindingValue();
             LimitAvatarPreviewRate.LoadBindingValue();
@@ -1464,6 +1616,7 @@ namespace Basis.BasisUI
             LimitThreshold.LoadBindingValue();
             LimitKnee.LoadBindingValue();
             DisableSeats.LoadBindingValue();
+            DisablePropPickup.LoadBindingValue();
 
             // Global FBIK parameters
             FBIKMinCutoff.LoadBindingValue();
@@ -1602,6 +1755,7 @@ namespace Basis.BasisUI
             FBIKAdvancedVisible.LoadBindingValue();
             FBIKCollisionsEnabled.LoadBindingValue();
             FBIKProtectElbow.LoadBindingValue();
+            FBIKCollideTrackedElbow.LoadBindingValue();
             FBIKUseHandCapsule.LoadBindingValue();
             FBIKChestRadius.LoadBindingValue();
             FBIKCollisionSkin.LoadBindingValue();
@@ -1615,7 +1769,8 @@ namespace Basis.BasisUI
             FBIKStruggleEnd.LoadBindingValue();
             FBIKMaxChestDelta.LoadBindingValue();
             FBIKMaxHipDelta.LoadBindingValue();
-            FBIKHipTiltStabilization.LoadBindingValue();
+            FBIKButterflyKnees.LoadBindingValue();
+            FBIKButterflyKneeMaxOpenDeg.LoadBindingValue();
             FBIKSpineBendPitch.LoadBindingValue();
             FBIKSpineBendYaw.LoadBindingValue();
             FBIKSpineBendRoll.LoadBindingValue();
@@ -1626,14 +1781,22 @@ namespace Basis.BasisUI
             FBIKHipHingeMaxAddDeg.LoadBindingValue();
             FBIKChestSpringHz.LoadBindingValue();
             FBIKChestSpringDamping.LoadBindingValue();
+            FBIKHipFrameSpringHz.LoadBindingValue();
+            FBIKHipFrameSpringDamping.LoadBindingValue();
+            FBIKElbowFlareMaxDeg.LoadBindingValue();
+            FBIKElbowFlareInwardGain.LoadBindingValue();
+            FBIKElbowFlareFullRollDeg.LoadBindingValue();
             FBIKSpineMaxForwardDeg.LoadBindingValue();
             FBIKSpineMaxBackwardDeg.LoadBindingValue();
             FBIKSpineMaxLateralDeg.LoadBindingValue();
             FBIKSpineSquishBoost.LoadBindingValue();
             FBIKMoveBodyBackWhenCrouching.LoadBindingValue();
             FBIKSwingSmoothRate.LoadBindingValue();
+            FBIKElbowSwingEnabled.LoadBindingValue();
             FBIKSpineCCDRelax.LoadBindingValue();
             FBIKNeckMaxConeDeg.LoadBindingValue();
+            FBIKSpineTwistKeep.LoadBindingValue();
+            FBIKSpineNeckTwistKeep.LoadBindingValue();
             FBIKChestArmSwingFactor.LoadBindingValue();
             FBIKChestArmSwingMaxDeg.LoadBindingValue();
             FBIKLowerArmTwistFraction.LoadBindingValue();
@@ -1642,6 +1805,8 @@ namespace Basis.BasisUI
             FBIKAnatShoulderSlide.LoadBindingValue();
             FBIKAnatCervicalLordosis.LoadBindingValue();
             FBIKAnatPelvicTwistRouting.LoadBindingValue();
+            FBIKLegSwivelSmoothing.LoadBindingValue();
+            FBIKTrackerBendNormal.LoadBindingValue();
             FBIKLordosisPitchGainDeg.LoadBindingValue();
             FBIKLordosisBaseDeg.LoadBindingValue();
             FBIKLordosisNeckShare.LoadBindingValue();
@@ -1681,6 +1846,7 @@ namespace Basis.BasisUI
             PairingEmaAlpha.LoadBindingValue();
             PairingDistanceEmaAlpha.LoadBindingValue();
             PairingWeightSmoothing.LoadBindingValue();
+            CalibrationTolerance.LoadBindingValue();
 
             // Remote Nameplate
             NPEnabled.LoadBindingValue();

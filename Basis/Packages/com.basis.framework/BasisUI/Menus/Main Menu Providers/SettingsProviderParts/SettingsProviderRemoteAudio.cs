@@ -602,6 +602,10 @@ togglePerspectiveCorrection.AssignBinding(BasisSettingsDefaults.RAPerspectiveCor
 
         public static void ResetRemoteAudioToDefaults()
         {
+            // Voice Buffer
+            BasisSettingsDefaults.RAJitterBufferDepth.ResetToDefault();
+            BasisSettingsDefaults.RAClipBufferScalar.ResetToDefault();
+
             // AudioSource
             BasisSettingsDefaults.RAMinDistance.ResetToDefault();
             BasisSettingsDefaults.RARolloffMode.ResetToDefault();
@@ -658,6 +662,8 @@ togglePerspectiveCorrection.AssignBinding(BasisSettingsDefaults.RAPerspectiveCor
             BasisSettingsDefaults.RAApplyHRTFToReflections.ResetToDefault();
 
             ApplyRemoteAudioToAll();
+            ApplyJitterBufferDepth();
+            ApplyClipBufferScalar();
         }
 
         /// <summary>
@@ -699,6 +705,8 @@ togglePerspectiveCorrection.AssignBinding(BasisSettingsDefaults.RAPerspectiveCor
             source.dopplerLevel = BasisSettingsDefaults.RADopplerLevel.RawValue;
             source.spatialBlend = BasisSettingsDefaults.RASpatialBlend.RawValue;
             source.priority = (int)BasisSettingsDefaults.RAPriority.RawValue;
+            source.spatialize = true;
+            source.spatializePostEffects = true;
 
 #if STEAMAUDIO_ENABLED
             // Steam Audio settings

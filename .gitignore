@@ -32,5 +32,9 @@
 # Python
 __pycache__/
 *.pyc
+
+CLAUDE.md
+.claude
+.wolf
 /Basis/Assets/_PoiyomiShaders
 Basis/Assets/_PoiyomiShaders.meta

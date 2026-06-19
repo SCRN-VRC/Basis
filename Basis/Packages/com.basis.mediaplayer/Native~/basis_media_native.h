@@ -70,6 +70,22 @@ typedef enum basis_render_op {
  * (the last two are demuxed by extension: .ts = MPEG-TS, .mp4 = fragmented MP4). */
 BASIS_API basis_media_engine_t* BASIS_CALL basis_media_open(const char* url);
 
+/* Split-stream / paced open. video_url carries video (e.g. an H.264-only fMP4);
+ * audio_url, when non-NULL, is a separate audio-only stream fed by a second demux
+ * thread into the same decoder so both present against one clock (adaptive YouTube
+ * above ~360p).
+ *
+ * delivery_hint selects the live-vs-on-demand clock: 0 = auto-detect at open,
+ * 1 = force live, 2 = force on-demand. On-demand throttles delivery to ~1x and
+ * presents on a fixed 1x-from-first-PTS clock, for VOD that arrives faster than real
+ * time (which would otherwise fast-forward on the live-edge clock). Auto picks
+ * on-demand when the source looks finite — an HTTP body with a known Content-Length
+ * and byte-range support, or an HLS playlist carrying EXT-X-ENDLIST — and live
+ * otherwise (non-HTTP transports and open-ended HTTP responses). A NULL/empty
+ * audio_url with delivery_hint == 0 behaves exactly like basis_media_open(video_url).
+ * Same return and async-error contract. */
+BASIS_API basis_media_engine_t* BASIS_CALL basis_media_open_dual(const char* video_url, const char* audio_url, int delivery_hint);
+
 /* Stop all threads (joining them) and free everything, including GPU textures.
  * D3D11/D3D12 resources are freed via thread-safe COM Release; the joined decode
  * threads guarantee nothing is mid-decode. The caller should drop its external-
@@ -95,6 +111,14 @@ BASIS_API int BASIS_CALL basis_media_get_video_size(basis_media_engine_t* engine
 /* Presentation position of the most recently published video frame, in
  * microseconds from stream start. -1 if unknown. */
 BASIS_API int64_t BASIS_CALL basis_media_get_position_us(basis_media_engine_t* engine);
+
+/* Copies the in-band caption cue (CEA-608 CC1) active at the current presentation
+ * position into buf (UTF-8, NUL-terminated). Returns bytes written (0 = no active
+ * cue), or -1 on bad args. out_start_us/out_end_us receive the active cue's time
+ * range in microseconds (may be NULL). Poll once per frame from the main thread;
+ * the text changes only when the displayed caption does. */
+BASIS_API int BASIS_CALL basis_media_poll_caption(basis_media_engine_t* engine, char* buf, int buf_size,
+                                                  int64_t* out_start_us, int64_t* out_end_us);
 
 /* Copies the latest error message (UTF-8, NUL-terminated) into buf. Returns the
  * number of bytes written (excluding NUL), or 0 if there is no error. */

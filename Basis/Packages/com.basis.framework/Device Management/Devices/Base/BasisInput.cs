@@ -49,6 +49,15 @@ namespace Basis.Scripts.Device_Management.Devices
         public bool IsLinked;
 
         /// <summary>
+        /// True when this device's pose comes from camera/optical tracking (e.g. the MediaPipe
+        /// webcam source) rather than a worn or handheld tracker. Camera-tracked devices don't
+        /// count as body trackers for the desktop calibration entry — webcam tracking alone
+        /// shouldn't surface the calibration panel.
+        /// </summary>
+        [SerializeField]
+        public bool IsCameraTracked;
+
+        /// <summary>
         /// The bone control this input drives (e.g., left hand, right foot).
         /// </summary>
         public BasisLocalBoneControl Control = null;
@@ -74,11 +83,32 @@ namespace Basis.Scripts.Device_Management.Devices
         /// </summary>
         public BasisCalibratedCoords UnscaledDeviceCoord = new BasisCalibratedCoords();
 
+        /// <summary>
+        /// Signed vertical offset (tracking space, metres) from this device's tracked origin to the
+        /// runtime's center-eye. 0 unless a backend whose HMD origin differs from the eyes fills it
+        /// (OpenVR); height calibration uses it to scale from the eyes rather than the device origin.
+        /// </summary>
+        public float CenterEyeVerticalOffset = 0f;
+
+        /// <summary>
+        /// Full tracking-space offset (metres) from this device's tracked origin to the runtime's center-eye
+        /// (averaged left/right eye-to-head). Zero unless a backend whose HMD origin differs from the eyes
+        /// fills it (OpenVR). <see cref="CenterEyeVerticalOffset"/> is its vertical component.
+        /// </summary>
+        public Vector3 CenterEyeOffset = Vector3.zero;
+
         [Header("Final Data normally just modified by EyeHeight/AvatarEyeHeight)")]
         /// <summary>
         /// Device pose after scaling/elevation adjustments.
         /// </summary>
         public BasisCalibratedCoords ScaledDeviceCoord = new BasisCalibratedCoords();
+
+        /// <summary>
+        /// World-space position offset added to the bone Control only (not the camera/raycast/transform), so a
+        /// device can place its avatar bone at the true eye while the rendered pose stays where the compositor
+        /// expects. Zero except on the OpenVR HMD.
+        /// </summary>
+        public Vector3 ScaledControlPositionOffset = Vector3.zero;
         /// <summary>
         /// Common/normalized device identifier (used for matching visual models, capabilities).
         /// </summary>
@@ -214,15 +244,20 @@ namespace Basis.Scripts.Device_Management.Devices
         }
         public void ComputeUnscaledDeviceCoord(ref BasisCalibratedCoords coords,Vector3 position)
         {
-            if (SMModuleSitStand.IsSteatedMode && BasisDeviceManagement.IsCurrentModeVR())
+            // Vertical tracking-space offsets (VR only). Seated mode raises the eye to standing height;
+            // the play-space mover adds its live OVRAS-style "Space Drag" vertical offset. Both shift the
+            // whole tracking space here so the camera, hands, and avatar move together as one without
+            // moving the character controller capsule.
+            if (BasisDeviceManagement.IsCurrentModeVR())
             {
-                position.y += SMModuleSitStand.MissingHeightDelta;
-                coords.position = position;
+                float yOffset = BasisLocalPlayspaceMover.VerticalOffset;
+                if (SMModuleSitStand.IsSteatedMode)
+                {
+                    yOffset += SMModuleSitStand.MissingHeightDelta;
+                }
+                position.y += yOffset;
             }
-            else
-            {
-                coords.position = position;
-            }
+            coords.position = position;
         }
         /// <summary>
         /// Computes the raycast origin/direction using the hand’s final transform and active offset.
@@ -274,7 +309,19 @@ namespace Basis.Scripts.Device_Management.Devices
                         }
                         else
                         {
-                            BasisDebug.Log($"Has Multiple Roles assigned for {found} most likely ok.", BasisDebug.LogTag.Input);
+                            // A same-backend device already holds this multi-capable role (e.g. a
+                            // stranded OpenVR controller left over from a SteamVR reconnect). Reclaim
+                            // it so only one device per backend drives the role; cross-backend holders
+                            // (e.g. hand-tracking coexisting with a controller) are intentionally kept.
+                            if (Input.SubSystemIdentifier == SubSystemIdentifier)
+                            {
+                                BasisDebug.Log($"Reclaiming {Role} from same-backend holder {Input.UniqueDeviceIdentifier}", BasisDebug.LogTag.Input);
+                                Input.UnAssignTracker();
+                            }
+                            else
+                            {
+                                BasisDebug.Log($"Has Multiple Roles assigned for {found} most likely ok.", BasisDebug.LogTag.Input);
+                            }
                         }
                     }
                 }
@@ -304,17 +351,34 @@ namespace Basis.Scripts.Device_Management.Devices
         {
             BasisInverseOffsetData = new BasisInverseOffsetFromBoneData();
 
-            //get the trackers position in space.
-            transform.GetPositionAndRotation(out BasisInverseOffsetData.TrackerPosition, out BasisInverseOffsetData.TrackerRotation);
-            BasisInverseOffsetData.InitialInverseTrackRotation = Quaternion.Inverse(BasisInverseOffsetData.TrackerRotation);
-            BasisInverseOffsetData.InitialControlRotation = Control.OutgoingWorldData.rotation;
+            BasisCalibratedCoords tracker = ScaledDeviceCoord;
+            BasisCalibratedCoords bone = Control.OutGoingData;
 
-            Vector3 Offset = Control.OutgoingWorldData.position - BasisInverseOffsetData.TrackerPosition;
-            Control.CalibratedHorizontalLever = Vector3.ProjectOnPlane(Offset, Vector3.up).magnitude;
-            Control.SetInverseOffset(
-                BasisInverseOffsetData.InitialInverseTrackRotation * (Offset),
-                BasisInverseOffsetData.InitialInverseTrackRotation * BasisInverseOffsetData.InitialControlRotation);
+            BasisInverseOffsetData.TrackerPosition = tracker.position;
+            BasisInverseOffsetData.TrackerRotation = tracker.rotation;
+            BasisInverseOffsetData.InitialInverseTrackRotation = Quaternion.Inverse(tracker.rotation);
+            BasisInverseOffsetData.InitialControlRotation = bone.rotation;
+
+            // Land the bone on the avatar's own clean T-pose bone position (head-aligned by
+            // DriveTpose), converted from world into the bone-sim/player-root frame. The bone sim's
+            // degenerate yaw doesn't reliably track the head at large angles, so this uses the real
+            // T-pose pose for the head/body direction actually calibrated in, then follows tracker
+            // deltas. Falls back to the live bone pose if the avatar bone isn't resolvable.
+            Vector3 referencePosition = bone.position;
+            BasisLocalAvatarDriver avatarDriver = BasisLocalPlayer.Instance != null ? BasisLocalPlayer.Instance.LocalAvatarDriver : null;
+            if (avatarDriver != null && avatarDriver.StoredRolesTransforms != null
+                && TryGetRole(out BasisBoneTrackedRole role)
+                && avatarDriver.StoredRolesTransforms.TryGetValue(role, out Transform avatarBone)
+                && avatarBone != null)
+            {
+                referencePosition = BasisLocalPlayer.localToWorldMatrix.inverse.MultiplyPoint3x4(avatarBone.position);
+            }
+
+            BasisCalibrationMath.ComputeInverseOffset(tracker.position, tracker.rotation, referencePosition, bone.rotation, out Vector3 InverseOffsetPosition, out Quaternion InverseOffsetRotation);
+            Control.SetInverseOffset(InverseOffsetPosition, InverseOffsetRotation);
             Control.UseInverseOffset = true;
+
+            BasisCalibrationDebugRecorder.OffsetCapture(this, Control);
         }
 
         /// <summary>
@@ -353,7 +417,12 @@ namespace Basis.Scripts.Device_Management.Devices
         /// </summary>
         public void ApplyFinalMovement()
         {
-            this.transform.SetLocalPositionAndRotation(ScaledDeviceCoord.position, ScaledDeviceCoord.rotation);
+            Vector3 localPosition = ScaledDeviceCoord.position;
+            Quaternion localRotation = ScaledDeviceCoord.rotation;
+            // Tip the whole tracking rig (camera via the head device, controllers, trackers) to match the
+            // avatar's play-space flip; no-op unless a flip is active. The character controller is untouched.
+            BasisLocalPlayspaceMover.ApplyFlipToLocalPose(ref localPosition, ref localRotation);
+            this.transform.SetLocalPositionAndRotation(localPosition, localRotation);
         }
 
         /// <summary>
@@ -537,7 +606,17 @@ namespace Basis.Scripts.Device_Management.Devices
         {
             if (HasPlayerControlSupport)
             {
-                BasisActionDriver.UpdatePlayerControl(trackedRole, ref CurrentInputState, ref LastInputState);
+                // Roles that may have multiple holders (the hands) dispatch once per frame on the
+                // combined state of all holders, so a duplicate or coexisting device can't double-fire
+                // edge actions (menu toggle, mic, jump). Every other role keeps the direct fast path.
+                if (CanHaveMultipleRoles.Contains(trackedRole))
+                {
+                    BasisActionDriver.UpdatePlayerControlForRole(trackedRole);
+                }
+                else
+                {
+                    BasisActionDriver.UpdatePlayerControl(trackedRole, ref CurrentInputState, ref LastInputState);
+                }
             }
             if (hasPlayerRaycastSupport && HasRaycaster)
             {
@@ -707,24 +786,12 @@ namespace Basis.Scripts.Device_Management.Devices
         /// </summary>
         public void ConvertToScaledDeviceCoord(ref BasisCalibratedCoords unscaled, ref BasisCalibratedCoords scaled)
         {
-            float s = BasisHeightDriver.DeviceScale;
-
-            Vector3 p = unscaled.position * s;
-            Quaternion r = unscaled.rotation;
-
-            scaled.position = OffsetCoords.position + (OffsetCoords.rotation * p);
-            scaled.rotation = OffsetCoords.rotation * r;
+            BasisCalibrationMath.ScaleDeviceCoord(unscaled.position, unscaled.rotation, BasisHeightDriver.DeviceScale, OffsetCoords.position, OffsetCoords.rotation, out scaled.position, out scaled.rotation);
         }
 
         public void ConvertToScaledDeviceCoord()
         {
-            float s = BasisHeightDriver.DeviceScale;
-
-            Vector3 p = UnscaledDeviceCoord.position * s;
-            Quaternion r = UnscaledDeviceCoord.rotation;
-
-            ScaledDeviceCoord.position = OffsetCoords.position + (OffsetCoords.rotation * p);
-            ScaledDeviceCoord.rotation = OffsetCoords.rotation * r;
+            BasisCalibrationMath.ScaleDeviceCoord(UnscaledDeviceCoord.position, UnscaledDeviceCoord.rotation, BasisHeightDriver.DeviceScale, OffsetCoords.position, OffsetCoords.rotation, out ScaledDeviceCoord.position, out ScaledDeviceCoord.rotation);
         }
 
         /// <summary>
@@ -734,7 +801,7 @@ namespace Basis.Scripts.Device_Management.Devices
         {
             if (hasRoleAssigned && Control.HasTracked != BasisHasTracked.HasNoTracker)
             {
-                Control.SetIncoming(ScaledDeviceCoord.position, ScaledDeviceCoord.rotation);
+                Control.SetIncoming(ScaledDeviceCoord.position + ScaledControlPositionOffset, ScaledDeviceCoord.rotation);
             }
 
         }

@@ -1,3 +1,4 @@
+using Basis.BasisUI;
 using Basis.Scripts.Common;
 using Basis.Scripts.Device_Management;
 using Basis.Scripts.Device_Management.Devices;
@@ -227,6 +228,20 @@ namespace Basis.Scripts.BasisSdk.Interactions
 
         # endregion
 
+        #region Grid Snap & Rotation Lock
+
+        [Header("Grid Snap & Rotation Lock")]
+        [Tooltip("Snaps the held object's world position to a grid while held.")]
+        public bool enableGridSnap = false;
+        [Tooltip("Grid cell size in meters used when grid snapping.")]
+        public float gridSnapSize = 0.25f;
+        [Tooltip("Snaps the held object's rotation to fixed angular increments while held.")]
+        public bool enableRotationSnap = false;
+        [Tooltip("Rotation increment in degrees used when rotation snapping.")]
+        public float rotationSnapDegrees = 15f;
+
+        #endregion
+
         # region Auto Return
         [Header("Auto Return")]
         [Tooltip("Target world position to move to.")]
@@ -387,6 +402,8 @@ namespace Basis.Scripts.BasisSdk.Interactions
         /// <inheritdoc />
         public override bool CanHover(BasisInput input)
         {
+            // Prop pickup disabled in settings blocks grabbing a prop you aren't already holding (you can still drop one).
+            if (BasisSettingsDefaults.DisablePropPickup.RawValue && !Inputs.AnyInteracting()) return false;
             // NOTE: see CanInteract note
             return InteractableEnabled &&
                 (!Inputs.AnyInteracting() || CanSelfStealResolved) &&               // self-steal
@@ -402,6 +419,8 @@ namespace Basis.Scripts.BasisSdk.Interactions
         /// <inheritdoc />
         public override bool CanInteract(BasisInput input)
         {
+            // Prop pickup disabled in settings blocks grabbing a prop you aren't already holding (you can still drop one).
+            if (BasisSettingsDefaults.DisablePropPickup.RawValue && !Inputs.AnyInteracting()) return false;
             // NOTE: Injected checks must be called at the end so that we can safely assume that at the time this was invoked, everything was valid.
             //       Important for net sync: pending steal requests shouldn't re-invoke with stale data.
             return InteractableEnabled &&
@@ -419,6 +438,8 @@ namespace Basis.Scripts.BasisSdk.Interactions
         public override bool CanDirectGrab(BasisInput input)
         {
             if (!base.CanDirectGrab(input)) return false;
+            // Prop pickup disabled in settings blocks grabbing a prop you aren't already holding (you can still drop one).
+            if (BasisSettingsDefaults.DisablePropPickup.RawValue && !Inputs.AnyInteracting()) return false;
             if (Inputs.AnyInteracting() && !CanSelfStealResolved) return false;
             return CanInteractInjected.AllTrue(input);
         }
@@ -513,6 +534,10 @@ namespace Basis.Scripts.BasisSdk.Interactions
                     InputConstraint.SetRestPositionAndRotation(restPos, restRot);
 
                     transform.GetPositionAndRotation(out Vector3 ActivePosition, out Quaternion ActiveRotation);
+                    _previousPosition = ActivePosition;
+                    _previousRotation = ActiveRotation;
+                    linearVelocity = Vector3.zero;
+                    angularVelocity = Vector3.zero;
 
                     Vector3 offsetPos;
                     bool inDesktop = BasisDeviceManagement.IsUserInDesktop();
@@ -581,11 +606,17 @@ namespace Basis.Scripts.BasisSdk.Interactions
             {
                 if (wrapper.GetState() == BasisInteractInputState.Interacting)
                 {
+                    UpdateHeldPoseFromInput(wrapper, false);
+                    if (_pickupUseLastEffectiveState)
+                    {
+                        OnPickupUse?.Invoke(BasisPickUpUseMode.OnPickUpUseUp);
+                    }
+                    _pickupUseLastEffectiveState = false;
+                    _pickupUsePendingReleaseAfterUI = false;
+
                     Inputs.ChangeStateByRole(wrapper.Role, BasisInteractInputState.Ignored);
 
                     RequiresUpdateLoop = false;
-                    _pickupUseLastEffectiveState = false;
-                    _pickupUsePendingReleaseAfterUI = false;
                     // cleanup Desktop Manipulation since InputUpdate isn't run again till next pickup
                     targetOffset = Vector3.zero;
                     if (pauseHead)
@@ -678,6 +709,27 @@ namespace Basis.Scripts.BasisSdk.Interactions
             _previousRotation = rot;
         }
 
+        private static Vector3 SnapPositionToGrid(Vector3 position, float size)
+        {
+            if (size <= 0f)
+                return position;
+            return new Vector3(
+                Mathf.Round(position.x / size) * size,
+                Mathf.Round(position.y / size) * size,
+                Mathf.Round(position.z / size) * size);
+        }
+
+        private static Quaternion SnapRotationToDegrees(Quaternion rotation, float degrees)
+        {
+            if (degrees <= 0f)
+                return rotation;
+            Vector3 euler = rotation.eulerAngles;
+            euler.x = Mathf.Round(euler.x / degrees) * degrees;
+            euler.y = Mathf.Round(euler.y / degrees) * degrees;
+            euler.z = Mathf.Round(euler.z / degrees) * degrees;
+            return Quaternion.Euler(euler);
+        }
+
         /// <summary>
         /// Normalizes an angle into the [0, 360) range.
         /// </summary>
@@ -699,7 +751,12 @@ namespace Basis.Scripts.BasisSdk.Interactions
         {
             if (!GetActiveInteracting(out BasisInputWrapper interactingInput)) return;
 
-            if (_lerping)
+            UpdateHeldPoseFromInput(interactingInput, true);
+        }
+
+        private void UpdateHeldPoseFromInput(BasisInputWrapper interactingInput, bool pollControls)
+        {
+            if (pollControls && _lerping)
             {
                 _lerpElapsed += Time.deltaTime;
                 float t = Mathf.Clamp01(_lerpElapsed / lerpToHandDuration);
@@ -724,9 +781,12 @@ namespace Basis.Scripts.BasisSdk.Interactions
 
             if (inDesktop)
             {
-                PollDesktopControl(Inputs.desktopCenterEye.Source);
+                if (pollControls)
+                {
+                    PollDesktopControl(Inputs.desktopCenterEye.Source);
+                }
             }
-            else
+            else if (pollControls)
             {
                 // If trigger pulled on opposing input, scale object based on hand distance
                 if (enableScaleWithGesture && GetOppositeInteracting(out BasisInputWrapper opposingInput))
@@ -765,52 +825,65 @@ namespace Basis.Scripts.BasisSdk.Interactions
                 }
             }
 
-            // Trigger state machine for OnPickupUse.
-            // Suppressed while the holding input is targeting UI (ray or direct touch) so
-            // clicking a UI panel with a pickup in hand doesn't fire the pickup's use action.
-            BasisInput useSource = interactingInput.Source;
-            bool uiActive =
-                (useSource.BasisUIRaycast != null && useSource.BasisUIRaycast.HadRaycastUITarget) ||
-                (BasisDirectTouch.Instance != null && BasisDirectTouch.Instance.IsDeviceTouching(useSource));
-            bool rawState = HasState(useSource.CurrentInputState, InputKey);
+            if (pollControls)
+            {
+                // Pickup use is normal input polling, so release-time pose sampling skips it.
+                // UI interaction suppresses use until the input is released away from UI.
+                BasisInput useSource = interactingInput.Source;
+                bool uiActive =
+                    (useSource.BasisUIRaycast != null && useSource.BasisUIRaycast.HadRaycastUITarget) ||
+                    (BasisDirectTouch.Instance != null && BasisDirectTouch.Instance.IsDeviceTouching(useSource));
+                bool rawState = HasState(useSource.CurrentInputState, InputKey);
 
-            bool effectiveState;
-            if (uiActive)
-            {
-                // If the button is held while entering/on UI, require a release before the next use fire
-                // so dragging the hand off UI while still held doesn't phantom-fire UseDown.
-                if (rawState) _pickupUsePendingReleaseAfterUI = true;
-                effectiveState = false;
-            }
-            else if (_pickupUsePendingReleaseAfterUI)
-            {
-                if (!rawState) _pickupUsePendingReleaseAfterUI = false;
-                effectiveState = false;
-            }
-            else
-            {
-                effectiveState = rawState;
-            }
+                bool effectiveState;
+                if (uiActive)
+                {
+                    // If the button is held while entering/on UI, require a release before the next use fire
+                    // so dragging the hand off UI while still held doesn't phantom-fire UseDown.
+                    if (rawState) _pickupUsePendingReleaseAfterUI = true;
+                    effectiveState = false;
+                }
+                else if (_pickupUsePendingReleaseAfterUI)
+                {
+                    if (!rawState) _pickupUsePendingReleaseAfterUI = false;
+                    effectiveState = false;
+                }
+                else
+                {
+                    effectiveState = rawState;
+                }
 
-            bool lastEffective = _pickupUseLastEffectiveState;
-            if (effectiveState && !lastEffective)
-            {
-                OnPickupUse?.Invoke(BasisPickUpUseMode.OnPickUpUseDown);
+                bool lastEffective = _pickupUseLastEffectiveState;
+                if (effectiveState && !lastEffective)
+                {
+                    OnPickupUse?.Invoke(BasisPickUpUseMode.OnPickUpUseDown);
+                }
+                else if (!effectiveState && lastEffective)
+                {
+                    OnPickupUse?.Invoke(BasisPickUpUseMode.OnPickUpUseUp);
+                }
+                else if (effectiveState)
+                {
+                    OnPickupUse?.Invoke(BasisPickUpUseMode.OnPickUpStillDown);
+                }
+                _pickupUseLastEffectiveState = effectiveState;
             }
-            else if (!effectiveState && lastEffective)
-            {
-                OnPickupUse?.Invoke(BasisPickUpUseMode.OnPickUpUseUp);
-            }
-            else if (effectiveState)
-            {
-                OnPickupUse?.Invoke(BasisPickUpUseMode.OnPickUpStillDown);
-            }
-            _pickupUseLastEffectiveState = effectiveState;
 
             InputConstraint.UpdateSourcePositionAndRotation(0, inPos, inRot);
 
             if (InputConstraint.Evaluate(out Vector3 pos, out Quaternion rot))
             {
+                bool forceGridSnap = BasisSettingsDefaults.ForceGridSnap.RawValue;
+                if (enableGridSnap || forceGridSnap)
+                {
+                    pos = SnapPositionToGrid(pos, forceGridSnap ? BasisSettingsDefaults.GridSnapSize.RawValue : gridSnapSize);
+                }
+                bool forceRotationSnap = BasisSettingsDefaults.ForceRotationSnap.RawValue;
+                if (enableRotationSnap || forceRotationSnap)
+                {
+                    rot = SnapRotationToDegrees(rot, forceRotationSnap ? BasisSettingsDefaults.RotationSnapDegrees.RawValue : rotationSnapDegrees);
+                }
+
                 if (constrainToAxis != BasisAxisType.None)
                 {
                     transform.GetLocalPositionAndRotation(out Vector3 currentPos, out Quaternion currentRot);

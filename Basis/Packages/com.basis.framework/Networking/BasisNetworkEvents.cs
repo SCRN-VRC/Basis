@@ -259,6 +259,18 @@ public static class BasisNetworkEvents
                     Reader.Recycle();
                 });
                 break;
+            case BasisNetworkCommons.ModifyResourceChannel:
+                if (ValidateSize(Reader, peer, channel) == false)
+                {
+                    Reader.Recycle();
+                    return;
+                }
+                BasisDeviceManagement.EnqueueOnMainThread(async () =>
+                {
+                    await BasisNetworkGenericMessages.ModifyResourceMessage(Reader, deliveryMethod);
+                    Reader.Recycle();
+                });
+                break;
             case BasisNetworkCommons.ServerLibraryChannel:
                 if (ValidateSize(Reader, peer, channel) == false)
                 {
@@ -633,6 +645,11 @@ public static class BasisNetworkEvents
     }
     public static void HandleDisconnectionReason(DisconnectInfo disconnectInfo)
     {
+        if (disconnectInfo.Reason == DisconnectReason.DisconnectPeerCalled)
+        {
+            BasisDebug.Log($"Disconnected locally [{disconnectInfo.Reason}]", BasisDebug.LogTag.Networking);
+            return;
+        }
 #if UNITY_SERVER
         bool canShowMenu = !UnityEngine.Application.isBatchMode;
 #endif

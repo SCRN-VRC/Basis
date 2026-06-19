@@ -17,10 +17,12 @@ MonoBehaviour:
   - BasisMediaPlayer
   - BasisMediaPlayerNetworking
   - BasisMediaPlayerAudio
+  - BasisMediaAudioChannel
   - BasisMediaPlayerStreaming
   - BasisMediaPlayerSynthetic
   - BasisVideoDisplay
   - BasisVideoMaterialOutput
+  - BasisMediaCaptionOverlay
   - BasisSDKMirror
   - Basis.Scripts.BasisSdk.BasisAvatar
   - Basis.Scripts.BasisSdk.BasisScene

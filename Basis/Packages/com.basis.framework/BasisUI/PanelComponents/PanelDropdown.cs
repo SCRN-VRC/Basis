@@ -19,6 +19,8 @@ namespace Basis.BasisUI
 
         public TMP_Dropdown DropdownComponent;
 
+        protected override Selectable InteractableTarget => DropdownComponent;
+
         private int _previousIndex = -1;
         private TweenScale _selectionPunchTween;
         private TweenCanvasGroupAlpha _listFadeTween;
@@ -29,12 +31,20 @@ namespace Basis.BasisUI
         {
             get
             {
-                if (Entries == null || Entries.Count == -1)
+                if (Entries == null || Entries.Count == 0)
                 {
                     return -1;
                 }
 
-                return Entries.IndexOf(Value);
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    if (string.Equals(Entries[i], Value, System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        return i;
+                    }
+                }
+
+                return -1;
             }
         }
 
@@ -101,7 +111,7 @@ namespace Basis.BasisUI
             _previousIndex = currentIndex;
 
             // Punch the dropdown itself to give selection feedback
-            if (_selectionPunchTween != null && _selectionPunchTween.Active) _selectionPunchTween.Reset();
+            if (_selectionPunchTween != null && _selectionPunchTween.Active && _selectionPunchTween.Target == transform) _selectionPunchTween.Reset();
 
             _selectionPunchTween = transform.TweenScale(0.06f, transform.localScale, Vector3.one * 0.96f)
                 .SetEase(Easing.OutCubic)
@@ -150,7 +160,7 @@ namespace Basis.BasisUI
                 cg = _dropdownList.gameObject.AddComponent<CanvasGroup>();
             }
 
-            if (_listFadeTween != null && _listFadeTween.Active) _listFadeTween.Reset();
+            if (_listFadeTween != null && _listFadeTween.Active && _listFadeTween.Target == cg) _listFadeTween.Reset();
 
             cg.alpha = 0f;
             _listFadeTween = cg.TweenAlpha(0.15f, 0f, 1f).SetEase(Easing.OutCubic);

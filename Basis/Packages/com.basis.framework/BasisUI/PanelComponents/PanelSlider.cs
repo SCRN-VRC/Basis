@@ -126,12 +126,16 @@ namespace Basis.BasisUI
 
         public Slider SliderComponent;
 
+        protected override Selectable InteractableTarget => SliderComponent;
+
         private RectTransform _handleRect;
         private Graphic _roundedFrontGraphic;
         private TweenScale _handleScaleTween;
         private TweenGraphicColor _fillColorTween;
         private TweenScale _labelPunchTween;
         private bool _isDragging;
+        private bool _externalDriving;
+        private float _externalDriveValue;
 
 
         public static PanelSlider CreateNew(Component parent)
@@ -197,29 +201,60 @@ namespace Basis.BasisUI
         public void OnPointerDown(PointerEventData eventData)
         {
             if (!Application.isPlaying) return;
-            _isDragging = true;
-
-            // Scale up handle on grab
-            if (_handleRect != null)
-            {
-                if (_handleScaleTween != null && _handleScaleTween.Active) _handleScaleTween.Reset();
-                _handleScaleTween = _handleRect.TweenScale(0.12f, _handleRect.localScale, Vector3.one * 1.25f)
-                    .SetEase(Easing.OutBack);
-            }
+            BeginDragVisual();
         }
 
         public void OnPointerUp(PointerEventData eventData)
         {
             if (!Application.isPlaying) return;
-            _isDragging = false;
+            EndDragVisual();
+        }
 
-            // Scale down handle on release
+        // Scale up handle on grab
+        private void BeginDragVisual()
+        {
+            _isDragging = true;
             if (_handleRect != null)
             {
-                if (_handleScaleTween != null && _handleScaleTween.Active) _handleScaleTween.Reset();
+                if (_handleScaleTween != null && _handleScaleTween.Active && _handleScaleTween.Target == _handleRect) _handleScaleTween.Reset();
+                _handleScaleTween = _handleRect.TweenScale(0.12f, _handleRect.localScale, Vector3.one * 1.25f)
+                    .SetEase(Easing.OutBack);
+            }
+        }
+
+        // Scale down handle on release
+        private void EndDragVisual()
+        {
+            _isDragging = false;
+            if (_handleRect != null)
+            {
+                if (_handleScaleTween != null && _handleScaleTween.Active && _handleScaleTween.Target == _handleRect) _handleScaleTween.Reset();
                 _handleScaleTween = _handleRect.TweenScale(0.2f, _handleRect.localScale, Vector3.one)
                     .SetEase(Easing.OutBack);
             }
+        }
+
+        public void DriveExternalDelta(float delta)
+        {
+            if (!Application.isPlaying || SliderComponent == null) return;
+
+            if (!_externalDriving)
+            {
+                _externalDriving = true;
+                _externalDriveValue = SliderComponent.value;
+                BeginDragVisual();
+            }
+
+            _externalDriveValue = Mathf.Clamp(_externalDriveValue + delta, SliderComponent.minValue, SliderComponent.maxValue);
+            SliderComponent.value = _externalDriveValue;
+        }
+
+        public void EndExternalDrive()
+        {
+            if (!_externalDriving) return;
+            _externalDriving = false;
+            EndDragVisual();
+            OnSliderConfirmed();
         }
 
         // Applies visually, does not write to settings.
@@ -237,7 +272,7 @@ namespace Basis.BasisUI
             // Punch the value label when user confirms
             if (Application.isPlaying && CurrentValueLabel != null)
             {
-                if (_labelPunchTween != null && _labelPunchTween.Active) _labelPunchTween.Reset();
+                if (_labelPunchTween != null && _labelPunchTween.Active && _labelPunchTween.Target == CurrentValueLabel.transform) _labelPunchTween.Reset();
                 Transform labelTransform = CurrentValueLabel.transform;
                 _labelPunchTween = labelTransform.TweenScale(0.06f, labelTransform.localScale, Vector3.one * 1.15f)
                     .SetEase(Easing.OutCubic)
@@ -331,7 +366,7 @@ namespace Basis.BasisUI
                 }
                 else
                 {
-                    if (_fillColorTween != null && _fillColorTween.Active) _fillColorTween.Reset();
+                    if (_fillColorTween != null && _fillColorTween.Active && _fillColorTween.Target == FillGraphic) _fillColorTween.Reset();
                     _fillColorTween = FillGraphic.TweenColor(0.15f, FillGraphic.color, targetFillColor)
                         .SetEase(Easing.OutCubic);
                     if (_roundedFrontGraphic != null) _roundedFrontGraphic.color = targetFillColor;

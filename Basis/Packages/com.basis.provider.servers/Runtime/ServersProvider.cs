@@ -6,6 +6,8 @@ using Basis.Scripts.Drivers;
 using Basis.Scripts.Networking;
 using System;
 using System.Collections.Generic;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -70,6 +72,8 @@ namespace Basis.BasisUI
         private PanelButton _editShareButton;
         private PanelButton _editRemoveButton;
         private PanelTextField _usernameField;
+        private ServerDirectoryEntry _pendingUsernameEntry;
+        private bool _pendingUsernameHostMode;
         private PanelButton _addServerButton;
         private PanelButton _refreshAllButton;
         private PanelToggle _advancedToggle;
@@ -132,6 +136,7 @@ namespace Basis.BasisUI
             _queryCts = null;
             _rows.Clear();
             _entries.Clear();
+            _pendingUsernameEntry = null;
             UnsubscribeSourceEvents();
             _panel = null;
         }
@@ -209,6 +214,9 @@ namespace Basis.BasisUI
             _usernameField = PanelTextField.CreateNewEntry(container);
             _usernameField.Descriptor.SetTitle(BasisLocalization.Get("menu.servers.username"));
             _usernameField.SetValueWithoutNotify(BasisDataStore.LoadString(BasisConnectionService.UsernameFileName, string.Empty));
+            if (_usernameField._placeholderLabel != null)
+                _usernameField._placeholderLabel.text = BasisLocalization.Get("menu.servers.username.hint");
+            _usernameField._inputField.onSubmit.AddListener(_ => OnUsernameSubmitted());
 
             RectTransform headerActions = BuildActionRow(container);
 
@@ -826,7 +834,7 @@ namespace Basis.BasisUI
                     playerCount));
 
                 string description = string.Format("{0}  •  {1}",
-                    string.Format(BasisLocalization.Get("menu.servers.list.address"), address, port),
+                    DisplayAddress(address, port),
                     string.Format(BasisLocalization.Get("menu.servers.list.ping"), result.RoundTripMs));
                 if (!string.IsNullOrEmpty(result.Motd))
                 {
@@ -842,10 +850,18 @@ namespace Basis.BasisUI
                     name = string.Format(BasisLocalization.Get("menu.servers.list.defaultBadge"), name);
                 row.Group.SetTitle(name);
                 row.Group.SetDescription(string.Format("{0}  •  <color={1}>{2}</color>",
-                    string.Format(BasisLocalization.Get("menu.servers.list.address"), address, port),
+                    DisplayAddress(address, port),
                     OfflineColor,
                     BasisLocalization.Get("menu.servers.list.offline")));
             }
+        }
+
+        // Format address:port for display, using bracket notation for IPv6 literals.
+        private static string DisplayAddress(string address, ushort port)
+        {
+            if (IPAddress.TryParse(address, out IPAddress ip) && ip.AddressFamily == AddressFamily.InterNetworkV6)
+                return $"[{address}]:{port}";
+            return string.Format(BasisLocalization.Get("menu.servers.list.address"), address, port);
         }
 
         // TMP rich-text colors for the live online/offline indicators in each row.
@@ -894,9 +910,10 @@ namespace Basis.BasisUI
                 : BasisDataStore.LoadString(BasisConnectionService.UsernameFileName, string.Empty);
             if (string.IsNullOrEmpty(userName))
             {
-                BasisConnectionService.ReportConnectionError(BasisLocalization.Get("menu.servers.error.emptyName"));
+                PromptForUsername(entry, isHostMode);
                 return;
             }
+            _pendingUsernameEntry = null;
 
             if (isHostMode)
             {
@@ -917,6 +934,28 @@ namespace Basis.BasisUI
             BasisCursorManagement.OnReset();
 
             await BasisConnectionService.ConnectAsync(entry, userName, isHostMode);
+        }
+
+        private void PromptForUsername(ServerDirectoryEntry entry, bool isHostMode)
+        {
+            _pendingUsernameEntry = entry;
+            _pendingUsernameHostMode = isHostMode;
+
+            if (_usernameField == null) return;
+
+            _usernameField._inputField.Select();
+            _usernameField._inputField.ActivateInputField();
+        }
+
+        private void OnUsernameSubmitted()
+        {
+            if (_pendingUsernameEntry == null) return;
+            if (_usernameField == null || string.IsNullOrEmpty(_usernameField._inputField.text)) return;
+
+            ServerDirectoryEntry entry = _pendingUsernameEntry;
+            bool isHostMode = _pendingUsernameHostMode;
+            _pendingUsernameEntry = null;
+            _ = ConnectToAsync(entry, isHostMode);
         }
 
 

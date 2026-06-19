@@ -20,6 +20,23 @@ using UnityEngine.Rendering;
 //   var player = gameObject.AddComponent<BasisMediaPlayer>();
 //   gameObject.AddComponent<BasisVideoMaterialOutput>().TargetRenderer = quadRenderer;
 //   player.LoadUrl("https://example.com/clip.mp4");
+
+// High-level, display-friendly playback status, folded from the OS-codec engine
+// state (BasisMediaEngineState) or the CPU source flags into one value the in-game
+// Media Players panel shows. See BasisMediaPlayer.Status.
+public enum BasisMediaPlayerStatus
+{
+    NoMedia = 0,    // nothing loaded
+    Connecting,     // opening / connecting to the stream
+    Buffering,      // connected, filling the buffer (no frame on screen yet)
+    Ready,          // prepared, first frame available, not actively playing
+    Playing,
+    Paused,
+    Stopped,        // had media, stopped by the user (or never started)
+    Ended,          // reached end of stream
+    Error,          // load/playback failed — see LastErrorMessage
+}
+
 [DisallowMultipleComponent]
 public sealed class BasisMediaPlayer : MonoBehaviour
 {
@@ -59,8 +76,6 @@ public sealed class BasisMediaPlayer : MonoBehaviour
     public long PresentationOffsetUs = 0;
 
     [Header("Audio")]
-    [Tooltip("Where decoded audio is routed. UnityAudioSource hands frames to a BasisMediaPlayerAudio on this GameObject. Currently the only supported routing; the property exists so additional routings can be added without breaking call sites.")]
-    public BasisAudioRouting AudioRouting = BasisAudioRouting.UnityAudioSource;
     [Tooltip("Linear volume 0..1 applied to the audio path. Maps to BasisMediaPlayerAudio.VolumeGain.")]
     [Range(0f, 1f)] public float Volume = 1f;
     [Tooltip("If true, the audio path is silenced without stopping the source.")]
@@ -68,13 +83,21 @@ public sealed class BasisMediaPlayer : MonoBehaviour
     [Tooltip("Playback rate multiplier. 1.0 = real-time. Source backends that don't support rate changes ignore this.")]
     [Range(0.25f, 4f)] public float PlaybackRate = 1f;
 
+    [Header("Captions")]
+    [Tooltip("Show in-band closed captions (CEA-608) when the stream carries them. Client-side only — does not affect playback or sync. A BasisMediaCaptionOverlay (or your own UI) draws the cues; this toggles their visibility.")]
+    [SerializeField] private bool captionsEnabled = false;
+    [Tooltip("Caption text opacity (0..1). Client-side; applied by the caption overlay.")]
+    [Range(0f, 1f)] [SerializeField] private float captionTextOpacity = 1f;
+    [Tooltip("Caption background opacity (0..1). Client-side; applied by the caption overlay.")]
+    [Range(0f, 1f)] [SerializeField] private float captionBackgroundOpacity = 0.5f;
+
     [Header("Sleep Timer")]
     [Tooltip("If > 0, the player calls Stop() automatically this many seconds after Play. 0 disables. Useful for fall-asleep-to-the-stream rooms.")]
     [Min(0f)] public float StopAfterSeconds = 0f;
 
     [Header("Capture")]
-    [Tooltip("CaptureScreenshot flips rows before encoding to PNG. Native GPU textures (D3D11/12) read back top-left origin and need flipping to be right-way-up on disk; toggle if your platform already reads bottom-left origin.")]
-    public bool FlipVerticallyForScreenshot = true;
+    [Tooltip("CaptureScreenshot flips rows before encoding to PNG. The native decoder emits a bottom-left origin frame, so the readback is already top-down for PNG and this defaults OFF; toggle if your platform reads back the other way.")]
+    public bool FlipVerticallyForScreenshot = false;
 
     [Header("DVR")]
     [Tooltip("If true and the source is live, BufferMilliseconds is forced up to DvrWindowSeconds*1000 (capped at 60s) so the engine holds a rolling rewind window. Has no effect on seekable sources, which already support Seek to any position.")]
@@ -113,11 +136,61 @@ public sealed class BasisMediaPlayer : MonoBehaviour
     public event Action<BasisBitrateTrack> OnBitrateTrackChanged;
     public event Action<BasisAudioTrack> OnAudioTrackChanged;
 
+    // The active in-band caption cue changed (CEA-608 CC1). Cue.Text is null when
+    // the caption clears. Raised even while CaptionsEnabled is false so a display
+    // can stay primed; honour CaptionsEnabled for visibility.
+    public event Action<BasisCaptionCue> OnCaptionCueChanged;
+
+    // CaptionsEnabled toggled. Client-side only — does not affect playback or sync.
+    public event Action<bool> OnCaptionsEnabledChanged;
+
+    // Caption styling (text/background opacity) changed. Client-side only.
+    public event Action OnCaptionStyleChanged;
+
     // Diagnostic event; not in the public lifecycle list but kept for tooling
     // that wants per-frame callbacks.
     public event Action<BasisVideoFrame> OnFramePresented;
 
     public BasisAVSyncClock Clock { get; } = new BasisAVSyncClock();
+
+    // Whether closed captions should be shown. Client-side preference; raises
+    // OnCaptionsEnabledChanged so a caption overlay can show/hide immediately.
+    public bool CaptionsEnabled
+    {
+        get => captionsEnabled;
+        set
+        {
+            if (captionsEnabled == value) return;
+            captionsEnabled = value;
+            OnCaptionsEnabledChanged?.Invoke(value);
+        }
+    }
+
+    // Caption text opacity, 0..1. Client-side; raises OnCaptionStyleChanged.
+    public float CaptionTextOpacity
+    {
+        get => captionTextOpacity;
+        set
+        {
+            value = Mathf.Clamp01(value);
+            if (captionTextOpacity == value) return;
+            captionTextOpacity = value;
+            OnCaptionStyleChanged?.Invoke();
+        }
+    }
+
+    // Caption background opacity, 0..1. Client-side; raises OnCaptionStyleChanged.
+    public float CaptionBackgroundOpacity
+    {
+        get => captionBackgroundOpacity;
+        set
+        {
+            value = Mathf.Clamp01(value);
+            if (captionBackgroundOpacity == value) return;
+            captionBackgroundOpacity = value;
+            OnCaptionStyleChanged?.Invoke();
+        }
+    }
 
     public IBasisFrameRenderer Renderer
     {
@@ -166,6 +239,48 @@ public sealed class BasisMediaPlayer : MonoBehaviour
     public bool IsPrepared => runtimeIsPrepared;
     public Vector2Int VideoSize => runtimeVideoSize;
 
+    // Last error surfaced through OnError (native engine failure, blocked URL,
+    // audio-rate mismatch, …) or a pre-flight load failure. Null when none.
+    // Cleared when a fresh source is loaded. Read by the Media Players panel so a
+    // failed/selected player can show what went wrong.
+    public string LastErrorMessage { get; private set; }
+
+    // Display-friendly playback status, folded from the active backend. Errors that
+    // are non-fatal to video (e.g. audio muted on a sample-rate mismatch) are left
+    // out here and surfaced via LastErrorMessage so playback still reads "Playing".
+    public BasisMediaPlayerStatus Status
+    {
+        get
+        {
+            if (nativeEngine != null)
+            {
+                switch (nativeEngine.State)
+                {
+                    case BasisMediaEngineState.Connecting: return BasisMediaPlayerStatus.Connecting;
+                    case BasisMediaEngineState.Buffering: return BasisMediaPlayerStatus.Buffering;
+                    case BasisMediaEngineState.Playing: return runtimeIsPaused ? BasisMediaPlayerStatus.Paused : BasisMediaPlayerStatus.Playing;
+                    case BasisMediaEngineState.Paused: return BasisMediaPlayerStatus.Paused;
+                    case BasisMediaEngineState.Ended: return BasisMediaPlayerStatus.Ended;
+                    case BasisMediaEngineState.Error: return BasisMediaPlayerStatus.Error;
+                    default: return runtimeIsPlaying ? BasisMediaPlayerStatus.Connecting : BasisMediaPlayerStatus.Stopped;
+                }
+            }
+
+            if (source != null)
+            {
+                if (runtimeIsPaused) return BasisMediaPlayerStatus.Paused;
+                if (runtimeIsPlaying) return runtimePresentedFrameCount > 0 ? BasisMediaPlayerStatus.Playing : BasisMediaPlayerStatus.Buffering;
+                if (runtimeIsPrepared) return BasisMediaPlayerStatus.Ready;
+                return BasisMediaPlayerStatus.Stopped;
+            }
+
+            // No backend attached: a load that failed before one could attach (blocked
+            // URL, missing native lib, unresolvable page URL) leaves an error but no source.
+            if (!string.IsNullOrEmpty(LastErrorMessage)) return BasisMediaPlayerStatus.Error;
+            return BasisMediaPlayerStatus.NoMedia;
+        }
+    }
+
     public TimeSpan Duration => seekableSource != null && seekableSource.IsPrepared
         ? seekableSource.Duration
         : TimeSpan.Zero;
@@ -194,6 +309,11 @@ public sealed class BasisMediaPlayer : MonoBehaviour
     public long DroppedFrameCount => runtimeOverflowDrops + runtimeLateSkips + runtimeFormatErrors;
     public BasisMediaPlayerAudio AudioComponent => audioComponent;
     public BasisMediaSource ActiveMediaSource => activeMediaSource;
+
+    // Bumped on every LoadUrl. An async resolver (the yt-dlp integration) captures this
+    // before resolving and skips its LoadSource if it changed meanwhile, so a slow resolve
+    // of an earlier URL can't overwrite a newer load. Read-only to callers.
+    public int LoadGeneration { get; private set; }
 
     public System.Collections.Generic.IReadOnlyList<BasisBitrateTrack> BitrateTracks =>
         nativeEngine != null ? nativeEngine.BitrateTracks : System.Array.Empty<BasisBitrateTrack>();
@@ -269,8 +389,10 @@ public sealed class BasisMediaPlayer : MonoBehaviour
     private long pendingSeekCompletedUs = long.MinValue;
     private BasisBitrateTrack pendingBitrateTrack;
     private BasisAudioTrack pendingAudioTrack;
+    private BasisCaptionCue? pendingCaptionCue;
     private Exception pendingError;
     private bool firstFrameEmittedThisPlay;
+    private bool audioRateMismatchReported;
 
     public long HeadFramePtsUs => videoQueue.TryPeek(out var head) ? head.PresentationTimeUs : -1;
     public long TailFramePtsUs => System.Threading.Interlocked.Read(ref lastEnqueuedPtsUs);
@@ -281,15 +403,19 @@ public sealed class BasisMediaPlayer : MonoBehaviour
         // the master media clock so video frames are scheduled against audio
         // playback instead of wall time. Falls back to wall-clock pacing
         // automatically when no audio component is present (e.g. video-only).
-        if (TryGetComponent(out audioComponent))
-        {
-            Clock.ExternalSource = audioComponent;
-            ApplyAudioRoutingToComponent();
-        }
+        TryGetComponent(out audioComponent);
+        if (audioComponent != null) Clock.ExternalSource = audioComponent;
+        ApplyAudioSettingsToComponent();
         BasisMediaPlayerRegistry.Add(this);
     }
 
     // Convenience wrapper: builds a BasisMediaSource and calls LoadSource.
+    // Page URLs (YouTube/Twitch/…) are steered through an installed resolver (the
+    // optional yt-dlp integration) here, so every entry point — networking, the in-game
+    // UI, the streaming example — resolves them; a directly-playable URL loads straight
+    // through, and with no resolver installed a page URL reports that rather than
+    // silently failing to demux an HTML page. LoadSource is NOT routed (it receives
+    // already-resolved or direct sources, e.g. the resolver's own output).
     public void LoadUrl(string url)
     {
         if (string.IsNullOrEmpty(url))
@@ -297,7 +423,22 @@ public sealed class BasisMediaPlayer : MonoBehaviour
             BasisDebug.LogWarning("BasisMediaPlayer.LoadUrl called with empty URL.", BasisDebug.LogTag.Video);
             return;
         }
-        LoadSource(BasisMediaSource.FromUrl(url));
+        LastErrorMessage = null;
+        LoadGeneration++;
+        if (BasisMediaUrlRouter.TryResolveAndLoad(this, url)) return;
+        if (!BasisMediaUrlRouter.IsDirectlyPlayable(url))
+        {
+            // A missing optional resolver is expected graceful degradation, not a fault — warn.
+            // Surfaced to LastErrorMessage too so the Media Players panel can explain why nothing played.
+            LastErrorMessage = "This looks like a page URL (e.g. YouTube/Twitch). Playing it needs the optional yt-dlp resolver package, which isn't installed.";
+            BasisDebug.LogWarning(
+                $"BasisMediaPlayer: '{url}' looks like a page URL (e.g. YouTube/Twitch), which needs the " +
+                "optional yt-dlp resolver package — it isn't installed, so this URL can't be played.",
+                BasisDebug.LogTag.Video);
+            return;
+        }
+        var media = BasisMediaSource.FromUrl(url);
+        LoadSource(media);
     }
 
     // Convenience wrapper: builds a BasisMediaSource from an absolute or
@@ -309,7 +450,8 @@ public sealed class BasisMediaPlayer : MonoBehaviour
             BasisDebug.LogWarning("BasisMediaPlayer.LoadLocalPath called with empty path.", BasisDebug.LogTag.Video);
             return;
         }
-        LoadSource(BasisMediaSource.FromLocalPath(path));
+        var media = BasisMediaSource.FromLocalPath(path);
+        LoadSource(media);
     }
 
     // Resolves the descriptor to the OS-codec engine and starts it. All network
@@ -323,6 +465,7 @@ public sealed class BasisMediaPlayer : MonoBehaviour
             throw new ArgumentNullException(nameof(media));
         }
 
+        LastErrorMessage = null;
         activeMediaSource = media;
 
         /* not needed anymore!
@@ -353,8 +496,13 @@ public sealed class BasisMediaPlayer : MonoBehaviour
                 throw new ArgumentException("BasisMediaSource.Uri is required.", nameof(media));
             if (!BasisMediaPlayerSecurity.IsUrlAllowed(media.Uri, out string blockReason))
                 throw new UnauthorizedAccessException($"BasisMediaPlayer refused to load '{media.Uri}': {blockReason}");
+            // The separate audio stream is its own network fetch, so it passes the
+            // same trust gate as the video URL.
+            if (!string.IsNullOrEmpty(media.AudioUri) &&
+                !BasisMediaPlayerSecurity.IsUrlAllowed(media.AudioUri, out string audioBlockReason))
+                throw new UnauthorizedAccessException($"BasisMediaPlayer refused to load audio '{media.AudioUri}': {audioBlockReason}");
 
-            SetNativeEngine(new BasisNativeVideoSource(media.Uri));
+            SetNativeEngine(new BasisNativeVideoSource(ResolveNativeUri(media), ResolveNativeAudioUri(media), media.Delivery));
         }
         catch (Exception ex)
         {
@@ -363,6 +511,28 @@ public sealed class BasisMediaPlayer : MonoBehaviour
 
         ApplyMediaSourceSettings(media);
     }
+
+    // RIST exposes a receive-buffer depth that librist parses straight from the URL
+    // query. Framework devs set it via Options["buffer"] (milliseconds); fold it in
+    // here so the native side sees rist://host:port?...&buffer=<ms>. Non-RIST schemes
+    // ignore Options["buffer"], so the URI is returned untouched for them.
+    private static string ResolveNativeUri(BasisMediaSource media)
+    {
+        string uri = media.Uri;
+        if (media.Options != null &&
+            uri.StartsWith("rist://", StringComparison.OrdinalIgnoreCase) &&
+            media.Options.TryGetValue("buffer", out object buffer) && buffer != null)
+        {
+            char sep = uri.IndexOf('?') >= 0 ? '&' : '?';
+            uri += $"{sep}buffer={buffer}";
+        }
+        return uri;
+    }
+
+    // The optional separate audio-only stream (BasisMediaSource.AudioUri), returned
+    // verbatim; null when the source is a single muxed stream. Split audio streams are
+    // HTTP fMP4, so the RIST buffer folding in ResolveNativeUri doesn't apply here.
+    private static string ResolveNativeAudioUri(BasisMediaSource media) => media.AudioUri;
 
     private void HandleProtonDeclined(BasisMediaSource media)
     {
@@ -380,8 +550,7 @@ public sealed class BasisMediaPlayer : MonoBehaviour
         PlaybackRate = media.PlaybackRate;
         Volume = media.Volume;
         Mute = media.Mute;
-        AudioRouting = media.AudioRouting;
-        ApplyAudioRoutingToComponent();
+        ApplyAudioSettingsToComponent();
     }
 
     public void Play()
@@ -392,6 +561,7 @@ public sealed class BasisMediaPlayer : MonoBehaviour
             restartScheduled = false;
             pendingRestartTimer = 0f;
             firstFrameEmittedThisPlay = false;
+            pendingCaptionCue = null;
             if (!nativeEngine.IsRunning) nativeEngine.Start();
             else nativeEngine.Play();
             runtimeIsPlaying = nativeEngine.IsRunning;
@@ -431,6 +601,7 @@ public sealed class BasisMediaPlayer : MonoBehaviour
         if (nativeEngine != null)
         {
             nativeEngine.Stop();
+            ClearCaptionDisplay();
             runtimeIsPlaying = false;
             runtimeIsPaused = false;
             restartScheduled = false;
@@ -578,7 +749,7 @@ public sealed class BasisMediaPlayer : MonoBehaviour
 
     private void OnValidate()
     {
-        ApplyAudioRoutingToComponent();
+        ApplyAudioSettingsToComponent();
         // Live-tune the buffer when changed in the inspector during play.
         if (Application.isPlaying) nativeEngine?.SetBuffer(BufferMode, ResolvedBufferMilliseconds());
     }
@@ -609,10 +780,6 @@ public sealed class BasisMediaPlayer : MonoBehaviour
         source.OnEndOfStream += HandleEndOfStream;
         source.OnReady += HandleSourceReady;
         source.OnVideoSizeChanged += HandleVideoSizeChanged;
-        if (audioComponent != null)
-        {
-            source.OnAudioFrame += audioComponent.Enqueue;
-        }
         if (seekableSource != null)
         {
             seekableSource.OnPrepared += HandleSourceReady;
@@ -630,10 +797,6 @@ public sealed class BasisMediaPlayer : MonoBehaviour
         source.OnEndOfStream -= HandleEndOfStream;
         source.OnReady -= HandleSourceReady;
         source.OnVideoSizeChanged -= HandleVideoSizeChanged;
-        if (audioComponent != null)
-        {
-            source.OnAudioFrame -= audioComponent.Enqueue;
-        }
         if (seekableSource != null)
         {
             seekableSource.OnPrepared -= HandleSourceReady;
@@ -667,8 +830,9 @@ public sealed class BasisMediaPlayer : MonoBehaviour
             nativeEngine.OnError += HandleError;
             nativeEngine.OnBitrateTrackChanged += HandleBitrateTrackChanged;
             nativeEngine.OnAudioTrackChanged += HandleAudioTrackChanged;
+            nativeEngine.OnCaptionCueChanged += HandleCaptionCueChanged;
         }
-        if (audioComponent != null) audioComponent.NativePcmSource = nativeEngine;
+        RouteNativePcmSource(nativeEngine);
         if (nativeEngine != null) nativeEngine.SetBuffer(BufferMode, ResolvedBufferMilliseconds());
 
         // Push the (currently null) external texture so consumers rebind once a
@@ -687,12 +851,14 @@ public sealed class BasisMediaPlayer : MonoBehaviour
         nativeEngine.OnError -= HandleError;
         nativeEngine.OnBitrateTrackChanged -= HandleBitrateTrackChanged;
         nativeEngine.OnAudioTrackChanged -= HandleAudioTrackChanged;
+        nativeEngine.OnCaptionCueChanged -= HandleCaptionCueChanged;
         if (audioComponent != null && ReferenceEquals(audioComponent.NativePcmSource, nativeEngine))
             audioComponent.NativePcmSource = null;
         try { nativeEngine.Dispose(); }
         catch (Exception ex) { BasisDebug.LogError($"BasisMediaPlayer native engine dispose failed: {ex.Message}", BasisDebug.LogTag.Video); }
         nativeEngine = null;
         lastEngineTexture = null;
+        ClearCaptionDisplay();
     }
 
     private void AttachRenderer()
@@ -716,8 +882,12 @@ public sealed class BasisMediaPlayer : MonoBehaviour
         loopEventPending = false;
         pendingSeekCompletedUs = long.MinValue;
         pendingBitrateTrack = null;
+        pendingAudioTrack = null;
+        pendingCaptionCue = null;
         pendingError = null;
+        LastErrorMessage = null;
         pendingVideoSize = 0;
+        audioRateMismatchReported = false;
     }
 
     private void ResetCounters()
@@ -730,11 +900,15 @@ public sealed class BasisMediaPlayer : MonoBehaviour
         System.Threading.Interlocked.Exchange(ref lastEnqueuedPtsUs, 0);
     }
 
-    private void ApplyAudioRoutingToComponent()
+    private void ApplyAudioSettingsToComponent()
     {
-        if (audioComponent == null) return;
-        audioComponent.VolumeGain = Volume;
-        audioComponent.Mute = Mute;
+        if (audioComponent != null) { audioComponent.VolumeGain = Volume; audioComponent.Mute = Mute; }
+        if (nativeEngine != null) RouteNativePcmSource(nativeEngine);
+    }
+
+    private void RouteNativePcmSource(IBasisPcmSource pcm)
+    {
+        if (audioComponent != null) audioComponent.NativePcmSource = pcm;
     }
 
     private void HandleVideoFrame(BasisVideoFrame frame)
@@ -812,6 +986,20 @@ public sealed class BasisMediaPlayer : MonoBehaviour
     private void HandleAudioTrackChanged(BasisAudioTrack track)
     {
         pendingAudioTrack = track;
+    }
+
+    private void HandleCaptionCueChanged(BasisCaptionCue cue)
+    {
+        pendingCaptionCue = cue;
+    }
+
+    // Drops any caption currently on screen. The engine only emits a clear cue when
+    // a stream actively clears one, so stopping or swapping while a caption is visible
+    // would otherwise leave the old text up until the next stream pushes its own cue.
+    private void ClearCaptionDisplay()
+    {
+        pendingCaptionCue = null;
+        OnCaptionCueChanged?.Invoke(new BasisCaptionCue(null, 0, 0));
     }
 
     private void HandleOutputTextureChanged(Texture texture)
@@ -945,9 +1133,20 @@ public sealed class BasisMediaPlayer : MonoBehaviour
 
         runtimeCurrentMediaTimeUs = Math.Max(0, nativeEngine.PositionUs);
 
-        if (audioComponent != null && nativeEngine.TryGetPcmFormat(out int sr, out int ch) && sr > 0 && ch > 0)
+        if (nativeEngine.TryGetPcmFormat(out int sr, out int ch) && sr > 0 && ch > 0)
         {
-            audioComponent.SetExpectedFormat(sr, ch);
+            // The streaming clip is created at the source rate (BasisMediaPlayerAudio.Rebuild),
+            // so the AudioSource resamples it to the output rate — a rate mismatch is noted
+            // once but still builds the audio path rather than muting. Video is unaffected.
+            int outputRate = AudioSettings.outputSampleRate;
+            if (sr != outputRate && !audioRateMismatchReported)
+            {
+                audioRateMismatchReported = true;
+                BasisDebug.LogWarning(
+                    $"Audio source rate {sr} Hz differs from output {outputRate} Hz; relying on AudioSource resampling.",
+                    BasisDebug.LogTag.Video);
+            }
+            audioComponent?.SetExpectedFormat(sr, ch);
         }
 
         Texture tex = nativeEngine.OutputTexture;
@@ -981,6 +1180,7 @@ public sealed class BasisMediaPlayer : MonoBehaviour
         {
             var ex = pendingError;
             pendingError = null;
+            LastErrorMessage = ex.Message;
             OnError?.Invoke(ex);
         }
 
@@ -1030,6 +1230,13 @@ public sealed class BasisMediaPlayer : MonoBehaviour
             var track = pendingAudioTrack;
             pendingAudioTrack = null;
             OnAudioTrackChanged?.Invoke(track);
+        }
+
+        if (pendingCaptionCue.HasValue)
+        {
+            var cue = pendingCaptionCue.Value;
+            pendingCaptionCue = null;
+            OnCaptionCueChanged?.Invoke(cue);
         }
 
         if (sourceEndOfStreamPending)

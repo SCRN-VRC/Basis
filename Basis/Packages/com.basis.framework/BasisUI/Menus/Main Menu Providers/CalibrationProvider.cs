@@ -43,12 +43,12 @@ namespace Basis.BasisUI
             WaitingForForward
         }
         private PitchCalibrationStep _pitchStep = PitchCalibrationStep.None;
-        private float _pitchUpY;
-        private float _pitchDownY;
+        private Vector2 _pitchUp;
+        private Vector2 _pitchDown;
 
         public PanelButton Button;
-        public PanelElementDescriptor HeightDescription;
         private PanelButton _pitchToggleButton;
+        private PanelElementDescriptor _reportGroup;
         public override void RunAction()
         {
             if (BasisMainMenu.ActiveMenuTitle == Title)
@@ -61,8 +61,8 @@ namespace Basis.BasisUI
                 new BasisMenuPanel.PanelData
                 {
                     Title = this.Title,
-                    PanelSize = new Vector2(440, 820),
-                    PanelPosition = new Vector3(530, -150, 0),
+                    PanelSize = new Vector2(600, 1025),
+                    PanelPosition = new Vector3(450, 25, 0),
                 },
                 BasisMenuPanel.PanelStyles.Page);
             BoundButton?.BindActiveStateToAddressablesInstance(panel);
@@ -74,26 +74,138 @@ namespace Basis.BasisUI
             container = layout.ContentParent;
 
             Button = PanelButton.CreateNew(PanelButton.ButtonStyles.Default, container);
-            Button.OnClicked += Calibrate;
+            Button.OnClicked += OnCalibrateButtonClicked;
             Button.Descriptor.SetTitle(BasisLocalization.Get("calibration.calibrate"));
             Button.Descriptor.SetTooltip(BasisLocalization.Get("calibration.calibrate.tooltip"));
 
-            HeightDescription = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
-            HeightDescription.SetTitle(BasisLocalization.Get("calibration.additionalHeight"));
-            HeightDescription.SetDescription($"{BasisHeightDriver.AdditionalPlayerHeight:F2}");
+            // Calibration quality report — filled in after a calibration completes.
+            _reportGroup = null;
+            if (BasisSettingsDefaults.DevShowCalibrationDebug.RawValue)
+            {
+                _reportGroup = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
+                _reportGroup.SetTitle("Calibration Report");
+                _reportGroup.SetDescription(BasisCalibrationQualityReport.HasReport ? BasisCalibrationQualityReport.Summary : "Calibrate to see a quality report.");
+            }
 
-            var Description = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
-            Description.SetTitle(BasisLocalization.Get("calibration.pullTriggers"));
+            // Calibration modes (moved here from Body Tracking settings): seated/standing, avatar scaling, spine lock.
+            var seatedModeDropdown = PanelDropdown.CreateNewEntry(container);
+            seatedModeDropdown.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.seatedMode"));
+            seatedModeDropdown.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.seatedMode.tooltip"));
+            seatedModeDropdown.AssignLocalizedEntries(
+                new List<string> { SettingsProviderIK.SeatedMode_Standing, SettingsProviderIK.SeatedMode_Seated },
+                new List<string> { "settings.bodyTracking.seatedMode.standing", "settings.bodyTracking.seatedMode.seated" });
+            seatedModeDropdown.AssignBinding(BasisSettingsDefaults.SitStand);
 
-            var MinusButton = PanelButton.CreateNew(Description.ContentParent);
-            MinusButton.OnClicked += DecreasePlayerSize;
-            MinusButton.Descriptor.SetTitle(BasisLocalization.Get("calibration.decreaseHeight"));
-            MinusButton.Descriptor.SetTooltip(BasisLocalization.Get("calibration.decreaseHeight.tooltip"));
+            var scalingModeDropdown = PanelDropdown.CreateNewEntry(container);
+            scalingModeDropdown.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.ikMode"));
+            scalingModeDropdown.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.ikMode.tooltip"));
+            scalingModeDropdown.AssignLocalizedEntries(
+                new List<string> { "Eye Height", "Arm Distance" },
+                new List<string> { "settings.bodyTracking.ikMode.eyeHeight", "settings.bodyTracking.ikMode.armDistance" });
+            scalingModeDropdown.AssignBinding(BasisSettingsDefaults.IKMode);
 
-            var PlusButton = PanelButton.CreateNew(Description.ContentParent);
-            PlusButton.OnClicked += IncreasePlayerSize;
-            PlusButton.Descriptor.SetTitle(BasisLocalization.Get("calibration.increaseHeight"));
-            PlusButton.Descriptor.SetTooltip(BasisLocalization.Get("calibration.increaseHeight.tooltip"));
+            var spineLockModeDropdown = PanelDropdown.CreateNewEntry(container);
+            spineLockModeDropdown.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.spineLockMode"));
+            spineLockModeDropdown.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.spineLockMode.tooltip"));
+            spineLockModeDropdown.AssignLocalizedEntries(
+                new List<string> { "Lock Hips", "Lock Head", "Lock Both" },
+                new List<string> { "settings.bodyTracking.spineLock.hips", "settings.bodyTracking.spineLock.head", "settings.bodyTracking.spineLock.both" });
+            spineLockModeDropdown.AssignBinding(BasisSettingsDefaults.IKLockMode);
+
+            // Slim calibration panel: inset each dropdown control's left edge so its label isn't squished.
+            NarrowDropdownForPanel(seatedModeDropdown);
+            NarrowDropdownForPanel(scalingModeDropdown);
+            NarrowDropdownForPanel(spineLockModeDropdown);
+
+            // Avatar Scaling Mode is moot in seated mode (a fixed height is used), so disable it there.
+            void UpdateScalingModeInteractable()
+            {
+                bool isSeated = seatedModeDropdown.DropdownComponent.options[seatedModeDropdown.DropdownComponent.value].text == SettingsProviderIK.SeatedMode_Seated;
+                scalingModeDropdown.SetInteractable(!isSeated,
+                    isSeated ? BasisLocalization.Get("settings.bodyTracking.ikMode.disabledSeated") : null);
+            }
+            seatedModeDropdown.OnValueChanged += _ => UpdateScalingModeInteractable();
+            UpdateScalingModeInteractable();
+
+            // Persistent Eye Height Modifier, gated behind a toggle. Bridges a systematic measured-eye-height
+            // shortfall (seen on OpenVR: avatar feels too tall) so the gap is corrected once. Survives restarts/swaps.
+            var eyeHeightCorrectionToggle = PanelToggle.CreateNewEntry(container);
+            eyeHeightCorrectionToggle.Descriptor.SetTitle("Eye Height Modifier");
+            eyeHeightCorrectionToggle.Descriptor.SetTooltip(
+                "Enable a persistent modifier added to your measured standing eye height before scaling. If the " +
+                "avatar feels too tall, turn this on and raise the slider to bridge the gap. Survives restarts and avatar swaps.");
+            eyeHeightCorrectionToggle.AssignBinding(BasisSettingsDefaults.EnableStandingEyeHeightCorrection);
+
+            var eyeHeightCorrectionSlider = PanelSlider.CreateAndBind(
+                container,
+                PanelSlider.SliderSettings.Advanced("Eye Height Modifier", BasisHeightDriver.StandingHeightCorrectionMin, BasisHeightDriver.StandingHeightCorrectionMax, false, 2, ValueDisplayMode.Meters),
+                BasisSettingsDefaults.CalibrationStandingEyeHeightMeters);
+            if (eyeHeightCorrectionSlider != null)
+            {
+                eyeHeightCorrectionSlider.Descriptor.SetTooltip(
+                    "Persistent modifier added to your measured standing eye height before scaling. If the avatar " +
+                    "feels too tall, raise this to bridge the gap (e.g. +0.10 m). Survives restarts and avatar swaps.");
+                eyeHeightCorrectionSlider.gameObject.SetActive(BasisSettingsDefaults.EnableStandingEyeHeightCorrection.RawValue);
+                eyeHeightCorrectionToggle.OnValueChanged += visible =>
+                {
+                    eyeHeightCorrectionSlider.gameObject.SetActive(visible);
+                    layout.ForceRebuild();
+                };
+            }
+
+            // Nudge Standing Height: gated behind its own toggle. Quick ± buttons for a SEPARATE standing-height
+            // nudge (the old AdditionalPlayerHeight), fed through DeviceScale independently of the Eye Height Modifier.
+            var nudgeToggle = PanelToggle.CreateNewEntry(container);
+            nudgeToggle.Descriptor.SetTitle(BasisLocalization.Get("calibration.nudgeStandingHeight"));
+            nudgeToggle.Descriptor.SetTooltip(BasisLocalization.Get("calibration.nudgeStandingHeight.tooltip"));
+            nudgeToggle.AssignBinding(BasisSettingsDefaults.EnableStandingHeightNudge);
+
+            var nudgeGroup = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
+
+            // Show the live nudge value (read fresh from the persisted setting) instead of a static warning, so it
+            // always matches the real value — including after avatar swaps or closing/reopening the menu.
+            void UpdateNudgeReadout() => nudgeGroup.SetDescription(FormatNudgeMeters(BasisSettingsDefaults.AdditionalPlayerHeight.RawValue));
+            UpdateNudgeReadout();
+
+            void NudgeStandingHeight(float deltaMeters)
+            {
+                float next = Mathf.Clamp(
+                    BasisSettingsDefaults.AdditionalPlayerHeight.RawValue + deltaMeters,
+                    -NudgeStandingHeightLimitMeters,
+                    NudgeStandingHeightLimitMeters);
+
+                // Adjusts only the nudge (AdditionalPlayerHeight) — fed through the DeviceScale denominator,
+                // separate from the Eye Height Modifier. SetValue persists and re-applies height via SMModuleCalibration.
+                BasisSettingsDefaults.AdditionalPlayerHeight.SetValue(next);
+                UpdateNudgeReadout();
+            }
+
+            var decreaseHeightButton = PanelButton.CreateNew(nudgeGroup.ContentParent);
+            decreaseHeightButton.Descriptor.SetTitle(BasisLocalization.Get("calibration.decreaseHeight"));
+            decreaseHeightButton.Descriptor.SetTooltip(BasisLocalization.Get("calibration.decreaseHeight.tooltip"));
+            decreaseHeightButton.OnClicked += () => NudgeStandingHeight(-NudgeStandingHeightStepMeters);
+
+            var increaseHeightButton = PanelButton.CreateNew(nudgeGroup.ContentParent);
+            increaseHeightButton.Descriptor.SetTitle(BasisLocalization.Get("calibration.increaseHeight"));
+            increaseHeightButton.Descriptor.SetTooltip(BasisLocalization.Get("calibration.increaseHeight.tooltip"));
+            increaseHeightButton.OnClicked += () => NudgeStandingHeight(NudgeStandingHeightStepMeters);
+
+            nudgeGroup.gameObject.SetActive(BasisSettingsDefaults.EnableStandingHeightNudge.RawValue);
+            nudgeToggle.OnValueChanged += visible =>
+            {
+                nudgeGroup.gameObject.SetActive(visible);
+                layout.ForceRebuild();
+            };
+
+            // Lock-in guides toggle (shrinking spheres + foot-forward guide while calibrating).
+            if (BasisSettingsDefaults.DevShowCalibrationDebug.RawValue)
+            {
+                var lockInGuidesToggle = PanelToggle.CreateNewEntry(container);
+                lockInGuidesToggle.Descriptor.SetTitle(BasisLocalization.Get("calibration.lockInGuides"));
+                lockInGuidesToggle.Descriptor.SetTooltip(BasisLocalization.Get("calibration.lockInGuides.tooltip"));
+                lockInGuidesToggle.SetValueWithoutNotify(BasisCalibrationLockInVisualizer.Enabled);
+                lockInGuidesToggle.OnValueChanged += value => BasisCalibrationLockInVisualizer.Enabled = value;
+            }
 
             // Avatar scale
             var customScaleToggle = PanelToggle.CreateNewEntry(container);
@@ -122,12 +234,6 @@ namespace Basis.BasisUI
             _pitchToggleButton.OnClicked += TogglePitchCalibration;
             _pitchToggleButton.Descriptor.SetTooltip(BasisLocalization.Get("calibration.pitchLabel.tooltip"));
             UpdatePitchToggleLabel();
-
-            // Navigate to Body Tracking settings
-            var bodyTrackingSettingsButton = PanelButton.CreateNew(PanelButton.ButtonStyles.Default, container);
-            bodyTrackingSettingsButton.Descriptor.SetTitle(BasisLocalization.Get("calibration.bodyTrackingSettings"));
-            bodyTrackingSettingsButton.Descriptor.SetTooltip(BasisLocalization.Get("calibration.bodyTrackingSettings.tooltip"));
-            bodyTrackingSettingsButton.OnClicked += () => SettingsProvider.OpenBodyTrackingTab();
 
             // Reset Calibration (restores defaults for calibration-only state, including hidden pitch data)
             var resetButton = PanelButton.CreateNew(PanelButton.ButtonStyles.Default, container);
@@ -164,34 +270,35 @@ namespace Basis.BasisUI
             BasisHeightDriver.HasPitchCalibratedHeight = false;
             BasisHeightDriver.PitchCalibratedEyeHeight = BasisHeightDriver.FallbackHeightInMeters;
 
-            // Per-user additional height adjustment
-            BasisHeightDriver.AdditionalPlayerHeight = 0f;
+            BasisSettingsDefaults.CalibrationStandingEyeHeightMeters.ResetToDefault();
+            BasisSettingsDefaults.EnableStandingEyeHeightCorrection.ResetToDefault();
+            BasisSettingsDefaults.EnableStandingHeightNudge.ResetToDefault();
+            BasisSettingsDefaults.AdditionalPlayerHeight.ResetToDefault();
+            BasisHeightDriver.HasUserCalibratedHeight = false;
+            BasisAutoScaleEstimator.Reset();
             BasisHeightDriver.ApplyScaleAndHeight();
 
-            // Refresh on-screen labels for the controls we just reset
-            HeightDescription.SetDescription($"{BasisHeightDriver.AdditionalPlayerHeight:F2}");
             UpdatePitchToggleLabel();
         }
-        /// <summary>
-        /// tracker balls
-        /// </summary>
-        public void IncreasePlayerSize()
-        {
-            BasisHeightDriver.AdditionalPlayerHeight += 0.1f;
-            ApplyAndUpdateUI();
-        }
-        public void DecreasePlayerSize()
-        {
-            BasisHeightDriver.AdditionalPlayerHeight -= 0.1f;
-            ApplyAndUpdateUI();
-        }
-        public void ApplyAndUpdateUI()
-        {
-            HeightDescription.SetDescription($"{BasisHeightDriver.AdditionalPlayerHeight:F2}");
-            BasisHeightDriver.ApplyScaleAndHeight();
-        }
-
         private static string FormatScaleMeters(float meters) => meters.ToString("0.##") + " m";
+        private static string FormatNudgeMeters(float meters) => "Current: " + meters.ToString("+0.00;-0.00;0.00") + " m";
+
+        // The dropdown control prefab is sized for the wide settings page; in the slim calibration panel its
+        // label gets squished. Inset the control's left edge (the RectTransform "Left" field) so the title has room.
+        private const float CalibrationDropdownLeftInset = 200f;
+        private const float NudgeStandingHeightStepMeters = 0.05f;
+        private const float NudgeStandingHeightLimitMeters = 0.5f;
+        private static void NarrowDropdownForPanel(PanelDropdown dropdown)
+        {
+            if (dropdown == null || dropdown.DropdownComponent == null)
+            {
+                return;
+            }
+            if (dropdown.DropdownComponent.transform is RectTransform rt)
+            {
+                rt.offsetMin = new Vector2(CalibrationDropdownLeftInset, rt.offsetMin.y);
+            }
+        }
 
         private void TogglePitchCalibration()
         {
@@ -206,6 +313,17 @@ namespace Basis.BasisUI
                 string state = BasisLocalization.Get(SMModuleCalibration.PitchCalibrationEnabled ? "ui.on" : "ui.off");
                 _pitchToggleButton.Descriptor.SetTitle(BasisLocalization.Get("calibration.pitchLabel", state));
             }
+        }
+
+        private void OnCalibrateButtonClicked()
+        {
+            if (BasisDeviceManagement.IsUserInDesktop() && _triggerDelegates.Count > 0 && !_calibrated)
+            {
+                OnTriggersConfirmed();
+                return;
+            }
+
+            Calibrate();
         }
 
         public void Calibrate()
@@ -237,6 +355,7 @@ namespace Basis.BasisUI
                 BasisHeightDriver.HasPitchCalibratedHeight = false;
                 Button.Descriptor.SetTitle(BasisLocalization.Get("calibration.calibrating"));
                 localplayer.LocalAvatarDriver.PutAvatarIntoTPose();
+                BasisCalibrationLockInVisualizer.Begin();
                 SubscribeToTriggers();
             }
         }
@@ -286,6 +405,7 @@ namespace Basis.BasisUI
         private void CancelActiveCalibration()
         {
             UnsubscribeAll();
+            BasisCalibrationLockInVisualizer.End();
             _pitchStep = PitchCalibrationStep.None;
             _leftPressed = false;
             _rightPressed = false;
@@ -356,14 +476,14 @@ namespace Basis.BasisUI
             switch (_pitchStep)
             {
                 case PitchCalibrationStep.WaitingForUp:
-                    _pitchUpY = BasisLocalHeightCalculator.CaptureHMDHeightSample();
-                    if (_pitchUpY <= 0f)
+                    if (!BasisLocalHeightCalculator.CaptureHMDPitchSample(out float upPitch, out float upY) || upY <= 0f)
                     {
                         // No device, fall back to standard calibration
                         BasisDebug.LogWarning("Pitch calibration: no HMD for up sample, falling back to standard.", BasisDebug.LogTag.Avatar);
                         StartStandardCalibration();
                         return;
                     }
+                    _pitchUp = new Vector2(upPitch, upY);
                     _pitchStep = PitchCalibrationStep.WaitingForDown;
                     Button.Descriptor.SetTitle(BasisLocalization.Get("calibration.pitch.down"));
                     // Reset trigger state for next step
@@ -372,13 +492,13 @@ namespace Basis.BasisUI
                     break;
 
                 case PitchCalibrationStep.WaitingForDown:
-                    _pitchDownY = BasisLocalHeightCalculator.CaptureHMDHeightSample();
-                    if (_pitchDownY <= 0f)
+                    if (!BasisLocalHeightCalculator.CaptureHMDPitchSample(out float downPitch, out float downY) || downY <= 0f)
                     {
                         BasisDebug.LogWarning("Pitch calibration: no HMD for down sample, falling back to standard.", BasisDebug.LogTag.Avatar);
                         StartStandardCalibration();
                         return;
                     }
+                    _pitchDown = new Vector2(downPitch, downY);
                     _pitchStep = PitchCalibrationStep.WaitingForForward;
                     Button.Descriptor.SetTitle(BasisLocalization.Get("calibration.pitch.forward"));
                     _leftPressed = false;
@@ -386,15 +506,14 @@ namespace Basis.BasisUI
                     break;
 
                 case PitchCalibrationStep.WaitingForForward:
-                    float forwardY = BasisLocalHeightCalculator.CaptureHMDHeightSample();
-                    if (forwardY <= 0f)
+                    if (!BasisLocalHeightCalculator.CaptureHMDPitchSample(out float forwardPitch, out float forwardY) || forwardY <= 0f)
                     {
                         BasisDebug.LogWarning("Pitch calibration: no HMD for forward sample, falling back to standard.", BasisDebug.LogTag.Avatar);
                         StartStandardCalibration();
                         return;
                     }
                     // Compute corrected height and store it
-                    float corrected = BasisLocalHeightCalculator.ComputePitchCalibratedHeight(_pitchUpY, _pitchDownY, forwardY);
+                    float corrected = BasisLocalHeightCalculator.ComputePitchCalibratedHeight(_pitchUp, _pitchDown, new Vector2(forwardPitch, forwardY));
                     BasisHeightDriver.PitchCalibratedEyeHeight = corrected;
                     BasisHeightDriver.HasPitchCalibratedHeight = true;
                     _pitchStep = PitchCalibrationStep.None;
@@ -414,6 +533,7 @@ namespace Basis.BasisUI
             _pitchStep = PitchCalibrationStep.None;
             Button.Descriptor.SetTitle(BasisLocalization.Get("calibration.calibrating"));
             BasisLocalPlayer.Instance.LocalAvatarDriver.PutAvatarIntoTPose();
+            BasisCalibrationLockInVisualizer.Begin();
             // Reset trigger state so they need to press again for final calibration
             _leftPressed = false;
             _rightPressed = false;
@@ -429,9 +549,17 @@ namespace Basis.BasisUI
             _calibrated = true;
 
             UnsubscribeAll();
+            BasisCalibrationLockInVisualizer.End();
             BasisAvatarIKStageCalibration.FullBodyCalibration();
             BasisUINeedsVisibleTrackers.Remove(BasisLocalPlayer.Instance);
             Button.Descriptor.SetTitle(BasisLocalization.Get("calibration.calibrate"));
+
+            BasisCalibrationQualityReport.Capture();
+            if (_reportGroup != null)
+            {
+                _reportGroup.SetTitle(BasisCalibrationQualityReport.HasReport ? $"Calibration Report  —  {BasisCalibrationQualityReport.Grade}" : "Calibration Report");
+                _reportGroup.SetDescription(BasisCalibrationQualityReport.HasReport ? BasisCalibrationQualityReport.Summary : "Calibration report unavailable.");
+            }
         }
 
         public override void OnButtonCreated(PanelButton button)
@@ -439,10 +567,12 @@ namespace Basis.BasisUI
             base.OnButtonCreated(button);
             BasisDeviceManagement.OnBootModeChanged += BootModeChanged;
             BasisSettingsDefaults.EnableFBT.OnChanged += FBTToggleChanged;
+            SetDeviceListSubscription(true);
             BoundButton.OnInstanceReleased += () =>
             {
                 BasisDeviceManagement.OnBootModeChanged -= BootModeChanged;
                 BasisSettingsDefaults.EnableFBT.OnChanged -= FBTToggleChanged;
+                SetDeviceListSubscription(false);
             };
             EvaluateButtonVisibility();
         }
@@ -450,11 +580,63 @@ namespace Basis.BasisUI
         private void BootModeChanged(string _) => EvaluateButtonVisibility();
         private void FBTToggleChanged(bool _) => EvaluateButtonVisibility();
 
+        private void SetDeviceListSubscription(bool subscribe)
+        {
+            BasisDeviceManagement manager = BasisDeviceManagement.Instance;
+            if (manager == null)
+            {
+                return;
+            }
+            if (subscribe)
+            {
+                manager.AllInputDevices.OnListChanged += EvaluateButtonVisibility;
+            }
+            else
+            {
+                manager.AllInputDevices.OnListChanged -= EvaluateButtonVisibility;
+            }
+        }
+
         private void EvaluateButtonVisibility()
         {
-            bool inVR = !BasisDeviceManagement.IsUserInDesktop();
-            bool fbtEnabled = BasisSettingsDefaults.EnableFBT.RawValue;
-            BoundButton.gameObject.SetActive(inVR && fbtEnabled);
+            if (BoundButton == null || BoundButton.IsReleased)
+            {
+                return;
+            }
+
+            bool show = !BasisDeviceManagement.IsUserInDesktop()
+                || (BasisSettingsDefaults.EnableFBT.RawValue && HasNonCameraBodyTrackers());
+            BoundButton.gameObject.SetActive(show);
+        }
+
+        /// <summary>
+        /// True when at least one real or simulated full-body tracker is present that isn't
+        /// camera/optical (MediaPipe) tracking. Webcam trackers flag themselves via
+        /// <see cref="BasisInput.IsCameraTracked"/> and are excluded here.
+        /// </summary>
+        private static bool HasNonCameraBodyTrackers()
+        {
+            BasisDeviceManagement manager = BasisDeviceManagement.Instance;
+            if (manager == null)
+            {
+                return false;
+            }
+
+            BasisObservableList<BasisInput> devices = manager.AllInputDevices;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                BasisInput device = devices[i];
+                if (device == null || device.IsCameraTracked)
+                {
+                    continue;
+                }
+                if (device.TryGetRole(out BasisBoneTrackedRole role)
+                    && BasisBoneTrackedRoleCommonCheck.CheckItsFBTracker(role))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }

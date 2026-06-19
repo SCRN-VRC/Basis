@@ -14,6 +14,7 @@ namespace UnityEngine.Animations.Rigging
         public Quaternion TargetOffset;
         public Vector3 PlayerUp;
         public float HintMaxStepDeg;   // max elbow-swivel change this solve; float.MaxValue = unclamped (offline)
+        public bool HintIsTracker;     // hint is a REAL elbow tracker (trust it further before the down-stabilizer overrides); false = lookup-derived
     }
 
     public struct BasisArmSolveResult
@@ -51,6 +52,12 @@ namespace UnityEngine.Animations.Rigging
         const float k_Epsilon = 1e-5f;
         const float k_SqrEpsilon = 1e-8f;
 
+        // Anatomical elbow flexion range, as the angle at the elbow between the upper arm and the forearm.
+        // 180 deg = arm straight; small = forearm folded toward the upper arm. A human elbow cannot
+        // hyperextend past straight, nor fold the forearm fully into the upper arm (~25-30 deg is the limit).
+        public const float MinElbowAngleDeg = 23f;
+        public const float MaxElbowAngleDeg = 180f;
+
         public static void Solve(in BasisArmSolveInput i, out BasisArmSolveResult r)
         {
             r = default;
@@ -80,13 +87,40 @@ namespace UnityEngine.Animations.Rigging
             float atCorrectedLen = atCorrected.magnitude;
             float newAbcAngle = TriangleAngle(atCorrectedLen, abLen, bcLen);
 
-            // Prefer current bend plane; fall back to hint / target / player-up if collinear.
+            // Clamp to the anatomical elbow flexion range. The triangle solve already caps extension at
+            // straight (180 deg); the lower clamp stops the forearm folding impossibly far into the upper
+            // arm for a too-close target -- the joint holds at min flex and the hand falls short (pushed
+            // out along the target direction) instead of bending the elbow past human range.
+            newAbcAngle = Mathf.Clamp(newAbcAngle, MinElbowAngleDeg * Mathf.Deg2Rad, MaxElbowAngleDeg * Mathf.Deg2Rad);
+
+            // Bend in the ARM plane. Cross(ab,bc) is the shoulder-elbow-hand plane normal, which the
+            // triangle solve REQUIRES so deltaR changes |ac| to exactly the target distance. Seeding this
+            // axis from the hint (as the leg does) tilts it off the arm plane, so deltaR rotates the hand
+            // out of plane and it over/undershoots the target. The hint instead follows via the swivel
+            // (hintR) below, which rotates about the shoulder->hand axis and so preserves reach exactly.
+            // Stable-down-pole / hint / shoulder->target / player-up are collinear-only fallbacks (arm near-straight).
             byte axisSource = 0;
             Vector3 axis = Vector3.Cross(ab, bc);
             if (axis.sqrMagnitude < k_SqrEpsilon)
             {
-                axis = i.HintWeight ? Vector3.Cross(i.HintPosition - aPosition, bc) : Vector3.zero;
-                axisSource = 1;
+                // Arm dead straight: the bend plane is undefined. Bend toward a STABLE pole (the elbow hangs
+                // down, perpendicular to the shoulder->hand axis) FIRST, so a fully-stretched arm settles
+                // instead of thrashing between the collinear fallbacks below -- which, reaching BACKWARD, are
+                // themselves near-parallel to the backward forearm and so flip the bend plane frame-to-frame.
+                Vector3 straightArm = ac.sqrMagnitude > k_SqrEpsilon ? ac : bc;
+                if (straightArm.sqrMagnitude > k_SqrEpsilon)
+                {
+                    Vector3 saN = straightArm.normalized;
+                    Vector3 downPole = -i.PlayerUp - saN * Vector3.Dot(-i.PlayerUp, saN);
+                    axis = Vector3.Cross(downPole, bc);
+                    axisSource = 4;
+                }
+
+                if (axis.sqrMagnitude < k_SqrEpsilon)
+                {
+                    axis = i.HintWeight ? Vector3.Cross(i.HintPosition - aPosition, bc) : Vector3.zero;
+                    axisSource = 1;
+                }
                 if (axis.sqrMagnitude < k_SqrEpsilon)
                 {
                     axis = Vector3.Cross(atCorrected, bc);
@@ -149,13 +183,37 @@ namespace UnityEngine.Animations.Rigging
                     // keyed on the projection magnitude itself, not raw extension (which discarded
                     // tracker follow on 21% of the workspace).
                     float projNorm = (totalLen > k_Epsilon) ? ahProj.magnitude / totalLen : 0f;
+                    // A real elbow tracker sits a physical stand-off (limb radius + strap) OFF the bone, so even
+                    // a short swing-plane projection is genuine out-direction signal, not noise. Re-condition it
+                    // (floor the effective projection) so the elbow FOLLOWS the tracker instead of fading toward
+                    // the rest bend -- the "tracker looks unnatural for some mounts/body sizes" fix. Keyed only
+                    // on ahProj (shoulder/hand/hint positions), so unlike a tracker-LOCAL offset it does NOT
+                    // swing with forearm pronation. Below a small floor the tracker is essentially on the bone
+                    // line (direction is noise) so it still fades. Lookup (no-tracker) path is untouched.
+                    if (i.HintIsTracker && projNorm > 0.05f) projNorm = Mathf.Max(projNorm, 0.30f);
                     hintFade = Mathf.Clamp01((projNorm - 0.06f) / 0.12f);
                     if (hintFade > 0f && abProj.sqrMagnitude > (totalLen * totalLen * 0.001f) && ahProj.sqrMagnitude > (totalLen * totalLen * 0.001f))
                     {
                         hintR = QuaternionExt.FromToRotation(abProj, ahProj);
-                        if (hintFade < 1f)
+                        // A near-180 deg bend->hint rotation is direction-ambiguous when applied
+                        // partially, so the elbow snaps sides on smooth motion (the pole flip). Commit
+                        // toward the hint (fade->1) as the bend nears anti-parallel, so the elbow lands
+                        // on the smooth hint pole instead of halfway; the ramp keeps it continuous.
+                        float effFade = hintFade;
+                        if (effFade < 1f)
                         {
-                            hintR = Quaternion.Slerp(Quaternion.identity, hintR, hintFade);
+                            float denom = Mathf.Sqrt(abProj.sqrMagnitude * ahProj.sqrMagnitude);
+                            float cosBA = denom > k_Epsilon ? Mathf.Clamp(Vector3.Dot(abProj, ahProj) / denom, -1f, 1f) : 1f;
+                            float flipDeg = Mathf.Acos(cosBA) * Mathf.Rad2Deg;
+                            float commit = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((flipDeg - 90f) / 80f));
+                            // Only commit when the hint is already strong. Committing as it merely emerges
+                            // (low fade) snaps the elbow off the stable rest bend -- the folded-arm case.
+                            commit *= Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((hintFade - 0.3f) / 0.25f));
+                            effFade = hintFade + (1f - hintFade) * commit;
+                        }
+                        if (effFade < 1f)
+                        {
+                            hintR = Quaternion.Slerp(Quaternion.identity, hintR, effFade);
                         }
                         hintR = QuaternionExt.NormalizeSafe(hintR);
 
@@ -169,11 +227,75 @@ namespace UnityEngine.Animations.Rigging
                             hintR = Quaternion.Slerp(Quaternion.identity, hintR, i.HintMaxStepDeg / hintAngle);
                         }
 
+                        // Hand reach is PRIMARY: the hint must stay a pure swivel about the shoulder->hand
+                        // axis so the hand keeps meeting the target. At the anti-parallel singularity
+                        // FromToRotation's axis is arbitrary, so a full hint throws the hand off (the pole
+                        // flip). Reduce the hint toward identity until the hand returns to its pre-hint reach
+                        // (or as close as possible) -- the elbow yields, the destination is always met.
+                        float reachTol = (cPosition - tPosition).magnitude + 0.004f * totalLen;
+                        Vector3 cFull = aPosition + hintR * (cPosition - aPosition);
+                        if ((cFull - tPosition).magnitude > reachTol)
+                        {
+                            float lo = 0f, hi = 1f;
+                            for (int it = 0; it < 12; it++)
+                            {
+                                float midK = 0.5f * (lo + hi);
+                                Vector3 cK = aPosition + Quaternion.Slerp(Quaternion.identity, hintR, midK) * (cPosition - aPosition);
+                                if ((cK - tPosition).magnitude <= reachTol) lo = midK; else hi = midK;
+                            }
+                            hintR = Quaternion.Slerp(Quaternion.identity, hintR, lo);
+                        }
+
                         rootRot = hintR * rootRot;
                         bPosition = aPosition + hintR * (bPosition - aPosition);
                         cPosition = aPosition + hintR * (cPosition - aPosition);
                         midRot = hintR * midRot;
                         hintApplied = true;
+                    }
+                }
+            }
+
+            // Pole-collapse stabilizer (the BACKWARD full-stretch rapid flip). The live arm solve is
+            // stateless and unclamped, so when the hint pole goes near-collinear with the shoulder->hand axis
+            // -- as the arm stretches out, worst BEHIND the body where the lookup bend itself points backward
+            // along the arm -- the swivel is hypersensitive and the elbow flips rapidly on small hand motion.
+            // Ease the elbow toward a STABLE pole (world-down projected onto the swing plane, where it
+            // naturally hangs) by a reach-preserving swivel about the shoulder->hand axis, weighted by how
+            // collapsed the hint pole is (collapse 1 at projNorm<=0.15, off by 0.30 -- the tuning knob; raise
+            // it if a backward flip survives, lower it if forward/up reaches drift). Folded into HintDelta so
+            // the runtime applies it; the hand stays exactly on target -- only the ill-conditioned swivel DOF
+            // is replaced by a stable attractor. Perpendicular hint poles (forward / up reaches) are untouched.
+            if (i.HintWeight)
+            {
+                float poleCond = totalLen > k_Epsilon ? hintProjMag / totalLen : 1f;
+                // Same physical-stand-off reasoning as the hintFade floor above: a real tracker's short pole is
+                // real out-direction, so re-condition it (positions only -> pronation-safe) and the world-down
+                // stabilizer backs off, letting the elbow follow the tracker. Lookup path keeps the wider window
+                // (the backward full-stretch flip fix). Below the floor (tracker on the bone line) it still acts.
+                if (i.HintIsTracker && poleCond > 0.05f) poleCond = Mathf.Max(poleCond, 0.30f);
+                float collapse = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((poleCond - 0.15f) / 0.15f));
+                Vector3 acStab = cPosition - aPosition;
+                if (collapse > 0f && acStab.sqrMagnitude > k_SqrEpsilon)
+                {
+                    Vector3 acStabN = acStab.normalized;
+                    Vector3 downPole = -i.PlayerUp - acStabN * Vector3.Dot(-i.PlayerUp, acStabN);
+                    Vector3 elbowPole = (bPosition - aPosition) - acStabN * Vector3.Dot(bPosition - aPosition, acStabN);
+                    if (downPole.sqrMagnitude > k_SqrEpsilon && elbowPole.sqrMagnitude > k_SqrEpsilon)
+                    {
+                        Quaternion stab = Quaternion.Slerp(Quaternion.identity, QuaternionExt.FromToRotation(elbowPole, downPole), collapse);
+                        // Offline temporal callers pass a per-solve cap; the live stateless rig passes MaxValue
+                        // (down is a fixed target, so a full stateless swivel onto it is stable, not a snap).
+                        float stabAngle = 2f * Mathf.Acos(Mathf.Clamp(Mathf.Abs(stab.w), 0f, 1f)) * Mathf.Rad2Deg;
+                        if (stabAngle > i.HintMaxStepDeg && stabAngle > k_Epsilon)
+                        {
+                            stab = Quaternion.Slerp(Quaternion.identity, stab, i.HintMaxStepDeg / stabAngle);
+                        }
+                        stab = QuaternionExt.NormalizeSafe(stab);
+                        rootRot = stab * rootRot;
+                        bPosition = aPosition + stab * (bPosition - aPosition);
+                        cPosition = aPosition + stab * (cPosition - aPosition);
+                        midRot = stab * midRot;
+                        hintR = stab * hintR; // fold into the hint delta the runtime applies
                     }
                 }
             }

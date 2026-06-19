@@ -42,7 +42,7 @@ public static class BasisLocalHeightCalculator
             var headFlat = new Vector3(head.x, 0f, head.z);
             var handFlat = new Vector3(hand.x, 0f, hand.z);
 
-            BasisHeightDriver.PlayerArmSpan = Vector3.Distance(headFlat, handFlat);
+            BasisHeightDriver.PlayerArmSpan = Vector3.Distance(headFlat, handFlat) * 2f;
             return;
         }
 
@@ -55,25 +55,29 @@ public static class BasisLocalHeightCalculator
 
         Vector3 lFlat = new Vector3(l.x, 0f, l.z);
         Vector3 rFlat = new Vector3(r.x, 0f, r.z);
-        BasisHeightDriver.PlayerArmSpan = Vector3.Distance(lFlat, rFlat);
+        float span = Vector3.Distance(lFlat, rFlat);
 
+        BasisHeightDriver.PlayerArmSpan = span;
         BasisDebug.Log($"Player hand-to-hand arm span: {BasisHeightDriver.PlayerArmSpan}", BasisDebug.LogTag.Avatar);
     }
 
     public static void CalculatePlayerEyeHeight()
     {
-        // If pitch calibration data is available, use it instead of a single sample
-        if (BasisHeightDriver.HasPitchCalibratedHeight)
-        {
-            BasisHeightDriver.PlayerEyeHeight = BasisHeightDriver.PitchCalibratedEyeHeight;
-            BasisDebug.Log($"Using pitch-calibrated eye height: {BasisHeightDriver.PlayerEyeHeight}", BasisDebug.LogTag.Avatar);
-            return;
-        }
+        var headInput = BasisLocalCameraDriver.Instance?.BasisLockToInput?.BasisInput;
+        BasisHeightDriver.PlayerCenterEyeVerticalOffset = headInput != null ? headInput.CenterEyeVerticalOffset : 0f;
+
+        bool genuine = true;
 
         if (SMModuleSitStand.IsSteatedMode)
         {
-            BasisDebug.Log("Was Seated Mode taking standard size of 1.7m", BasisDebug.LogTag.Avatar);
+            BasisHeightDriver.PlayerCenterEyeVerticalOffset = 0f;
             BasisHeightDriver.PlayerEyeHeight = BasisHeightDriver.FallbackHeightInMeters;
+            BasisDebug.Log($"Seated mode; using standard eye height {BasisHeightDriver.PlayerEyeHeight}", BasisDebug.LogTag.Avatar);
+        }
+        else if (BasisHeightDriver.HasPitchCalibratedHeight)
+        {
+            BasisHeightDriver.PlayerEyeHeight = BasisHeightDriver.PitchCalibratedEyeHeight;
+            BasisDebug.Log($"Using pitch-calibrated eye height: {BasisHeightDriver.PlayerEyeHeight}", BasisDebug.LogTag.Avatar);
         }
         else
         {
@@ -81,7 +85,9 @@ public static class BasisLocalHeightCalculator
             if (lockToInput != null && lockToInput.BasisInput != null)
             {
                 lockToInput.BasisInput.LatePollData();
-                BasisHeightDriver.PlayerEyeHeight = lockToInput.BasisInput.UnscaledDeviceCoord.position.y;
+                // Subtract the play-space mover's vertical offset so calibrating while lifted doesn't read
+                // an inflated eye height (the offset is injected into UnscaledDeviceCoord by the device).
+                BasisHeightDriver.PlayerEyeHeight = lockToInput.BasisInput.UnscaledDeviceCoord.position.y - BasisLocalPlayspaceMover.VerticalOffset;
                 BasisDebug.Log($"Player raw eye height from device: {BasisHeightDriver.PlayerEyeHeight}", BasisDebug.LogTag.Avatar);
             }
             else
@@ -90,6 +96,7 @@ public static class BasisLocalHeightCalculator
                 float fallback = BasisHeightDriver.AvatarEyeHeight > 0f ? BasisHeightDriver.AvatarEyeHeight : BasisHeightDriver.FallbackHeightInMeters;
 
                 BasisHeightDriver.PlayerEyeHeight = fallback;
+                genuine = false;
 
                 BasisDebug.LogWarning("No attached input found for BasisLockToInput. Using fallback player eye height.", BasisDebug.LogTag.Avatar);
             }
@@ -97,50 +104,70 @@ public static class BasisLocalHeightCalculator
         if (BasisHeightDriver.PlayerEyeHeight <= 0f)
         {
             BasisHeightDriver.PlayerEyeHeight = BasisHeightDriver.FallbackHeightInMeters;
+            genuine = false;
             BasisDebug.LogWarning($"Player eye height was invalid. Set to default: {BasisHeightDriver.FallbackHeightInMeters}", BasisDebug.LogTag.Avatar);
         }
+
+        BasisHeightDriver.HasGenuinePlayerEyeHeight = genuine;
     }
 
     /// <summary>
-    /// Captures a single HMD position sample for pitch calibration.
-    /// Returns the Y height, or -1 if no device available.
+    /// Captures one HMD sample for pitch calibration: pitchRadians is the gaze pitch (positive =
+    /// looking up), eyeY is the HMD height with the play-space mover's vertical offset removed.
+    /// Returns false when no HMD device is available.
     /// </summary>
-    public static float CaptureHMDHeightSample()
+    public static bool CaptureHMDPitchSample(out float pitchRadians, out float eyeY)
     {
+        pitchRadians = 0f;
+        eyeY = -1f;
         var lockToInput = BasisLocalCameraDriver.Instance?.BasisLockToInput;
         if (lockToInput != null && lockToInput.BasisInput != null)
         {
             lockToInput.BasisInput.LatePollData();
-            return lockToInput.BasisInput.UnscaledDeviceCoord.position.y;
+            var coord = lockToInput.BasisInput.UnscaledDeviceCoord;
+            eyeY = coord.position.y - BasisLocalPlayspaceMover.VerticalOffset;
+            Vector3 forward = coord.rotation * Vector3.forward;
+            pitchRadians = Mathf.Asin(Mathf.Clamp(forward.y, -1f, 1f));
+            return true;
         }
-        return -1f;
+        return false;
     }
 
     /// <summary>
-    /// Computes the corrected eye height from three pitch samples (up, down, forward).
-    /// The HMD traces an arc around the neck pivot when pitching. The midpoint of
-    /// up/down Y values approximates the neck pivot height. The forward sample then
-    /// gives the actual eye-to-pivot offset at neutral.
+    /// Recovers the level-gaze eye height from three (pitch, height) HMD samples. As the head
+    /// pitches the HMD height follows Y(pitch) = P + A*sin(pitch) + B*cos(pitch) about the neck
+    /// pivot; solving that system gives the level-gaze height Y(0) = P + B, independent of whether
+    /// the "forward" pose was actually level. Falls back to the forward sample when the samples
+    /// are too close together to solve or the result lands outside the up/down range.
+    /// Each Vector2 is (x = pitch radians, y = eye height).
     /// </summary>
-    public static float ComputePitchCalibratedHeight(float upY, float downY, float forwardY)
+    public static float ComputePitchCalibratedHeight(Vector2 up, Vector2 down, Vector2 forward)
     {
-        // Neck pivot Y ≈ midpoint of up and down HMD heights
-        float pivotY = (upY + downY) * 0.5f;
+        float s0 = Mathf.Sin(up.x), c0 = Mathf.Cos(up.x);
+        float s1 = Mathf.Sin(down.x), c1 = Mathf.Cos(down.x);
+        float s2 = Mathf.Sin(forward.x), c2 = Mathf.Cos(forward.x);
+        float y0 = up.y, y1 = down.y, y2 = forward.y;
 
-        // The forward-looking offset above pivot is the neutral eye-to-pivot distance
-        float eyeOffset = forwardY - pivotY;
+        float det = (s1 * c2 - c1 * s2) - s0 * (c2 - c1) + c0 * (s2 - s1);
+        if (Mathf.Abs(det) < 1e-5f)
+        {
+            BasisDebug.LogWarning($"Pitch calibration: samples too close to solve (det={det:F6}); using forward height {forward.y:F4}", BasisDebug.LogTag.Avatar);
+            return forward.y;
+        }
 
-        // Corrected height = pivot + offset, but validated against the forward sample
-        // If the user's forward pose was accurate, this just returns forwardY.
-        // The real benefit is when the "forward" pose still has slight pitch error:
-        // the pivot anchors the correction.
-        float corrected = pivotY + Mathf.Abs(eyeOffset);
+        float detP = y0 * (s1 * c2 - c1 * s2) - s0 * (y1 * c2 - c1 * y2) + c0 * (y1 * s2 - s1 * y2);
+        float detB = (s1 * y2 - y1 * s2) - s0 * (y2 - y1) + y0 * (s2 - s1);
+        float corrected = (detP + detB) / det;
 
-        BasisDebug.Log(
-            $"Pitch calibration: upY={upY:F4} downY={downY:F4} forwardY={forwardY:F4} " +
-            $"pivotY={pivotY:F4} eyeOffset={eyeOffset:F4} corrected={corrected:F4}",
-            BasisDebug.LogTag.Avatar);
+        float lo = Mathf.Min(up.y, down.y);
+        float hi = Mathf.Max(up.y, down.y);
+        if (float.IsNaN(corrected) || float.IsInfinity(corrected) || corrected < lo || corrected > hi)
+        {
+            BasisDebug.LogWarning($"Pitch calibration: solved height {corrected:F4} out of range [{lo:F4},{hi:F4}]; using forward height {forward.y:F4}", BasisDebug.LogTag.Avatar);
+            return forward.y;
+        }
 
+     //   BasisDebug.Log($"Pitch calibration: up=({up.x:F3},{up.y:F4}) down=({down.x:F3},{down.y:F4}) forward=({forward.x:F3},{forward.y:F4}) corrected={corrected:F4}", BasisDebug.LogTag.Avatar);
         return corrected;
     }
     public static void CalculateAvatarEyeHeight()
@@ -167,13 +194,22 @@ public static class BasisLocalHeightCalculator
             BasisDebug.LogError("Missing BasisLocalPlayer");
             return;
         }
-        var boneDriver = Local.LocalBoneDriver;
-        //i believe the bone is wrong! we are not actually getting the tpose here! -LD
-        boneDriver.FindBone(out var leftHandBone, BasisBoneTrackedRole.LeftHand);
-        boneDriver.FindBone(out var rightHandBone, BasisBoneTrackedRole.RightHand);
+        Animator animator = Local.BasisAvatar != null ? Local.BasisAvatar.Animator : null;
+        Transform leftHand = animator != null ? animator.GetBoneTransform(HumanBodyBones.LeftHand) : null;
+        Transform rightHand = animator != null ? animator.GetBoneTransform(HumanBodyBones.RightHand) : null;
 
-        Vector3 leftFlat = new Vector3(leftHandBone.TposeLocal.position.x, 0f, leftHandBone.TposeLocal.position.z);
-        Vector3 rightFlat = new Vector3(rightHandBone.TposeLocal.position.x, 0f, rightHandBone.TposeLocal.position.z);
+        if (leftHand == null || rightHand == null)
+        {
+            BasisHeightDriver.AvatarArmSpan = BasisHeightDriver.AvatarEyeHeight;
+            BasisDebug.LogWarning($"Avatar hand bones unavailable; arm span set to avatar eye height: {BasisHeightDriver.AvatarArmSpan}", BasisDebug.LogTag.Avatar);
+            return;
+        }
+
+        Vector3 l = leftHand.position;
+        Vector3 r = rightHand.position;
+
+        Vector3 leftFlat = new Vector3(l.x, 0f, l.z);
+        Vector3 rightFlat = new Vector3(r.x, 0f, r.z);
 
         float ArmLength = Vector3.Distance(leftFlat, rightFlat);
         BasisHeightDriver.AvatarArmSpan = ArmLength;
@@ -206,6 +242,17 @@ public static class BasisLocalHeightCalculator
                 BasisDebug.LogTag.Avatar
             );
             armSpan = minAllowed;
+        }
+
+        float maxAllowed = eyeHeight * (1f + EyeArmTolerance);
+        if (armSpan > maxAllowed)
+        {
+            BasisDebug.LogWarning(
+                $"{label} arm span ({armSpan}) is >{EyeArmTolerance:P0} larger than {label} eye height ({eyeHeight}). " +
+                $"Clamping to max allowed: {maxAllowed}",
+                BasisDebug.LogTag.Avatar
+            );
+            armSpan = maxAllowed;
         }
     }
 

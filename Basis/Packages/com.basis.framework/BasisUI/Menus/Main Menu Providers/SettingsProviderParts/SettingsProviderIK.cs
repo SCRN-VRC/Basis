@@ -1,5 +1,6 @@
 using Basis;
 using Basis.BasisUI;
+using Basis.Scripts.Drivers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,10 +8,6 @@ using UnityEngine;
 
 public static class SettingsProviderIK
 {
-    private static PanelDropdown dropdownIKMode;
-    private static PanelDropdown dropdownIKLockMode;
-    private static PanelDropdown dropdownSeatedMode;
-
     public const string SeatedMode_Seated = "Seated Mode";
     public const string SeatedMode_Standing = "Standing Mode";
 
@@ -25,6 +22,7 @@ public static class SettingsProviderIK
     private static PanelToggle _uiEuroPos;
     private static PanelToggle _uiEuroRot;
     private static PanelSlider _uiCalibSphereScale;
+    private static PanelSlider _avatarScaleSlider;
     private static PanelElementDescriptor _boneEuroEditorGroup;
 
     private struct BoneBindings
@@ -61,46 +59,6 @@ public static class SettingsProviderIK
 
         var ikParent = ikGroup.ContentParent;
 
-        // --- Seated Mode dropdown ---
-        dropdownSeatedMode = PanelDropdown.CreateNewEntry(ikParent);
-        dropdownSeatedMode.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.seatedMode"));
-        dropdownSeatedMode.Descriptor.SetDescription(
-            "Select the reference pose used for body scaling"
-        );
-        dropdownSeatedMode.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.seatedMode.tooltip"));
-        dropdownSeatedMode.AssignLocalizedEntries(
-            new List<string> { SeatedMode_Standing, SeatedMode_Seated },
-            new List<string> { "settings.bodyTracking.seatedMode.standing", "settings.bodyTracking.seatedMode.seated" });
-        dropdownSeatedMode.AssignBinding(BasisSettingsDefaults.SitStand);
-
-        // --- IK mode dropdown ---
-        dropdownIKMode = PanelDropdown.CreateNewEntry(ikParent);
-        dropdownIKMode.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.ikMode"));
-        dropdownIKMode.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.ikMode.tooltip"));
-        dropdownIKMode.AssignLocalizedEntries(
-            new List<string> { "Eye Height", "Arm Distance" },
-            new List<string> { "settings.bodyTracking.ikMode.eyeHeight", "settings.bodyTracking.ikMode.armDistance" });
-        dropdownIKMode.AssignBinding(BasisSettingsDefaults.IKMode);
-        dropdownIKMode.Descriptor.SetDescription(
-            "Determines how body scale is calculated."
-        );
-
-        // --- IK Lock Mode dropdown ---
-        dropdownIKLockMode = PanelDropdown.CreateNewEntry(ikParent);
-        dropdownIKLockMode.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.spineLockMode"));
-        dropdownIKLockMode.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.spineLockMode.tooltip"));
-        dropdownIKLockMode.AssignLocalizedEntries(
-            new List<string> { "Lock Hips", "Lock Head", "Lock Both" },
-            new List<string> { "settings.bodyTracking.spineLock.hips", "settings.bodyTracking.spineLock.head", "settings.bodyTracking.spineLock.both" });
-        dropdownIKLockMode.AssignBinding(BasisSettingsDefaults.IKLockMode);
-        dropdownIKLockMode.Descriptor.SetDescription(
-            "Lock Hips: Hips are the anchor, Lock Head: Head is the anchor."
-        //"Controls how the spine IK chain resolves the relationship between head and hips.\n\n"// +
-        //  "Lock Hips: Hips are the anchor. Prevents spine curvature from leg movement. Best for full-body tracking.\n" +
-        //  "Lock Head: Head is the anchor. Hips are derived below head. Best for HMD-only or 3-point tracking.\n" +
-        //  "Lock Both: Both head and hips are independent. Spine stretches to connect them."
-        );
-
         // --- Custom scale toggle ---
         var customScaleToggle = PanelToggle.CreateNewEntry(ikParent);
         customScaleToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.customScale"));
@@ -112,13 +70,10 @@ public static class SettingsProviderIK
             ikParent,
             PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("settings.bodyTracking.avatarHeightScale"), 0.1f, 5f, false, 2, ValueDisplayMode.Meters),
             BasisSettingsDefaults.SelectedScale);
+        _avatarScaleSlider = avatarScaleSlider;
 
         if (avatarScaleSlider != null)
         {
-            avatarScaleSlider.Descriptor.SetDescription(
-                "Manually adjusts avatar height when Custom Scale is enabled. " +
-                "This affects perceived size only and does not change tracking accuracy."
-            );
             avatarScaleSlider.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.avatarHeightScale.tooltip"));
 
             avatarScaleSlider.gameObject.SetActive(BasisSettingsDefaults.CustomScale.RawValue);
@@ -130,35 +85,6 @@ public static class SettingsProviderIK
             };
         }
 
-        var armRatioToggle = PanelToggle.CreateNewEntry(ikParent);
-        armRatioToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.armHeightRatio"));
-        armRatioToggle.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.armHeightRatio.tooltip"));
-        armRatioToggle.AssignBinding(BasisSettingsDefaults.FBIKArmHeightRatioEnabled);
-
-        var armRatioSlider = PanelSlider.CreateAndBind(
-            ikParent,
-            PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("settings.bodyTracking.armHeightRatio"), 0.7f, 1.3f, false, 2, ValueDisplayMode.Raw),
-            BasisSettingsDefaults.FBIKArmHeightRatio);
-
-        if (armRatioSlider != null)
-        {
-            armRatioSlider.Descriptor.SetDescription(
-                "Sets your arm span as a ratio of your eye height so your reach matches the avatar's " +
-                "(fixes stubby arms). Requires IK Mode = Arm Distance. Higher = longer reach. Re-calibrate to apply.");
-            armRatioSlider.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.armHeightRatio.tooltip"));
-            armRatioSlider.gameObject.SetActive(BasisSettingsDefaults.FBIKArmHeightRatioEnabled.RawValue);
-            armRatioToggle.OnValueChanged += visible =>
-            {
-                armRatioSlider.gameObject.SetActive(visible);
-                tabDesc.ForceRebuild();
-                ikGroup.ForceRebuild();
-            };
-        }
-
-        dropdownIKMode.OnValueChanged += _ => EvaluateInteractables();
-        dropdownSeatedMode.OnValueChanged += _ => EvaluateInteractables();
-        EvaluateInteractables();
-
         _trackerLerpToggleUIs.Clear();
         _euroToggleUIs.Clear();
 
@@ -168,6 +94,82 @@ public static class SettingsProviderIK
             AddFBIKTogglesCompact);
 
         SyncMasterEuroFromChildren();
+
+        // ------------------
+        // Playspace Mover
+        // ------------------
+        CreateCollapsibleSection(tabDesc, ikGroup,
+            BasisLocalization.Get("settings.bodyTracking.playspaceMover.title"),
+            BasisLocalization.Get("settings.bodyTracking.playspaceMover.description"), false, moverParent =>
+        {
+            var enableToggle = PanelToggle.CreateNewEntry(moverParent);
+            enableToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.playspaceMover.enable"));
+            enableToggle.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.playspaceMover.enable.tooltip"));
+            enableToggle.AssignBinding(BasisSettingsDefaults.EnablePlayspaceMover);
+
+            var inputDropdown = PanelDropdown.CreateNewEntry(moverParent);
+            inputDropdown.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.playspaceMover.input"));
+            inputDropdown.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.playspaceMover.input.tooltip"));
+            inputDropdown.AssignLocalizedEntries(
+                new List<string> { BasisLocalPlayspaceMover.InputGrip, BasisLocalPlayspaceMover.InputTrigger, BasisLocalPlayspaceMover.InputPrimary, BasisLocalPlayspaceMover.InputSecondary },
+                new List<string> { "settings.bodyTracking.playspaceMover.input.grip", "settings.bodyTracking.playspaceMover.input.trigger", "settings.bodyTracking.playspaceMover.input.primary", "settings.bodyTracking.playspaceMover.input.secondary" });
+            inputDropdown.AssignBinding(BasisSettingsDefaults.PlayspaceMoverInput);
+
+            var handDropdown = PanelDropdown.CreateNewEntry(moverParent);
+            handDropdown.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.playspaceMover.hand"));
+            handDropdown.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.playspaceMover.hand.tooltip"));
+            handDropdown.AssignLocalizedEntries(
+                new List<string> { BasisLocalPlayspaceMover.HandBoth, BasisLocalPlayspaceMover.HandLeft, BasisLocalPlayspaceMover.HandRight },
+                new List<string> { "settings.bodyTracking.playspaceMover.hand.both", "settings.bodyTracking.playspaceMover.hand.left", "settings.bodyTracking.playspaceMover.hand.right" });
+            handDropdown.AssignBinding(BasisSettingsDefaults.PlayspaceMoverHand);
+
+            var rotateToggle = PanelToggle.CreateNewEntry(moverParent);
+            rotateToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.playspaceMover.rotate"));
+            rotateToggle.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.playspaceMover.rotate.tooltip"));
+            rotateToggle.AssignBinding(BasisSettingsDefaults.PlayspaceMoverRotate);
+
+            var rotateInputDropdown = PanelDropdown.CreateNewEntry(moverParent);
+            rotateInputDropdown.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.playspaceMover.rotateInput"));
+            rotateInputDropdown.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.playspaceMover.rotateInput.tooltip"));
+            rotateInputDropdown.AssignLocalizedEntries(
+                new List<string> { BasisLocalPlayspaceMover.InputGrip, BasisLocalPlayspaceMover.InputTrigger, BasisLocalPlayspaceMover.InputPrimary, BasisLocalPlayspaceMover.InputSecondary },
+                new List<string> { "settings.bodyTracking.playspaceMover.input.grip", "settings.bodyTracking.playspaceMover.input.trigger", "settings.bodyTracking.playspaceMover.input.primary", "settings.bodyTracking.playspaceMover.input.secondary" });
+            rotateInputDropdown.AssignBinding(BasisSettingsDefaults.PlayspaceMoverRotateInput);
+
+            var scaleToggle = PanelToggle.CreateNewEntry(moverParent);
+            scaleToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.playspaceMover.scale"));
+            scaleToggle.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.playspaceMover.scale.tooltip"));
+            scaleToggle.AssignBinding(BasisSettingsDefaults.PlayspaceMoverScale);
+
+            var verticalToggle = PanelToggle.CreateNewEntry(moverParent);
+            verticalToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.playspaceMover.vertical"));
+            verticalToggle.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.playspaceMover.vertical.tooltip"));
+            verticalToggle.AssignBinding(BasisSettingsDefaults.PlayspaceMoverVertical);
+
+            var flipToggle = PanelToggle.CreateNewEntry(moverParent);
+            flipToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.playspaceMover.flip"));
+            flipToggle.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.playspaceMover.flip.tooltip"));
+            flipToggle.AssignBinding(BasisSettingsDefaults.PlayspaceMoverFlip);
+
+            var flipAxisDropdown = PanelDropdown.CreateNewEntry(moverParent);
+            flipAxisDropdown.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.playspaceMover.flipAxis"));
+            flipAxisDropdown.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.playspaceMover.flipAxis.tooltip"));
+            flipAxisDropdown.AssignLocalizedEntries(
+                new List<string> { BasisLocalPlayspaceMover.AxisRoll, BasisLocalPlayspaceMover.AxisPitch, BasisLocalPlayspaceMover.AxisYaw },
+                new List<string> { "settings.bodyTracking.playspaceMover.flipAxis.roll", "settings.bodyTracking.playspaceMover.flipAxis.pitch", "settings.bodyTracking.playspaceMover.flipAxis.yaw" });
+            flipAxisDropdown.AssignBinding(BasisSettingsDefaults.PlayspaceMoverFlipAxis);
+
+            var flipAngleSlider = PanelSlider.CreateEntryAndBind(
+                moverParent,
+                PanelSlider.SliderSettings.Degrees(BasisLocalization.Get("settings.bodyTracking.playspaceMover.flipAngle"), 0f, 360f, true, 0),
+                BasisSettingsDefaults.PlayspaceMoverFlipAngle);
+            flipAngleSlider.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.playspaceMover.flipAngle.tooltip"));
+
+            var resetButton = PanelButton.CreateNew(moverParent);
+            resetButton.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.playspaceMover.reset"));
+            resetButton.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.playspaceMover.reset.tooltip"));
+            resetButton.OnClicked += BasisLocalPlayspaceMover.ResetOffset;
+        });
 
         // ------------------
         // Advanced IK toggle
@@ -220,6 +222,11 @@ public static class SettingsProviderIK
             disableAnimInFBTToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.disableAnimFbt"));
             disableAnimInFBTToggle.AssignBinding(BasisSettingsDefaults.DisableAnimationsInFBT);
             disableAnimInFBTToggle.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.disableAnimFbt.tooltip"));
+
+            var butterflyKneesToggle = PanelToggle.CreateNewEntry(trackingParent);
+            butterflyKneesToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.butterflyKnees"));
+            butterflyKneesToggle.AssignBinding(BasisSettingsDefaults.FBIKButterflyKnees);
+            butterflyKneesToggle.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.butterflyKnees.tooltip"));
         });
 
         // ============== Body Collision ==============
@@ -236,6 +243,11 @@ public static class SettingsProviderIK
             protectElbowToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.protectElbow.title"));
             protectElbowToggle.AssignBinding(BasisSettingsDefaults.FBIKProtectElbow);
             protectElbowToggle.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.protectElbow.title.tooltip"));
+
+            var collideTrackedElbowToggle = PanelToggle.CreateNewEntry(collisionParent);
+            collideTrackedElbowToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.collideTrackedElbow.title"));
+            collideTrackedElbowToggle.AssignBinding(BasisSettingsDefaults.FBIKCollideTrackedElbow);
+            collideTrackedElbowToggle.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.collideTrackedElbow.title.tooltip"));
 
             var handCapsuleToggle = PanelToggle.CreateNewEntry(collisionParent);
             handCapsuleToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.bodyTracking.handCapsule.title"));
@@ -349,6 +361,12 @@ public static class SettingsProviderIK
             AddAnatomyToggle(anatomyParent, BasisSettingsDefaults.FBIKAnatPelvicTwistRouting,
                 "settings.bodyTracking.anat.pelvicTwistRouting.title",
                 "settings.bodyTracking.anat.pelvicTwistRouting.description");
+            AddAnatomyToggle(anatomyParent, BasisSettingsDefaults.FBIKLegSwivelSmoothing,
+                "settings.bodyTracking.anat.legSwivelSmoothing.title",
+                "settings.bodyTracking.anat.legSwivelSmoothing.description");
+            AddAnatomyToggle(anatomyParent, BasisSettingsDefaults.FBIKTrackerBendNormal,
+                "settings.bodyTracking.anat.trackerBendNormal.title",
+                "settings.bodyTracking.anat.trackerBendNormal.description");
         });
 
         // ============== Spine: Reach Limits ==============
@@ -399,6 +417,15 @@ public static class SettingsProviderIK
             if (maxHipDeltaSlider != null)
             {
                 maxHipDeltaSlider.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.maxHipDelta.title.tooltip"));
+            }
+
+            var butterflyMaxOpenSlider = PanelSlider.CreateAndBind(
+                reachParent,
+                PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("settings.bodyTracking.butterflyKneeMaxOpen.title"), 0f, 90f, false, 0, ValueDisplayMode.Raw),
+                BasisSettingsDefaults.FBIKButterflyKneeMaxOpenDeg);
+            if (butterflyMaxOpenSlider != null)
+            {
+                butterflyMaxOpenSlider.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.butterflyKneeMaxOpen.title.tooltip"));
             }
         });
 
@@ -539,14 +566,10 @@ public static class SettingsProviderIK
                 moveBodyBack.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.moveBodyBackWhenCrouching.title.tooltip"));
             }
 
-            var hipTiltStabilization = PanelSlider.CreateAndBind(
-                dynamicsParent,
-                PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("settings.bodyTracking.hipTiltStabilization.title"), 0f, 1f, false, 2, ValueDisplayMode.Raw),
-                BasisSettingsDefaults.FBIKHipTiltStabilization);
-            if (hipTiltStabilization != null)
-            {
-                hipTiltStabilization.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.hipTiltStabilization.title.tooltip"));
-            }
+            var elbowSwingToggle = PanelToggle.CreateNewEntry(dynamicsParent);
+            elbowSwingToggle.Descriptor.SetTitle("Elbow Swing Smoothing");
+            elbowSwingToggle.AssignBinding(BasisSettingsDefaults.FBIKElbowSwingEnabled);
+            elbowSwingToggle.Descriptor.SetTooltip("Rate-limits the elbow/knee swing and how fast a torso-collision push eases in. Off = the elbow swings freely (test for over-damping).");
 
             var swingSmooth = PanelSlider.CreateAndBind(
                 dynamicsParent,
@@ -582,6 +605,24 @@ public static class SettingsProviderIK
             if (spineCcdRelax != null)
             {
                 spineCcdRelax.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.spineCcdRelax.title.tooltip"));
+            }
+
+            var spineTwistKeep = PanelSlider.CreateAndBind(
+                dynamicsParent,
+                PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("settings.bodyTracking.spineTwistKeep.title"), 0f, 1f, false, 2, ValueDisplayMode.Raw),
+                BasisSettingsDefaults.FBIKSpineTwistKeep);
+            if (spineTwistKeep != null)
+            {
+                spineTwistKeep.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.spineTwistKeep.title.tooltip"));
+            }
+
+            var spineNeckTwistKeep = PanelSlider.CreateAndBind(
+                dynamicsParent,
+                PanelSlider.SliderSettings.Advanced(BasisLocalization.Get("settings.bodyTracking.spineNeckTwistKeep.title"), 0f, 1f, false, 2, ValueDisplayMode.Raw),
+                BasisSettingsDefaults.FBIKSpineNeckTwistKeep);
+            if (spineNeckTwistKeep != null)
+            {
+                spineNeckTwistKeep.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.spineNeckTwistKeep.title.tooltip"));
             }
 
             var chestArmSwingFactor = PanelSlider.CreateAndBind(
@@ -920,6 +961,16 @@ public static class SettingsProviderIK
         return tabPage;
     }
 
+    public static void SetAvatarScaleSliderValueWithoutNotify(float value)
+    {
+        if (_avatarScaleSlider == null)
+        {
+            return;
+        }
+
+        _avatarScaleSlider.SetValueWithoutNotify(value);
+    }
+
     // ------------------
     // Debug Info
     // ------------------
@@ -945,7 +996,7 @@ public static class SettingsProviderIK
         _debugCategories.Clear();
 
         AddDebugCategory(debugParent, BasisLocalization.Get("settings.bodyTracking.debug.playerMetrics"),
-            "Player Eye Height", "Player Arm Span", "Additional Player Height");
+            "Player Eye Height", "Player Arm Span", "Eye Height Modifier");
 
         AddDebugCategory(debugParent, BasisLocalization.Get("settings.bodyTracking.debug.avatarMetrics"),
             "Avatar Eye Height", "Avatar Arm Span");
@@ -1011,7 +1062,7 @@ public static class SettingsProviderIK
     {
         "Player Eye Height" => $"{BasisHeightDriver.PlayerEyeHeight:F4} m",
         "Player Arm Span" => $"{BasisHeightDriver.PlayerArmSpan:F4} m",
-        "Additional Player Height" => $"{BasisHeightDriver.AdditionalPlayerHeight:F4} m",
+        "Eye Height Modifier" => $"{Basis.BasisUI.BasisSettingsDefaults.CalibrationStandingEyeHeightMeters.RawValue:F4} m",
         "Avatar Eye Height" => $"{BasisHeightDriver.AvatarEyeHeight:F4} m",
         "Avatar Arm Span" => $"{BasisHeightDriver.AvatarArmSpan:F4} m",
         "Scaled Player Height" => $"{BasisHeightDriver.SelectedScaledPlayerHeight:F4} m",
@@ -1041,6 +1092,18 @@ public static class SettingsProviderIK
         BasisSettingsDefaults.CustomScale.ResetToDefault();
         BasisSettingsDefaults.SelectedScale.ResetToDefault();
 
+        // Playspace Mover
+        BasisSettingsDefaults.EnablePlayspaceMover.ResetToDefault();
+        BasisSettingsDefaults.PlayspaceMoverInput.ResetToDefault();
+        BasisSettingsDefaults.PlayspaceMoverRotateInput.ResetToDefault();
+        BasisSettingsDefaults.PlayspaceMoverHand.ResetToDefault();
+        BasisSettingsDefaults.PlayspaceMoverRotate.ResetToDefault();
+        BasisSettingsDefaults.PlayspaceMoverScale.ResetToDefault();
+        BasisSettingsDefaults.PlayspaceMoverVertical.ResetToDefault();
+        BasisSettingsDefaults.PlayspaceMoverFlip.ResetToDefault();
+        BasisSettingsDefaults.PlayspaceMoverFlipAngle.ResetToDefault();
+        BasisSettingsDefaults.PlayspaceMoverFlipAxis.ResetToDefault();
+
         // Global One Euro / smoothing parameters
         BasisSettingsDefaults.FBIKSmoothingStrength.ResetToDefault();
         BasisSettingsDefaults.FBIKMinCutoff.ResetToDefault();
@@ -1062,6 +1125,7 @@ public static class SettingsProviderIK
         BasisSettingsDefaults.FootIKEnabled.ResetToDefault();
         BasisSettingsDefaults.DisableAnimationsInFBT.ResetToDefault();
         BasisSettingsDefaults.FBIKProtectElbow.ResetToDefault();
+        BasisSettingsDefaults.FBIKCollideTrackedElbow.ResetToDefault();
         BasisSettingsDefaults.FBIKUseHandCapsule.ResetToDefault();
         BasisSettingsDefaults.FBIKChestRadius.ResetToDefault();
         BasisSettingsDefaults.FBIKCollisionSkin.ResetToDefault();
@@ -1075,7 +1139,8 @@ public static class SettingsProviderIK
         BasisSettingsDefaults.FBIKStruggleEnd.ResetToDefault();
         BasisSettingsDefaults.FBIKMaxChestDelta.ResetToDefault();
         BasisSettingsDefaults.FBIKMaxHipDelta.ResetToDefault();
-        BasisSettingsDefaults.FBIKHipTiltStabilization.ResetToDefault();
+        BasisSettingsDefaults.FBIKButterflyKnees.ResetToDefault();
+        BasisSettingsDefaults.FBIKButterflyKneeMaxOpenDeg.ResetToDefault();
         BasisSettingsDefaults.FBIKSpineBendPitch.ResetToDefault();
         BasisSettingsDefaults.FBIKSpineBendYaw.ResetToDefault();
         BasisSettingsDefaults.FBIKSpineBendRoll.ResetToDefault();
@@ -1086,6 +1151,7 @@ public static class SettingsProviderIK
         BasisSettingsDefaults.FBIKHipHingeMaxAddDeg.ResetToDefault();
         BasisSettingsDefaults.FBIKMoveBodyBackWhenCrouching.ResetToDefault();
         BasisSettingsDefaults.FBIKSwingSmoothRate.ResetToDefault();
+        BasisSettingsDefaults.FBIKElbowSwingEnabled.ResetToDefault();
         BasisSettingsDefaults.FBIKChestSpringHz.ResetToDefault();
         BasisSettingsDefaults.FBIKChestSpringDamping.ResetToDefault();
         BasisSettingsDefaults.FBIKLordosisPitchGainDeg.ResetToDefault();
@@ -1119,6 +1185,8 @@ public static class SettingsProviderIK
         BasisSettingsDefaults.FBIKSpineMaxLateralDeg.ResetToDefault();
         BasisSettingsDefaults.FBIKSpineSquishBoost.ResetToDefault();
         BasisSettingsDefaults.FBIKSpineCCDRelax.ResetToDefault();
+        BasisSettingsDefaults.FBIKSpineTwistKeep.ResetToDefault();
+        BasisSettingsDefaults.FBIKSpineNeckTwistKeep.ResetToDefault();
         BasisSettingsDefaults.FBIKNeckMaxConeDeg.ResetToDefault();
         BasisSettingsDefaults.FBIKChestArmSwingFactor.ResetToDefault();
         BasisSettingsDefaults.FBIKChestArmSwingMaxDeg.ResetToDefault();
@@ -1128,6 +1196,8 @@ public static class SettingsProviderIK
         BasisSettingsDefaults.FBIKAnatShoulderSlide.ResetToDefault();
         BasisSettingsDefaults.FBIKAnatCervicalLordosis.ResetToDefault();
         BasisSettingsDefaults.FBIKAnatPelvicTwistRouting.ResetToDefault();
+        BasisSettingsDefaults.FBIKLegSwivelSmoothing.ResetToDefault();
+        BasisSettingsDefaults.FBIKTrackerBendNormal.ResetToDefault();
 
         // Per-bone toggles and calibration sphere scale
         foreach (var b in _bones)
@@ -1140,9 +1210,8 @@ public static class SettingsProviderIK
             b.CalibSphereScale?.ResetToDefault();
         }
 
-        // Refresh the editor bindings + derived master state + interactables
+        // Refresh the editor bindings + derived master state
         RebindBoneEditor();
-        EvaluateInteractables();
         SyncMasterEuroFromChildren();
     }
 
@@ -1202,7 +1271,6 @@ public static class SettingsProviderIK
         _boneDropdown.Descriptor.SetTitle(BasisLocalization.Get("settings.ik.title.bone"));
         _boneDropdown.AssignEntries(boneNames);
         _boneDropdown.AssignBinding(BasisSettingsDefaults.SelectedBone);
-        _boneDropdown.Descriptor.SetDescription("Select which bone’s smoothing and filtering settings are shown below.");
         _boneDropdown.Descriptor.SetTooltip(BasisLocalization.Get("settings.ik.title.bone.tooltip"));
         _boneDropdown.OnValueChanged += _ => RebindBoneEditor();
 
@@ -1218,30 +1286,22 @@ public static class SettingsProviderIK
 
         _uiUseCalibration = PanelToggle.CreateNewEntry(_boneEuroEditorGroup.ContentParent);
         _uiUseCalibration.Descriptor.SetTitle(BasisLocalization.Get("settings.ik.title.useForCalibration"));
-        _uiUseCalibration.Descriptor.SetDescription(
-            "When enabled, this role participates in full-body tracker calibration. " +
-            "Disable to keep trackers from being assigned to it during the constellation pass."
-        );
         _uiUseCalibration.Descriptor.SetTooltip(BasisLocalization.Get("settings.ik.title.useForCalibration.tooltip"));
 
         _uiSmoothPos = PanelToggle.CreateNewEntry(_boneEuroEditorGroup.ContentParent);
         _uiSmoothPos.Descriptor.SetTitle(BasisLocalization.Get("settings.ik.title.smoothPosition"));
-        _uiSmoothPos.Descriptor.SetDescription("Blends this bone’s position over time to reduce jitter.");
         _uiSmoothPos.Descriptor.SetTooltip(BasisLocalization.Get("settings.ik.title.smoothPosition.tooltip"));
 
         _uiSmoothRot = PanelToggle.CreateNewEntry(_boneEuroEditorGroup.ContentParent);
         _uiSmoothRot.Descriptor.SetTitle(BasisLocalization.Get("settings.ik.title.smoothRotation"));
-        _uiSmoothRot.Descriptor.SetDescription("Blends this bone’s rotation over time to reduce wobble.");
         _uiSmoothRot.Descriptor.SetTooltip(BasisLocalization.Get("settings.ik.title.smoothRotation.tooltip"));
 
         _uiEuroPos = PanelToggle.CreateNewEntry(_boneEuroEditorGroup.ContentParent);
         _uiEuroPos.Descriptor.SetTitle(BasisLocalization.Get("settings.ik.title.euroFilteringPosition"));
-        _uiEuroPos.Descriptor.SetDescription("Steady at rest with minimal lag during motion. ");
         _uiEuroPos.Descriptor.SetTooltip(BasisLocalization.Get("settings.ik.title.euroFilteringPosition.tooltip"));
 
         _uiEuroRot = PanelToggle.CreateNewEntry(_boneEuroEditorGroup.ContentParent);
         _uiEuroRot.Descriptor.SetTitle(BasisLocalization.Get("settings.ik.title.euroFilteringRotation"));
-        _uiEuroRot.Descriptor.SetDescription("Reduces micro-wobble while remaining responsive.");
         _uiEuroRot.Descriptor.SetTooltip(BasisLocalization.Get("settings.ik.title.euroFilteringRotation.tooltip"));
 
         _uiCalibSphereScale = PanelSlider.CreateAndBind(
@@ -1251,11 +1311,6 @@ public static class SettingsProviderIK
 
         if (_uiCalibSphereScale != null)
         {
-            _uiCalibSphereScale.Descriptor.SetDescription(
-                "Adjusts the calibration sphere size for this bone. " +
-                "Larger spheres make it easier for trackers to attach during calibration. " +
-                "1.0 = default size."
-            );
             _uiCalibSphereScale.Descriptor.SetTooltip(BasisLocalization.Get("settings.bodyTracking.calibSphereScale.tooltip"));
         }
 
@@ -1308,8 +1363,8 @@ public static class SettingsProviderIK
     {
         var toggle = PanelToggle.CreateNewEntry(parent);
         toggle.Descriptor.SetTitle(BasisLocalization.Get(titleKey));
-        toggle.Descriptor.SetDescription(BasisLocalization.Get(descriptionKey));
-        toggle.Descriptor.SetTooltip(BasisLocalization.Get(titleKey + ".tooltip"));
+        // Explanatory text on hover (tooltip) instead of inline, to keep the page compact.
+        toggle.Descriptor.SetTooltip(BasisLocalization.Get(descriptionKey));
         toggle.AssignBinding(binding);
     }
 
@@ -1319,13 +1374,13 @@ public static class SettingsProviderIK
 
         var sectionToggle = PanelToggle.CreateNewEntry(parent);
         sectionToggle.Descriptor.SetTitle(title);
-        sectionToggle.Descriptor.SetDescription(description);
+        // Section blurb on hover (tooltip) instead of inline, to keep the page compact.
+        sectionToggle.Descriptor.SetTooltip(description);
 
         var sectionGroup = PanelElementDescriptor.CreateNew(
             PanelElementDescriptor.ElementStyles.Group,
             parent);
         sectionGroup.SetTitle(title);
-        sectionGroup.SetDescription(description);
         sectionGroup.SetIcon(AddressableAssets.Sprites.Settings);
 
         // Add content while the group is still active so child component Awake/Start runs and
@@ -1343,18 +1398,4 @@ public static class SettingsProviderIK
         };
     }
 
-    private static void EvaluateInteractables()
-    {
-        if (dropdownSeatedMode == null || dropdownIKMode == null)
-            return;
-
-        bool isSeated = GetCurrentText(dropdownSeatedMode) == SeatedMode_Seated;
-        SetDropdownInteractable(dropdownIKMode, !isSeated);
-    }
-
-    private static string GetCurrentText(PanelDropdown dd)
-        => dd.DropdownComponent.options[dd.DropdownComponent.value].text;
-
-    private static void SetDropdownInteractable(PanelDropdown dd, bool interactable)
-        => dd.DropdownComponent.interactable = interactable;
 }

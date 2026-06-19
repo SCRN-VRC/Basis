@@ -26,10 +26,14 @@ namespace Basis.BasisUI.MediaPlayer
         private PanelElementDescriptor _userGroup;
         private PanelElementDescriptor _adminGroup;
         private PanelElementDescriptor _emptyState;
+        private PanelElementDescriptor _statusGroup;
         private PanelElementDescriptor _debugGroup;
         private PanelToggle _debugToggle;
         private PanelTextField _urlField;
         private PanelSlider _volumeSlider;
+        private PanelToggle _captionsToggle;
+        private PanelSlider _captionTextOpacitySlider;
+        private PanelSlider _captionBgOpacitySlider;
         private PanelDropdown _bitrateDropdown;
         private PanelDropdown _audioTrackDropdown;
         private PanelToggle _advancedToggle;
@@ -39,8 +43,14 @@ namespace Basis.BasisUI.MediaPlayer
         private BasisMediaPlayer _activePlayer;
         private BasisMediaPlayerNetworking _activeNetworking;
         private readonly List<BasisMediaPlayer> _entries = new List<BasisMediaPlayer>();
-        private bool _debugTickSubscribed;
+        private bool _panelTickSubscribed;
+        private bool _debugMode;
+        private string _lastStatusMarkup;
+        private BasisMediaPlayerStatus _lastStatus = (BasisMediaPlayerStatus)(-1);
+        private Vector2Int _lastStatusSize = new Vector2Int(-1, -1);
+        private string _lastStatusErr;
         private readonly System.Text.StringBuilder _debugBuilder = new System.Text.StringBuilder(256);
+        private readonly System.Text.StringBuilder _statusBuilder = new System.Text.StringBuilder(192);
 
         [RuntimeInitializeOnLoadMethod]
         public static void AddToMenu()
@@ -100,18 +110,28 @@ namespace Basis.BasisUI.MediaPlayer
             _emptyState.SetTitle("No Media Players");
             _emptyState.SetDescription("Spawn or load a prop/scene that contains a Basis Media Player.");
 
+            BuildStatusGroup(_scrollContent);
             BuildControlGroup(_scrollContent);
             BuildUserGroup(_scrollContent);
             BuildAdminGroup(_scrollContent);
             BuildDebugGroup(_scrollContent);
 
             RebuildSelector();
+
+            // One frame-clock request for the panel's lifetime keeps the Status line
+            // live (Connecting → Buffering → Playing/Error are polled, not evented).
+            SetPanelTickSubscription(true);
         }
 
         private void OnPanelClosed()
         {
-            SetDebugTickSubscription(false);
+            SetPanelTickSubscription(false);
             UnsubscribeFromActivePlayer();
+            _debugMode = false;
+            _lastStatusMarkup = null;
+            // Invalidate the status gate so a reopened panel (this provider is a reused
+            // singleton) always repaints its fresh "—" status group on first tick.
+            _lastStatus = (BasisMediaPlayerStatus)(-1);
             _panel = null;
             _scrollContent = null;
             _selector = null;
@@ -119,10 +139,14 @@ namespace Basis.BasisUI.MediaPlayer
             _userGroup = null;
             _adminGroup = null;
             _emptyState = null;
+            _statusGroup = null;
             _debugGroup = null;
             _debugToggle = null;
             _urlField = null;
             _volumeSlider = null;
+            _captionsToggle = null;
+            _captionTextOpacitySlider = null;
+            _captionBgOpacitySlider = null;
             _bitrateDropdown = null;
             _audioTrackDropdown = null;
             _advancedToggle = null;
@@ -227,6 +251,29 @@ namespace Basis.BasisUI.MediaPlayer
                 }
             };
 
+            _captionsToggle = PanelToggle.CreateNewEntry(content);
+            _captionsToggle.Descriptor.SetTitle("Captions (CC)");
+            _captionsToggle.Descriptor.SetDescription("Show in-band closed captions when the stream carries them.");
+            _captionsToggle.OnValueChanged = v =>
+            {
+                if (_activePlayer != null) _activePlayer.CaptionsEnabled = v;
+                ApplyCaptionOptionsVisibility(v);
+            };
+
+            _captionTextOpacitySlider = PanelSlider.CreateNew(content);
+            _captionTextOpacitySlider.SetSliderSettings(PanelSlider.SliderSettings.Percentage("Text Opacity"));
+            _captionTextOpacitySlider.OnValueChanged = v =>
+            {
+                if (_activePlayer != null) _activePlayer.CaptionTextOpacity = Mathf.Clamp01(v / 100f);
+            };
+
+            _captionBgOpacitySlider = PanelSlider.CreateNew(content);
+            _captionBgOpacitySlider.SetSliderSettings(PanelSlider.SliderSettings.Percentage("Background Opacity"));
+            _captionBgOpacitySlider.OnValueChanged = v =>
+            {
+                if (_activePlayer != null) _activePlayer.CaptionBackgroundOpacity = Mathf.Clamp01(v / 100f);
+            };
+
             RectTransform actions = BuildActionRow(content);
             PanelButton resyncBtn = PanelButton.CreateNew(actions);
             resyncBtn.Descriptor.SetTitle("Resync");
@@ -268,6 +315,7 @@ namespace Basis.BasisUI.MediaPlayer
             {
                 _selector.gameObject.SetActive(false);
                 _emptyState?.SetActive(true);
+                _statusGroup?.SetActive(false);
                 SetGroupsActive(false);
                 _activePlayer = null;
                 return;
@@ -275,6 +323,7 @@ namespace Basis.BasisUI.MediaPlayer
 
             _selector.gameObject.SetActive(true);
             _emptyState?.SetActive(false);
+            _statusGroup?.SetActive(true);
 
             int idx = _activePlayer != null ? _entries.IndexOf(_activePlayer) : 0;
             if (idx < 0) idx = 0;
@@ -345,19 +394,24 @@ namespace Basis.BasisUI.MediaPlayer
 
             if (canControl && _urlField != null)
             {
-                string current = _activePlayer.ActiveMediaSource != null
-                    ? _activePlayer.ActiveMediaSource.Uri
-                    : string.Empty;
+                string current = _activeNetworking != null
+                    ? _activeNetworking.SyncedUrl
+                    : (_activePlayer.ActiveMediaSource != null ? _activePlayer.ActiveMediaSource.Uri : string.Empty);
                 _urlField.SetValueWithoutNotify(current ?? string.Empty);
             }
 
             _volumeSlider?.SetValueWithoutNotify(_activePlayer.Mute ? 0f : Mathf.Clamp01(_activePlayer.Volume) * 100f);
+            _captionsToggle?.SetValueWithoutNotify(_activePlayer.CaptionsEnabled);
+            _captionTextOpacitySlider?.SetValueWithoutNotify(Mathf.Clamp01(_activePlayer.CaptionTextOpacity) * 100f);
+            _captionBgOpacitySlider?.SetValueWithoutNotify(Mathf.Clamp01(_activePlayer.CaptionBackgroundOpacity) * 100f);
+            ApplyCaptionOptionsVisibility(_activePlayer.CaptionsEnabled);
 
             RebuildBitrateDropdown();
             RebuildAudioTrackDropdown();
 
             if (_debugToggle != null) _debugToggle.SetValueWithoutNotify(_activePlayer.VerboseLogging);
-            if (_debugTickSubscribed) RefreshDebugInfo();
+            RefreshStatus();
+            if (_debugMode) RefreshDebugInfo();
         }
 
         private void RebuildBitrateDropdown()
@@ -470,6 +524,13 @@ namespace Basis.BasisUI.MediaPlayer
             _adminGroup.gameObject.SetActive(false);
         }
 
+        private void BuildStatusGroup(RectTransform parent)
+        {
+            _statusGroup = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, parent);
+            _statusGroup.SetTitle("Status");
+            _statusGroup.SetDescription("—");
+        }
+
         private void BuildDebugGroup(RectTransform parent)
         {
             _debugGroup = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, parent);
@@ -482,7 +543,7 @@ namespace Basis.BasisUI.MediaPlayer
             _debugToggle.SetValueWithoutNotify(false);
             _debugToggle.OnValueChanged = v =>
             {
-                SetDebugTickSubscription(v);
+                _debugMode = v;
                 ApplyVerboseLoggingToActivePlayer(v);
                 if (v) RefreshDebugInfo();
                 else _debugGroup?.SetDescription("Toggle to surface live pipeline counters.");
@@ -503,25 +564,116 @@ namespace Basis.BasisUI.MediaPlayer
             _controlGroup?.ForceRebuild();
         }
 
+        private void ApplyCaptionOptionsVisibility(bool visible)
+        {
+            _captionTextOpacitySlider?.gameObject.SetActive(visible);
+            _captionBgOpacitySlider?.gameObject.SetActive(visible);
+            _userGroup?.ForceRebuild();
+        }
+
         private void ApplyVerboseLoggingToActivePlayer(bool enabled)
         {
             if (_activePlayer != null) _activePlayer.VerboseLogging = enabled;
         }
 
-        private void SetDebugTickSubscription(bool subscribe)
+        private void SetPanelTickSubscription(bool subscribe)
         {
-            if (subscribe == _debugTickSubscribed) return;
+            if (subscribe == _panelTickSubscribed) return;
             if (subscribe)
             {
                 BasisFrameClock.AddRequest();
-                BasisFrameClock.OnTick += RefreshDebugInfo;
+                BasisFrameClock.OnTick += OnPanelTick;
             }
             else
             {
-                BasisFrameClock.OnTick -= RefreshDebugInfo;
+                BasisFrameClock.OnTick -= OnPanelTick;
                 BasisFrameClock.RemoveRequest();
             }
-            _debugTickSubscribed = subscribe;
+            _panelTickSubscribed = subscribe;
+        }
+
+        private void OnPanelTick()
+        {
+            RefreshStatus();
+            if (_debugMode) RefreshDebugInfo();
+        }
+
+        // Builds the always-visible status line for the selected player: a colored
+        // state word, a resolution detail, and the error/issue text when present.
+        // Markup is code-assembled (trusted) but any player-supplied text (error
+        // messages) is wrapped in <noparse> so its characters aren't read as tags.
+        private void RefreshStatus()
+        {
+            if (_statusGroup == null || _activePlayer == null) return;
+
+            BasisMediaPlayerStatus status = _activePlayer.Status;
+            string err = _activePlayer.LastErrorMessage;
+            Vector2Int size = _activePlayer.VideoSize;
+
+            // Cheap gate: rebuild the markup only when something observable changed, so
+            // a steady-state video doesn't allocate a string every frame. LastErrorMessage
+            // returns a stable reference between changes, so ReferenceEquals is enough.
+            if (status == _lastStatus && size == _lastStatusSize && ReferenceEquals(err, _lastStatusErr)) return;
+            _lastStatus = status;
+            _lastStatusSize = size;
+            _lastStatusErr = err;
+
+            _statusBuilder.Clear();
+            _statusBuilder.Append("<color=").Append(StatusColorHex(status)).Append("><b>")
+                .Append(StatusLabel(status)).Append("</b></color>");
+
+            if (status == BasisMediaPlayerStatus.Error)
+            {
+                if (!string.IsNullOrEmpty(err))
+                    _statusBuilder.Append("\n<color=#E5534B><noparse>").Append(err).Append("</noparse></color>");
+            }
+            else
+            {
+                if (size.x > 0 && size.y > 0)
+                    _statusBuilder.Append("\n<color=#9AA0A6>").Append(size.x).Append(" x ").Append(size.y).Append("</color>");
+
+                // A non-fatal issue (e.g. audio muted on a sample-rate mismatch):
+                // video still plays, so the state word stays accurate and this is
+                // surfaced as a separate amber note.
+                if (!string.IsNullOrEmpty(err))
+                    _statusBuilder.Append("\n<color=#E6C15A>Issue: <noparse>").Append(err).Append("</noparse></color>");
+            }
+
+            string markup = _statusBuilder.ToString();
+            if (string.Equals(_lastStatusMarkup, markup)) return;
+            _lastStatusMarkup = markup;
+            _statusGroup.SetRichDescription(markup);
+        }
+
+        private static string StatusLabel(BasisMediaPlayerStatus status)
+        {
+            switch (status)
+            {
+                case BasisMediaPlayerStatus.NoMedia: return "No media loaded";
+                case BasisMediaPlayerStatus.Connecting: return "Connecting";
+                case BasisMediaPlayerStatus.Buffering: return "Buffering";
+                case BasisMediaPlayerStatus.Ready: return "Ready";
+                case BasisMediaPlayerStatus.Playing: return "Playing";
+                case BasisMediaPlayerStatus.Paused: return "Paused";
+                case BasisMediaPlayerStatus.Stopped: return "Stopped";
+                case BasisMediaPlayerStatus.Ended: return "Ended";
+                case BasisMediaPlayerStatus.Error: return "Error";
+                default: return status.ToString();
+            }
+        }
+
+        private static string StatusColorHex(BasisMediaPlayerStatus status)
+        {
+            switch (status)
+            {
+                case BasisMediaPlayerStatus.Playing: return "#57C77A"; // green
+                case BasisMediaPlayerStatus.Ready: return "#5AA9E6";   // blue
+                case BasisMediaPlayerStatus.Connecting:
+                case BasisMediaPlayerStatus.Buffering:
+                case BasisMediaPlayerStatus.Paused: return "#E6C15A";  // amber
+                case BasisMediaPlayerStatus.Error: return "#E5534B";   // red
+                default: return "#9AA0A6";                             // grey
+            }
         }
 
         private void RefreshDebugInfo()
@@ -564,9 +716,8 @@ namespace Basis.BasisUI.MediaPlayer
             var audio = _activePlayer.AudioComponent;
             if (audio != null)
             {
-                var src = audio.ActiveAudioSource;
                 _debugBuilder.Append("\nAudio: ")
-                    .Append(src != null && src.isPlaying ? "playing" : "idle")
+                    .Append(audio.IsAnyOutputPlaying ? "playing" : "idle")
                     .Append(" peak ").Append(audio.LastPcmPeak.ToString("F3"))
                     .Append(" rms ").Append(audio.LastPcmRms.ToString("F3"));
             }

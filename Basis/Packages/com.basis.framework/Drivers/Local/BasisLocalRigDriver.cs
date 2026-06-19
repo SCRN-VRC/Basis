@@ -133,6 +133,11 @@ namespace Basis.Scripts.Drivers
         private static Quaternion smoothedLeftKneeRot = Quaternion.identity;
         private static Quaternion smoothedRightKneeRot = Quaternion.identity;
 
+        // Smoothed butterfly-knee hint (laying-down knee splay from tracked feet; see BasisButterflyKneeCore)
+        private static Vector3 smoothedLeftButterflyHint, smoothedRightButterflyHint;
+        private static float smoothedLeftButterflyWeight, smoothedRightButterflyWeight;
+        private const float ButterflyKneeSmoothRate = 8f;
+
         // Per-foot blend weights for transitioning IK in/out (0 = animation, 1 = foot driver)
         private static float footIKBlendWeightLeft = 0f;
         private static float footIKBlendWeightRight = 0f;
@@ -179,9 +184,15 @@ namespace Basis.Scripts.Drivers
 
         public void SetBodySettings()
         {
+            // Drop the prior recalibration first: a never-calibrated avatar then uses its own uncalibrated
+            // (animator-relative) setup capture from CreateBasisFullBodyRIG.
+            HasRecalibratedRotationOffsets = false;
             var rigGO = CreateOrGetRig("Main IK", true, out MainRig, out RigLayer);
             Spine(rigGO);
             BasisLocalBoneControl.HasEvents = true;
+            // Keep FBT rotation calibration across avatar swaps: re-derive this avatar's per-effector offsets
+            // from the stored calibration reference. No-op until the user has calibrated.
+            ApplyCalibrationToCurrentAvatar();
         }
 
         public void CleanupBeforeContinue()
@@ -481,6 +492,7 @@ namespace Basis.Scripts.Drivers
             bool leftLLHasTracker = fbtEnabled && BasisLocalBoneDriver.LeftLowerLegControl.HasTracked == BasisHasTracked.HasTracker;
             bool rightLLHasTracker = fbtEnabled && BasisLocalBoneDriver.RightLowerLegControl.HasTracked == BasisHasTracked.HasTracker;
             bool hipsHaveTracker = fbtEnabled && BasisLocalBoneDriver.HipsControl.HasTracked == BasisHasTracked.HasTracker;
+            bool trackerBendNormal = Basis.BasisUI.BasisSettingsDefaults.FBIKTrackerBendNormal.RawValue;
 
             // ── 7. Wait for jobs ──
             JobHandle.CombineDependencies(posHandle, rotHandle).Complete();
@@ -524,7 +536,9 @@ namespace Basis.Scripts.Drivers
                 else if (footIKBlendWeightLeft > 0.001f && footDriverReady)
                 {
                     data.LeftFootPosition = footDriver.LeftFootPosition;
-                    data.LeftFootRotation = footDriver.LeftFootRotation;
+                    // Position-only foot IK: zero-quaternion sentinel -> SolveLegs keeps the foot's correct
+                    // pre-solve (animation) rotation instead of applying target*offset (which came out toes-up).
+                    data.LeftFootRotation = new Quaternion(0f, 0f, 0f, 0f);
                     data.EnableLeftLeg = footIKBlendWeightLeft;
                 }
                 else
@@ -541,12 +555,30 @@ namespace Basis.Scripts.Drivers
                 else if (footIKBlendWeightRight > 0.001f && footDriverReady)
                 {
                     data.RightFootPosition = footDriver.RightFootPosition;
-                    data.RightFootRotation = footDriver.RightFootRotation;
+                    data.RightFootRotation = new Quaternion(0f, 0f, 0f, 0f);
                     data.EnableRightLeg = footIKBlendWeightRight;
                 }
                 else
                 {
                     data.EnableRightLeg = 0f;
+                }
+
+                if (BasisFootRotationDebug.Enabled)
+                {
+                    if (data.leftFoot != null)
+                        BasisFootRotationDebug.Record("L", Time.time, footIKBlendWeightLeft,
+                            !leftHasTracker && footIKBlendWeightLeft > 0.001f && footDriverReady,
+                            data.leftFoot.rotation, data.LeftFootRotation, data.M_CalibrationLeftFootRotation,
+                            BasisLocalBoneDriver.LeftFootControl.OutGoingData.rotation,
+                            BasisLocalBoneDriver.LeftFootControl.OutgoingWorldData.rotation,
+                            (Quaternion)rOut[S_LeftFoot], footDriverReady ? footDriver.LeftFootRotation : Quaternion.identity);
+                    if (data.RightFoot != null)
+                        BasisFootRotationDebug.Record("R", Time.time, footIKBlendWeightRight,
+                            !rightHasTracker && footIKBlendWeightRight > 0.001f && footDriverReady,
+                            data.RightFoot.rotation, data.RightFootRotation, data.M_CalibrationRightFootRotation,
+                            BasisLocalBoneDriver.RightFootControl.OutGoingData.rotation,
+                            BasisLocalBoneDriver.RightFootControl.OutgoingWorldData.rotation,
+                            (Quaternion)rOut[S_RightFoot], footDriverReady ? footDriver.RightFootRotation : Quaternion.identity);
                 }
 
                 // ── HIP BOB ──
@@ -560,27 +592,26 @@ namespace Basis.Scripts.Drivers
                 // ── CHEST (head hint) ──
                 chestPos = pOut[S_Chest];
                 chestRot = rOut[S_Chest];
-                chestPos = ApplyHintBias(BasisBoneTrackedRole.Chest, chestPos, chestRot);
+                if (!trackerBendNormal)
+                    chestPos = ApplyHintBias(BasisBoneTrackedRole.Chest, chestPos, chestRot);
                 data.ChestPosition = chestPos;
                 data.ChestRotation = chestRot;
 
-                // Adaptive hip-tilt stabilization. A belt tracker's yaw is reliable at any mount
-                // point, but its pitch/roll get contaminated by soft tissue and flexion — worst on a
-                // long forward (front-of-body) lever, negligible on a short lateral (side) one. Trust
-                // the raw tilt in proportion to the calibrated lever; where we distrust it, keep the
-                // tracker's yaw and borrow pitch/roll from the torso so intentional bends survive.
-                if (hipsHaveTracker && BasisLocalBoneDriver.HipsControl != null)
-                {
-                    hipsRot = StabilizeHipTilt(hipsRot, chestRot, BasisLocalBoneDriver.HipsControl.CalibratedHorizontalLever);
-                    data.RotationHips = hipsRot;
-                }
+                // ── BUTTERFLY KNEES (laying-down knee splay from tracked feet with no knee tracker) ──
+                bool butterflyEnabled = Basis.BasisUI.BasisSettingsDefaults.FBIKButterflyKnees.RawValue;
+                float butterflyMaxOpenDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKButterflyKneeMaxOpenDeg.RawValue;
+                float butterflySupineFloor = 1f; // merged toggle: butterfly knees works both supine and upright when enabled
+                Vector3 playerUpDir = BasisLocalPlayer.localToWorldMatrix.MultiplyVector(Vector3.up).normalized;
+                bool leftFootTracked = fbtEnabled && BasisLocalBoneDriver.LeftFootControl.HasTracked == BasisHasTracked.HasTracker;
+                bool rightFootTracked = fbtEnabled && BasisLocalBoneDriver.RightFootControl.HasTracked == BasisHasTracked.HasTracker;
 
                 // ── LEFT LOWER LEG ──
                 if (leftLLHasTracker)
                 {
                     Vector3 lllPos = pOut[S_LeftLowerLeg];
                     Quaternion lllRot = rOut[S_LeftLowerLeg];
-                    lllPos = ApplyHintBias(BasisBoneTrackedRole.LeftLowerLeg, lllPos, lllRot);
+                    if (!trackerBendNormal)
+                        lllPos = ApplyHintBias(BasisBoneTrackedRole.LeftLowerLeg, lllPos, lllRot);
                     data.PositionLeftLowerLeg = lllPos;
                     data.RotationLeftLowerLeg = lllRot;
                     data.EnableLeftLowerLeg = 1f;
@@ -594,6 +625,16 @@ namespace Basis.Scripts.Drivers
                     data.RotationLeftLowerLeg = smoothedLeftKneeRot;
                     data.EnableLeftLowerLeg = footIKBlendWeightLeft;
                 }
+                else if (butterflyEnabled && leftFootTracked && TryComputeButterflyKnee(
+                    true, hipsRot, playerUpDir, butterflyMaxOpenDeg, butterflySupineFloor, deltaTime,
+                    data.LeftUpperLeg, data.LeftLowerLeg, data.LeftFootPosition, data.LeftFootRotation,
+                    ref smoothedLeftButterflyHint, ref smoothedLeftButterflyWeight,
+                    out Vector3 lButterflyHint, out Quaternion lButterflyRot, out float lButterflyWeight))
+                {
+                    data.PositionLeftLowerLeg = lButterflyHint;
+                    data.RotationLeftLowerLeg = lButterflyRot;
+                    data.EnableLeftLowerLeg = lButterflyWeight;
+                }
                 else
                 {
                     data.EnableLeftLowerLeg = 0f;
@@ -604,7 +645,8 @@ namespace Basis.Scripts.Drivers
                 {
                     Vector3 rllPos = pOut[S_RightLowerLeg];
                     Quaternion rllRot = rOut[S_RightLowerLeg];
-                    rllPos = ApplyHintBias(BasisBoneTrackedRole.RightLowerLeg, rllPos, rllRot);
+                    if (!trackerBendNormal)
+                        rllPos = ApplyHintBias(BasisBoneTrackedRole.RightLowerLeg, rllPos, rllRot);
                     data.PositionRightLowerLeg = rllPos;
                     data.RotationRightLowerLeg = rllRot;
                     data.EnableRightLowerLeg = 1f;
@@ -618,9 +660,37 @@ namespace Basis.Scripts.Drivers
                     data.RotationRightLowerLeg = smoothedRightKneeRot;
                     data.EnableRightLowerLeg = footIKBlendWeightRight;
                 }
+                else if (butterflyEnabled && rightFootTracked && TryComputeButterflyKnee(
+                    false, hipsRot, playerUpDir, butterflyMaxOpenDeg, butterflySupineFloor, deltaTime,
+                    data.RightUpperLeg, data.RightLowerLeg, data.RightFootPosition, data.RightFootRotation,
+                    ref smoothedRightButterflyHint, ref smoothedRightButterflyWeight,
+                    out Vector3 rButterflyHint, out Quaternion rButterflyRot, out float rButterflyWeight))
+                {
+                    data.PositionRightLowerLeg = rButterflyHint;
+                    data.RotationRightLowerLeg = rButterflyRot;
+                    data.EnableRightLowerLeg = rButterflyWeight;
+                }
                 else
                 {
                     data.EnableRightLowerLeg = 0f;
+                }
+
+                if (BasisLegCrouchDebug.Enabled)
+                {
+                    if (data.LeftUpperLeg != null && data.LeftLowerLeg != null && data.leftFoot != null)
+                    {
+                        Vector3 hipL = data.LeftUpperLeg.position, kneeL = data.LeftLowerLeg.position;
+                        float legLenL = Vector3.Distance(hipL, kneeL) + Vector3.Distance(kneeL, data.leftFoot.position);
+                        BasisLegCrouchDebug.Record("L", Time.time, !leftHasTracker && footIKBlendWeightLeft > 0.001f && footDriverReady,
+                            legLenL, hipL, data.LeftFootPosition, data.PositionLeftLowerLeg, kneeL);
+                    }
+                    if (data.RightUpperLeg != null && data.RightLowerLeg != null && data.RightFoot != null)
+                    {
+                        Vector3 hipR = data.RightUpperLeg.position, kneeR = data.RightLowerLeg.position;
+                        float legLenR = Vector3.Distance(hipR, kneeR) + Vector3.Distance(kneeR, data.RightFoot.position);
+                        BasisLegCrouchDebug.Record("R", Time.time, !rightHasTracker && footIKBlendWeightRight > 0.001f && footDriverReady,
+                            legLenR, hipR, data.RightFootPosition, data.PositionRightLowerLeg, kneeR);
+                    }
                 }
 
                 // ── HANDS ──
@@ -630,6 +700,10 @@ namespace Basis.Scripts.Drivers
                 data.RotationRightHand = rOut[S_RightHand];
 
                 // ── LOWER ARMS (elbow hints) ──
+                // NOTE: no ApplyHintBias here -- a tracker-local lower-arm offset swings with forearm pronation
+                // (the forearm rolls about its own axis) and keys off a solver-overwritten bone, which pops the
+                // elbow. The knees keep their bias only because the knee is a hinge. Elbow-tracker conditioning
+                // is handled solver-side (BasisArmSolveCore HintIsTracker), not by a tracker-local offset.
                 llaPos = pOut[S_LeftLowerArm];
                 llaRot = rOut[S_LeftLowerArm];
                 data.LeftLowerArmPosition = llaPos;
@@ -660,8 +734,20 @@ namespace Basis.Scripts.Drivers
             Vector3 outR = hipsRot * Vector3.right;
             Vector3 up = hipsRot * Vector3.up;
             Vector3 hipsRight = hipsRot * Vector3.right;
-            data.KneeBendPrefLeft = hipsRight;
-            data.KneeBendPrefRight = hipsRight;
+            if (trackerBendNormal)
+            {
+                data.KneeBendPrefLeft = (leftLLHasTracker && BasisBendNormalStore.TryGet(BasisBoneTrackedRole.LeftLowerLeg, out var leftAxis))
+                    ? BasisTrackerBendNormalCore.ResolveWorldNormal(BasisLocalBoneDriver.LeftLowerLegControl.OutgoingWorldData.rotation, leftAxis, hipsRight)
+                    : hipsRight;
+                data.KneeBendPrefRight = (rightLLHasTracker && BasisBendNormalStore.TryGet(BasisBoneTrackedRole.RightLowerLeg, out var rightAxis))
+                    ? BasisTrackerBendNormalCore.ResolveWorldNormal(BasisLocalBoneDriver.RightLowerLegControl.OutgoingWorldData.rotation, rightAxis, hipsRight)
+                    : hipsRight;
+            }
+            else
+            {
+                data.KneeBendPrefLeft = hipsRight;
+                data.KneeBendPrefRight = hipsRight;
+            }
             data.SpineBendNormal = (fwd * spineBendNormalWeights.x
                 + outR * spineBendNormalWeights.y
                 + up * spineBendNormalWeights.z).normalized;
@@ -686,48 +772,21 @@ namespace Basis.Scripts.Drivers
                 Transform animRoot = localPlayer?.BasisAvatar?.Animator != null ? localPlayer.BasisAvatar.Animator.transform : null;
                 BasisCalibrationDebugRecorder.RuntimeEndFrame(localPlayer != null ? localPlayer.transform : null, animRoot);
             }
+
+            // Arm-IK jitter capture: log the solved shoulder/elbow/hand + the IK inputs (hand target, elbow
+            // hint) each frame so a held-still capture shows which one actually moves. No-op unless armed.
+            if (BasisArmIKRuntimeRecorder.Active)
+            {
+                var armMap = BasisLocalAvatarDriver.Mapping;
+                BasisArmIKRuntimeRecorder.Sample(
+                    armMap.leftUpperArm, armMap.leftLowerArm, armMap.leftHand,
+                    armMap.RightUpperArm, armMap.RightLowerArm, armMap.rightHand,
+                    data.PositionLeftHand, data.PositionRightHand,
+                    data.LeftLowerArmPosition, data.RightLowerArmPosition,
+                    data.HintWeightLeftHand, data.HintWeightRightHand);
+            }
         }
         [SerializeField] private Vector3 spineBendNormalWeights = new Vector3(1f, 0f, 0f);
-        // Lever lengths (metres) bracketing the trust ramp for hip-tilt stabilization. At or below
-        // Near (a side-of-hip / iliac-crest mount) the tracker's raw pitch/roll is fully trusted; at
-        // or above Far (a front-of-belly mount) it is fully replaced by the torso-derived tilt.
-        private const float HipTiltLeverNear = 0.14f;
-        private const float HipTiltLeverFar = 0.22f;
-        // Fraction of the chest's lean the stabilized pelvis borrows when raw tilt is distrusted.
-        private const float HipTiltLeanShare = 0.5f;
-
-        private static Quaternion StabilizeHipTilt(Quaternion hipsWorld, Quaternion chestWorld, float lever)
-        {
-            float strength = Basis.BasisUI.BasisSettingsDefaults.FBIKHipTiltStabilization.RawValue;
-            if (strength <= 0f)
-            {
-                return hipsWorld;
-            }
-
-            float trust = Mathf.Clamp01(Mathf.InverseLerp(HipTiltLeverFar, HipTiltLeverNear, lever));
-            float blend = (1f - trust) * strength;
-            if (blend <= 0.0001f)
-            {
-                return hipsWorld;
-            }
-
-            Vector3 up = Vector3.up;
-            Vector3 fwdFlat = Vector3.ProjectOnPlane(hipsWorld * Vector3.forward, up);
-            if (fwdFlat.sqrMagnitude < 1e-6f)
-            {
-                fwdFlat = Vector3.ProjectOnPlane(hipsWorld * Vector3.up, up);
-                if (fwdFlat.sqrMagnitude < 1e-6f)
-                {
-                    return hipsWorld;
-                }
-            }
-
-            Quaternion hipYaw = Quaternion.LookRotation(fwdFlat.normalized, up);
-            Quaternion lean = Quaternion.Slerp(Quaternion.identity, Quaternion.FromToRotation(up, chestWorld * Vector3.up), HipTiltLeanShare);
-            Quaternion hipStable = lean * hipYaw;
-            return Quaternion.Slerp(hipsWorld, hipStable, blend);
-        }
-
         public static Vector3 ApplyHintBias(BasisBoneTrackedRole hintRole, Vector3 rawPos, Quaternion rawRot)
         {
             if (BasisHintBiasStore.TryGet(hintRole, out var localOffset))
@@ -963,6 +1022,18 @@ namespace Basis.Scripts.Drivers
         // init AND from SimulateIKDestinations every frame so slider changes flow into the
         // animation job. Without the per-frame call, sliders update RawValue but the IK keeps
         // running on the boot-time snapshot.
+        // Issue #531: FBT-recalibrated per-effector rotation offsets. CreateBasisFullBodyRIG captures
+        // these once at rig build against the pre-calibration frame; a one-shot runtime write to the
+        // [SyncSceneToStream] data field does NOT persist (it reverts to the serialized setup value),
+        // so FullBodyCalibration stashes the freshly recomputed values here and ApplyTuningSettings
+        // re-applies them every frame — the same persistent path the tuning sliders use. Cleared on
+        // rig (re)build so a new avatar uses its own setup capture until the user calibrates.
+        public static bool HasRecalibratedRotationOffsets;
+        public static Quaternion RecalibratedHead, RecalibratedHips, RecalibratedChest;
+        public static Quaternion RecalibratedLeftFoot, RecalibratedRightFoot;
+        public static Quaternion RecalibratedLeftToe, RecalibratedRightToe;
+        public static Quaternion RecalibratedLeftShoulder, RecalibratedRightShoulder;
+
         private static void ApplyTuningSettings(ref BasisFullBodyData data)
         {
             data.MaxBendDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKMaxBendDeg.RawValue;
@@ -980,13 +1051,22 @@ namespace Basis.Scripts.Drivers
             data.HipHingeMaxAddDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKHipHingeMaxAddDeg.RawValue;
             data.ChestSpringHz = Basis.BasisUI.BasisSettingsDefaults.FBIKChestSpringHz.RawValue;
             data.ChestSpringDamping = Basis.BasisUI.BasisSettingsDefaults.FBIKChestSpringDamping.RawValue;
+            data.HipFrameSpringHz = Basis.BasisUI.BasisSettingsDefaults.FBIKHipFrameSpringHz.RawValue;
+            data.HipFrameSpringDamping = Basis.BasisUI.BasisSettingsDefaults.FBIKHipFrameSpringDamping.RawValue;
+            data.ElbowFlareMaxDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKElbowFlareMaxDeg.RawValue;
+            data.ElbowFlareInwardGain = Basis.BasisUI.BasisSettingsDefaults.FBIKElbowFlareInwardGain.RawValue;
+            data.ElbowFlareFullRollDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKElbowFlareFullRollDeg.RawValue;
             data.SpineMaxForwardDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKSpineMaxForwardDeg.RawValue;
             data.SpineMaxBackwardDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKSpineMaxBackwardDeg.RawValue;
             data.SpineMaxLateralDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKSpineMaxLateralDeg.RawValue;
             data.SpineSquishBoost = Basis.BasisUI.BasisSettingsDefaults.FBIKSpineSquishBoost.RawValue;
             data.MoveBodyBackWhenCrouching = Basis.BasisUI.BasisSettingsDefaults.FBIKMoveBodyBackWhenCrouching.RawValue;
-            data.SwingSmoothRateDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKSwingSmoothRate.RawValue;
+            data.SwingSmoothRateDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKElbowSwingEnabled.RawValue
+                ? Basis.BasisUI.BasisSettingsDefaults.FBIKSwingSmoothRate.RawValue
+                : 0f;
             data.SpineCCDRelax = Basis.BasisUI.BasisSettingsDefaults.FBIKSpineCCDRelax.RawValue;
+            data.SpineTwistKeep = Basis.BasisUI.BasisSettingsDefaults.FBIKSpineTwistKeep.RawValue;
+            data.SpineNeckTwistKeep = Basis.BasisUI.BasisSettingsDefaults.FBIKSpineNeckTwistKeep.RawValue;
             data.NeckMaxConeDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKNeckMaxConeDeg.RawValue;
             data.ChestArmSwingFactor = Basis.BasisUI.BasisSettingsDefaults.FBIKChestArmSwingFactor.RawValue;
             data.ChestArmSwingMaxDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKChestArmSwingMaxDeg.RawValue;
@@ -996,6 +1076,7 @@ namespace Basis.Scripts.Drivers
             data.AnatShoulderSlide = Basis.BasisUI.BasisSettingsDefaults.FBIKAnatShoulderSlide.RawValue;
             data.AnatCervicalLordosis = Basis.BasisUI.BasisSettingsDefaults.FBIKAnatCervicalLordosis.RawValue;
             data.AnatPelvicTwistRouting = Basis.BasisUI.BasisSettingsDefaults.FBIKAnatPelvicTwistRouting.RawValue;
+            data.LegSwivelSmoothing = Basis.BasisUI.BasisSettingsDefaults.FBIKLegSwivelSmoothing.RawValue;
             data.LordosisPitchGainDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisPitchGainDeg.RawValue;
             data.LordosisBaseDeg = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisBaseDeg.RawValue;
             data.LordosisNeckShare = Basis.BasisUI.BasisSettingsDefaults.FBIKLordosisNeckShare.RawValue;
@@ -1016,6 +1097,7 @@ namespace Basis.Scripts.Drivers
             // running on the boot-time snapshot.
             data.CollisionsEnabled = Basis.BasisUI.BasisSettingsDefaults.FBIKCollisionsEnabled.RawValue;
             data.ProtectElbow = Basis.BasisUI.BasisSettingsDefaults.FBIKProtectElbow.RawValue;
+            data.CollideTrackedElbow = Basis.BasisUI.BasisSettingsDefaults.FBIKCollideTrackedElbow.RawValue;
             data.UseHandCapsule = Basis.BasisUI.BasisSettingsDefaults.FBIKUseHandCapsule.RawValue;
             data.ShoulderSolveEnabled = Basis.BasisUI.BasisSettingsDefaults.FBIKShoulderSolveEnabled.RawValue;
             data.ShoulderElevationFactor = Basis.BasisUI.BasisSettingsDefaults.FBIKShoulderElevation.RawValue;
@@ -1028,6 +1110,19 @@ namespace Basis.Scripts.Drivers
             data.HandSkin = Basis.BasisUI.BasisSettingsDefaults.FBIKHandSkin.RawValue * collisionScale;
             data.ChestRadius = Basis.BasisUI.BasisSettingsDefaults.FBIKChestRadius.RawValue * collisionScale;
             data.CollisionSkin = Basis.BasisUI.BasisSettingsDefaults.FBIKCollisionSkin.RawValue * collisionScale;
+
+            if (HasRecalibratedRotationOffsets)
+            {
+                data.m_CalibratedRotationHead = RecalibratedHead;
+                data.OffsetRotationHips = RecalibratedHips;
+                data.m_CalibratedRotationChest = RecalibratedChest;
+                data.M_CalibrationLeftFootRotation = RecalibratedLeftFoot;
+                data.M_CalibrationRightFootRotation = RecalibratedRightFoot;
+                data.m_CalibratedRotationLeftToe = RecalibratedLeftToe;
+                data.m_CalibratedRotationRightToe = RecalibratedRightToe;
+                data.m_CalibratedRotationLeftShoulder = RecalibratedLeftShoulder;
+                data.m_CalibratedRotationRightShoulder = RecalibratedRightShoulder;
+            }
         }
         public void DisableAllTrackers()
         {
@@ -1048,6 +1143,36 @@ namespace Basis.Scripts.Drivers
                 data.HasHipsTracker = false;
                 data.EnabledLeftShoulder = false;
                 data.EnabledRightShoulder = false;
+                BasisFullIKConstraint.data = data;
+            }
+        }
+        /// <summary>
+        /// Re-applies the full-body IK constraint weights from each bone's current rig-layer
+        /// state — the inverse of <see cref="DisableAllTrackers"/>. PutAvatarIntoTPose disables
+        /// these so the T-pose read isn't dragged by trackers; FullBodyCalibration restores them
+        /// as a side effect of (re)assigning roles, but any flow that enters/exits T-pose WITHOUT
+        /// a full calibration must call this or the arm hints / chest / shoulders / legs stay
+        /// stuck at zero weight (the avatar and controller arms look broken until the next
+        /// calibrate). HasHipsTracker is omitted on purpose — the per-frame Simulate recomputes it.
+        /// </summary>
+        public void RestoreAllTrackers()
+        {
+            if (BasisFullIKConstraint != null)
+            {
+                var data = BasisFullIKConstraint.data;
+                data.EnableLeftLeg = HasRigLayerFloat(BasisLocalBoneDriver.LeftFootControl);
+                data.EnableRightLeg = HasRigLayerFloat(BasisLocalBoneDriver.RightFootControl);
+                data.EnableLeftLowerLeg = HasRigLayerFloat(BasisLocalBoneDriver.LeftLowerLegControl);
+                data.EnableRightLowerLeg = HasRigLayerFloat(BasisLocalBoneDriver.RightLowerLegControl);
+                data.LeftToeEnabled = HasRigLayer(BasisLocalBoneDriver.LeftToeControl);
+                data.RightToeEnabled = HasRigLayer(BasisLocalBoneDriver.RightToeControl);
+                data.EnabledLeftHand = HasRigLayer(BasisLocalBoneDriver.LeftHandControl);
+                data.EnabledRightHand = HasRigLayer(BasisLocalBoneDriver.RightHandControl);
+                data.HintWeightLeftHand = HasRigLayer(BasisLocalBoneDriver.LeftLowerArmControl);
+                data.HintWeightRightHand = HasRigLayer(BasisLocalBoneDriver.RightLowerArmControl);
+                data.WeightChest = HasRigLayer(BasisLocalBoneDriver.ChestControl);
+                data.EnabledLeftShoulder = HasRigLayer(BasisLocalBoneDriver.LeftShoulderControl);
+                data.EnabledRightShoulder = HasRigLayer(BasisLocalBoneDriver.RightShoulderControl);
                 BasisFullIKConstraint.data = data;
             }
         }
@@ -1100,6 +1225,71 @@ namespace Basis.Scripts.Drivers
                 up.Normalize();
 
             return Quaternion.LookRotation(fwd, up);
+        }
+
+        /// <summary>
+        /// Butterfly knees: laying on your back with a foot tracker but no knee tracker, the tracked foot tilts
+        /// outward (soles toward each other) and pulls in toward the pelvis, so the knee should fall open
+        /// laterally. Computes the outward knee pole via <see cref="BasisButterflyKneeCore"/>, smoothed to avoid
+        /// pops. Returns false (and the knee falls back to the default sagittal bend) when the pose isn't a
+        /// butterfly. The open angle is clamped to the hip's natural max-open inside the core.
+        /// </summary>
+        private static bool TryComputeButterflyKnee(
+            bool isLeft, Quaternion hipsRot, Vector3 playerUp, float maxOpenDeg, float supineFloor, float dt,
+            Transform upperLeg, Transform lowerLeg, Vector3 footPos, Quaternion footRot,
+            ref Vector3 smoothedHint, ref float smoothedWeight,
+            out Vector3 hintPos, out Quaternion hintRot, out float weight)
+        {
+            hintPos = default;
+            hintRot = Quaternion.identity;
+            weight = 0f;
+            if (upperLeg == null || lowerLeg == null)
+            {
+                smoothedWeight = 0f;
+                return false;
+            }
+
+            Vector3 hipPos = upperLeg.position;
+            Vector3 hipsRight = hipsRot * Vector3.right;
+            Vector3 hipsForward = hipsRot * Vector3.forward;
+
+            BasisButterflyKneeInput input;
+            input.HipPosition = hipPos;
+            input.FootPosition = footPos;
+            input.FootInstepDir = footRot * Vector3.up;          // foot "up" = instep normal (the sole faces -this)
+            input.OutwardDir = isLeft ? -hipsRight : hipsRight;
+            input.DefaultBendDir = hipsForward;                  // sagittal knee dir (belly; toward ceiling when supine)
+            input.PlayerUp = playerUp;
+            input.TorsoFacingDir = hipsForward;                  // belly . playerUp -> on-your-back factor
+            input.UpperLength = Vector3.Distance(hipPos, lowerLeg.position);
+            input.LowerLength = Vector3.Distance(lowerLeg.position, footPos);
+            input.MaxOpenDeg = maxOpenDeg;
+            input.Strength = 1f;
+            input.SupineFloor = supineFloor;
+
+            BasisButterflyKneeCore.Solve(input, out BasisButterflyKneeResult result);
+
+            // Smooth the pole + weight so noisy tilt / recline signals can't pop the knee.
+            float alpha = 1f - Mathf.Exp(-ButterflyKneeSmoothRate * dt);
+            if (smoothedWeight <= 0.0001f && result.HintWeight <= 0.0001f)
+            {
+                // Fully inactive: track the rest pole so we don't lerp a stale hint in on the next engage.
+                smoothedHint = result.KneeHint;
+                smoothedWeight = 0f;
+                return false;
+            }
+            smoothedHint = Vector3.Lerp(smoothedHint, result.KneeHint, alpha);
+            smoothedWeight = Mathf.Lerp(smoothedWeight, result.HintWeight, alpha);
+
+            if (smoothedWeight <= 0.001f)
+            {
+                return false;
+            }
+
+            hintPos = smoothedHint;
+            hintRot = ComputeKneeHintRotation(hipPos, footPos, smoothedHint);
+            weight = smoothedWeight;
+            return true;
         }
 
         public GameObject CreateOrGetRig(string role, bool enabled, out Rig rig, out RigLayer rigLayer)

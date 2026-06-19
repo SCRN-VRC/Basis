@@ -1,3 +1,4 @@
+using Basis.BasisUI;
 using Basis.Scripts.BasisSdk.Players;
 using Basis.Scripts.Device_Management;
 using Basis.Scripts.TransformBinders.BoneControl;
@@ -10,10 +11,13 @@ public static class BasisHeightDriver
 {
     public const float FallbackHeightInMeters = 1.61f;
 
+    public const float StandingHeightCorrectionMin = -0.20f;
+    public const float StandingHeightCorrectionMax = 0.20f;
+
     // Small epsilon to prevent divide-by-zero and ratio explosions.
     private const float Epsilon = 1e-5f;
 
-    public static float AdditionalPlayerHeight = 0f;
+    public static float PlayerCenterEyeVerticalOffset = 0f;
 
     // Pitch calibration: computed from up/down/forward HMD samples
     public static bool HasPitchCalibratedHeight = false;
@@ -27,6 +31,8 @@ public static class BasisHeightDriver
     public static float ScaledToMatchValue = 1f;
 
     public static float PlayerEyeHeight = FallbackHeightInMeters;
+    public static bool HasGenuinePlayerEyeHeight = false;
+    public static bool HasUserCalibratedHeight = false;
     public static float AvatarEyeHeight = FallbackHeightInMeters;
 
     public static float PlayerArmSpan = FallbackHeightInMeters;
@@ -47,11 +53,24 @@ public static class BasisHeightDriver
     public static float PlayerToDefaultRatioScaled = 1f;
     public static float AvatarToDefaultRatioScaled = 1f;
 
+    public static bool HasRuntimeOscEyeHeightOverride = false;
+    public static float RuntimeOscEyeHeightMeters = FallbackHeightInMeters;
 
     public static float DeviceScale = 1f;
     public static void ApplyScaleAndHeight()
     {
         RevaluateUnscaledHeight(SMModuleCalibration.HeightMode);
+        if (HasRuntimeOscEyeHeightOverride)
+        {
+            if (SMModuleCalibration.ApplyCustomScale)
+            {
+                ApplyRuntimeOscEyeHeightOverride(RuntimeOscEyeHeightMeters);
+                return;
+            }
+
+            ClearRuntimeOscEyeHeightOverride();
+        }
+
         ApplyScale(SMModuleCalibration.ApplyCustomScale, SMModuleCalibration.SelectedScale);
         ChooseHeightToUse(SMModuleCalibration.HeightMode);
         ScheduleHeightChangeCallback(HeightModeChange.OnApplyHeightAndScale);
@@ -59,6 +78,7 @@ public static class BasisHeightDriver
 
     public static void OnAvatarFBCalibration()
     {
+        HasUserCalibratedHeight = true;
         CapturePlayerHeight();
         ApplyScaleAndHeight();
         ScheduleHeightChangeCallback(HeightModeChange.OnAvatarFBCalibration);
@@ -75,23 +95,36 @@ public static class BasisHeightDriver
     /// </summary>
     public static void ApplyScale(bool ScaleAvatar, float SelectedScale)
     {
-        // validate SelectedScale too.
         SelectedScale = SanitizePositive(SelectedScale, FallbackHeightInMeters);
 
-        // Prefer selected unscaled avatar metric; fall back if invalid.
-        float unscaled = SanitizePositive(SelectedUnScaledAvatarHeight, FallbackHeightInMeters);
-
-        ScaledToMatchValue = SelectedScale / unscaled;
-
-        // If user has disabled scaling, force to 1.
-        if (!ScaleAvatar)
-        {
-            ScaledToMatchValue = 1f;
-        }
+        // Resolve target + denominator in eye-height metres (the space admin limits use) so the clamp
+        // is correct in every height mode. Scaling off keeps the factor at 1x unless a limit pulls in.
+        float avatarEye = SanitizePositive(AvatarEyeHeight, FallbackHeightInMeters);
+        float targetEyeMeters = ClampToAdminEyeHeight(ScaleAvatar ? SelectedScale : avatarEye);
+        ScaledToMatchValue = targetEyeMeters / avatarEye;
 
         BasisDebug.Log($"Applying Scale to Avatar {ScaledToMatchValue}", BasisDebug.LogTag.Avatar);
 
         ApplyAvatarScale(ScaledToMatchValue);
+    }
+
+    /// <summary>
+    /// Clamp a target avatar eye height (metres) to the server-pushed admin scale limits. Admins
+    /// (basis.moderation.globallock) bypass it; the default 0.1..100 m range is effectively a no-op.
+    /// </summary>
+    public static float ClampToAdminEyeHeight(float eyeHeightMeters)
+    {
+        if (BasisNetworkModeration.LocalPlayerHasGlobalLockBypass())
+        {
+            return eyeHeightMeters;
+        }
+
+        float min = BasisNetworkModeration.ServerMinAvatarEyeHeightMeters;
+        float max = BasisNetworkModeration.ServerMaxAvatarEyeHeightMeters;
+        if (float.IsNaN(min) || float.IsInfinity(min) || min <= 0f) min = 0.1f;
+        if (float.IsNaN(max) || float.IsInfinity(max) || max <= 0f) max = 100f;
+        if (max < min) max = min;
+        return Mathf.Clamp(eyeHeightMeters, min, max);
     }
 
     public enum HeightModeChange
@@ -99,6 +132,66 @@ public static class BasisHeightDriver
         OnAvatarFBCalibration,
         OnTpose,
         OnApplyHeightAndScale
+    }
+
+    public static bool ApplyRuntimeOscEyeHeightOverride(float eyeHeightMeters)
+    {
+        eyeHeightMeters = SanitizePositive(eyeHeightMeters, FallbackHeightInMeters);
+        eyeHeightMeters = ClampToAdminEyeHeight(eyeHeightMeters);
+
+        float unscaledAvatarEyeHeight = SanitizePositive(AvatarEyeHeight, FallbackHeightInMeters);
+        float scaleFactor = eyeHeightMeters / unscaledAvatarEyeHeight;
+
+        HasRuntimeOscEyeHeightOverride = true;
+        RuntimeOscEyeHeightMeters = eyeHeightMeters;
+        SMModuleCalibration.SelectedScale = eyeHeightMeters;
+        BasisSettingsDefaults.SelectedScale.SetValueWithoutNotify(eyeHeightMeters);
+        SettingsProviderIK.SetAvatarScaleSliderValueWithoutNotify(eyeHeightMeters);
+        ScaledToMatchValue = scaleFactor;
+
+        ApplyAvatarScale(scaleFactor);
+        RefreshScaledHeightState(HeightModeChange.OnApplyHeightAndScale);
+        return true;
+    }
+
+    public static void ClearRuntimeOscEyeHeightOverride()
+    {
+        HasRuntimeOscEyeHeightOverride = false;
+        RuntimeOscEyeHeightMeters = FallbackHeightInMeters;
+    }
+
+    public static void RefreshScaledHeightState(HeightModeChange mode)
+    {
+        RevaluateUnscaledHeight(SMModuleCalibration.HeightMode);
+        ChooseHeightToUse(SMModuleCalibration.HeightMode);
+        ScheduleHeightChangeCallback(mode);
+    }
+
+    public static bool TryGetMatchedEyeHeightOverrideMeters(BasisRemotePlayer target, out float eyeHeightMeters)
+    {
+        eyeHeightMeters = 0f;
+        if (target?.NetworkReceiver == null || target.BasisAvatar == null || BasisLocalPlayer.Instance?.LocalAvatarDriver == null)
+        {
+            return false;
+        }
+
+        // Mirror the REMOTE avatar's rendered eye height: its authored (already rendered-space) eye height
+        // at its current network root scale. Reading local measurements was the bug.
+        target.NetworkReceiver.GetLatestNetworkPose(out _, out _, out var networkScale);
+        float remoteAuthoredEye = target.BasisAvatar.AvatarEyePosition.x;
+        if (float.IsNaN(remoteAuthoredEye) || float.IsInfinity(remoteAuthoredEye) || remoteAuthoredEye <= 0f)
+        {
+            return false;
+        }
+
+        float remoteRootScale = networkScale.y;
+        if (float.IsNaN(remoteRootScale) || float.IsInfinity(remoteRootScale) || remoteRootScale <= 0f)
+        {
+            remoteRootScale = 1f;
+        }
+
+        eyeHeightMeters = remoteAuthoredEye * remoteRootScale;
+        return !float.IsNaN(eyeHeightMeters) && !float.IsInfinity(eyeHeightMeters) && eyeHeightMeters > 0f;
     }
 
     /// <summary>
@@ -141,10 +234,13 @@ public static class BasisHeightDriver
         }
     }
 
-    public static void CapturePlayerHeight()
+    public static void CapturePlayerHeight(bool recaptureEyeHeight = true)
     {
         BasisDebug.Log("Capturing Player Height", BasisDebug.LogTag.IK);
-        BasisLocalHeightCalculator.CalculatePlayerEyeHeight();
+        if (BasisCalibrationMath.ShouldRecaptureEyeHeight(recaptureEyeHeight, HasGenuinePlayerEyeHeight))
+        {
+            BasisLocalHeightCalculator.CalculatePlayerEyeHeight();
+        }
         BasisLocalHeightCalculator.CalculatePlayerArmSpan();
 
         if (Basis.BasisUI.BasisSettingsDefaults.FBIKArmHeightRatioEnabled.RawValue)
@@ -152,8 +248,10 @@ public static class BasisHeightDriver
             float ratio = Mathf.Max(0.1f, Basis.BasisUI.BasisSettingsDefaults.FBIKArmHeightRatio.RawValue);
             PlayerArmSpan = SanitizePositive(PlayerEyeHeight, FallbackHeightInMeters) * ratio;
         }
-
-        BasisLocalHeightCalculator.ValidateEyeToArmSizesPlayer();
+        else
+        {
+            BasisLocalHeightCalculator.ValidateEyeToArmSizesPlayer();
+        }
 
         // Optional safety: sanitize captured values in case calculator produced junk.
         PlayerEyeHeight = SanitizePositive(PlayerEyeHeight, FallbackHeightInMeters);
@@ -162,6 +260,8 @@ public static class BasisHeightDriver
 
     public static void CaptureAvatarHeightDuringTpose()
     {
+        ClearRuntimeOscEyeHeightOverride();
+
         var player = BasisLocalPlayer.Instance;
         if (player == null)
         {
@@ -242,11 +342,27 @@ public static class BasisHeightDriver
         // Current applied avatar scale (1 = unscaled).
         AppliedUpScale = SanitizePositive(avatarDriver.ScaleAvatarModification.ApplyScale, 1f);
 
+        // eyeScaleOffset lifts the measured HMD height up to the player's TRUE standing eye height before
+        // DeviceScale divides by it. It carries the backend's device-origin->eye correction
+        // (PlayerCenterEyeVerticalOffset; non-zero on OpenVR, 0 when the tracked point is already the eye)
+        // plus the persisted systematic correction that bridges what that under-reports -- the gap that
+        // otherwise renders too tall on OpenVR and makes users nudge up every calibration.
+        float standingEyeCorrection = Basis.BasisUI.BasisSettingsDefaults.EnableStandingEyeHeightCorrection.RawValue
+            ? Basis.BasisUI.BasisSettingsDefaults.CalibrationStandingEyeHeightMeters.RawValue
+            : 0f;
+        float eyeScaleOffset = (Height == BasisSelectedHeightMode.EyeHeight) ? PlayerCenterEyeVerticalOffset + standingEyeCorrection : 0f;
+
+        // Standing-height nudge (the old "AdditionalPlayerHeight"): a separate ± bridge fed straight into the
+        // DeviceScale denominator below, independent of the eye-height modifier. Gated by its own toggle.
+        float additionalPlayerHeight = Basis.BasisUI.BasisSettingsDefaults.EnableStandingHeightNudge.RawValue
+            ? Basis.BasisUI.BasisSettingsDefaults.AdditionalPlayerHeight.RawValue
+            : 0f;
+
         // AppliedUpScale multiplies BOTH player and avatar metrics.
         switch (Height)
         {
             case BasisSelectedHeightMode.ArmSpan:
-                SelectedScaledPlayerHeight = calY * ((AdditionalPlayerHeight + PlayerArmSpan) * AppliedUpScale);
+                SelectedScaledPlayerHeight = calY * (PlayerArmSpan * AppliedUpScale);
                 SelectedScaledAvatarHeight = calY * (AvatarArmSpan * AppliedUpScale);
 
                 SelectedUnScaledAvatarHeight = SanitizePositive(AvatarArmSpan, FallbackHeightInMeters);
@@ -254,7 +370,7 @@ public static class BasisHeightDriver
                 break;
 
             case BasisSelectedHeightMode.EyeHeight:
-                SelectedScaledPlayerHeight = calY * ((AdditionalPlayerHeight + PlayerEyeHeight) * AppliedUpScale);
+                SelectedScaledPlayerHeight = calY * ((eyeScaleOffset + PlayerEyeHeight) * AppliedUpScale);
                 SelectedScaledAvatarHeight = calY * (AvatarEyeHeight * AppliedUpScale);
 
                 SelectedUnScaledAvatarHeight = SanitizePositive(AvatarEyeHeight, FallbackHeightInMeters);
@@ -269,11 +385,11 @@ public static class BasisHeightDriver
         // "Default" denominator in the same space as SelectedScaled* (which currently includes calY)
         float defaultScaled = SanitizePositive(FallbackHeightInMeters * calY, FallbackHeightInMeters);
 
-        PlayerToDefaultRatioScaled = SafeDivide(SelectedScaledAvatarHeight, FallbackHeightInMeters, 1f);
-        AvatarToDefaultRatioScaled = SafeDivide(SelectedScaledPlayerHeight, FallbackHeightInMeters, 1f);
+        PlayerToDefaultRatioScaled = SafeDivide(SelectedScaledPlayerHeight, FallbackHeightInMeters, 1f);
+        AvatarToDefaultRatioScaled = SafeDivide(SelectedScaledAvatarHeight, FallbackHeightInMeters, 1f);
         // Use SafeDivide for all ratios (prevents NaN/Inf/0 denom explosions)
-        PlayerToDefaultRatioScaledWithAvatarScale = SafeDivide(SelectedScaledAvatarHeight, defaultScaled, 1f);
-        AvatarToDefaultRatioScaledWithAvatarScale = SafeDivide(SelectedScaledPlayerHeight, defaultScaled, 1f);
+        PlayerToDefaultRatioScaledWithAvatarScale = SafeDivide(SelectedScaledPlayerHeight, defaultScaled, 1f);
+        AvatarToDefaultRatioScaledWithAvatarScale = SafeDivide(SelectedScaledAvatarHeight, defaultScaled, 1f);
 
         // Relative ratios between player and avatar.
         PlayerToAvatarRatioScaled = SafeDivide(SelectedScaledPlayerHeight, SelectedScaledAvatarHeight, 1f);
@@ -290,7 +406,11 @@ public static class BasisHeightDriver
         // DeviceScale: keep your original intent/math, but make it safe.
         // avatarScaledMetric in meters-equivalent (unscaled metric * applied scale).
         float avatarScaledMetric = SanitizePositive(SelectedUnScaledAvatarHeight * AppliedUpScale, 1f);
-        float playerMetric = SanitizePositive(AdditionalPlayerHeight + SelectedUnScaledPlayerHeight, 1f);
+        // playerMetric is the player's TRUE standing eye height the avatar is scaled against. Assembled
+        // by the shared pure helper so this runtime path and BasisCalibrationMathSweep exercise the same
+        // formula. eyeScaleOffset already carries the device-origin->eye correction (OpenVR) plus the
+        // gated standing-eye-height correction applied above.
+        float playerMetric = SanitizePositive(BasisCalibrationMath.StandingEyeDenominator(SelectedUnScaledPlayerHeight, eyeScaleOffset, additionalPlayerHeight), 1f);
 
         DeviceScale = SafeDivide(avatarScaledMetric, playerMetric, 1f);
         DeviceScale = SanitizePositive(DeviceScale, 1f);
@@ -299,8 +419,16 @@ public static class BasisHeightDriver
             $"Height Mode: {Height} | PlayerMetric(scaled): {SelectedScaledPlayerHeight}m | " +
             $"AvatarMetric(scaled): {SelectedScaledAvatarHeight}m | " +
             $"PlayerToAvatar: {PlayerToAvatarRatioScaled} | AvatarToPlayer: {AvatarToPlayerRatioScaled} | " +
-            $"PlayerToDefault: {AvatarToDefaultRatioScaledWithAvatarScale} | AvatarToDefault: {PlayerToDefaultRatioScaledWithAvatarScale} | " +
+            $"PlayerToDefault: {PlayerToDefaultRatioScaledWithAvatarScale} | AvatarToDefault: {AvatarToDefaultRatioScaledWithAvatarScale} | " +
             $"DeviceScale: {DeviceScale}",
+            BasisDebug.LogTag.Avatar
+        );
+        // Denominator breakdown so the systematic eye-height bias is readable in-headset: compare the
+        // true-eye estimate against your tape-measured standing eye height. If it reads low (avatar too
+        // tall), the shortfall is the value to put in CalibrationStandingEyeHeightMeters.
+        BasisDebug.Log(
+            $"Eye-height denominator (true standing eye estimate): {playerMetric:F3}m = raw {SelectedUnScaledPlayerHeight:F3} " +
+            $"+ device->eye {PlayerCenterEyeVerticalOffset:F3} + correction {standingEyeCorrection:F3} + nudge {additionalPlayerHeight:F3}",
             BasisDebug.LogTag.Avatar
         );
     }

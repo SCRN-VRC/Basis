@@ -121,6 +121,9 @@ public partial class BasisHandHeldCamera : BasisHandHeldCameraInteractable
     /// <summary>Whether the UI/nameplates are currently visible in the capture.</summary>
     private bool showUI = false;
 
+    /// <summary>Read-only view of <see cref="showUI"/> for UI status indicators.</summary>
+    public bool ShowUIInCapture => showUI;
+
     /// <summary>Last visibility state reported by the mesh renderer check.</summary>
     public bool LastVisibilityState = false;
 
@@ -156,6 +159,9 @@ public partial class BasisHandHeldCamera : BasisHandHeldCameraInteractable
         SetResolution(PreviewCaptureWidth, PreviewCaptureHeight, AntialiasingQuality.Low);
         captureCamera.targetTexture = renderTexture;
         captureCamera.gameObject.SetActive(true);
+
+        SubscribePreviewScreen();
+
         BasisDeviceManagement.OnBootModeChanged += OnBootModeChanged;
         BasisLocalCameraDriver.RenderSettingsApplied += SyncBackgroundFromMainCamera;
 
@@ -197,10 +203,14 @@ public partial class BasisHandHeldCamera : BasisHandHeldCameraInteractable
         _activeHandHeldCount = Mathf.Max(0, _activeHandHeldCount - 1);
         ApplyReticleSuppression();
 
+        UnsubscribePreviewScreen();
+        DespawnPreviewScreen();
+
         string myLoadedNetId = gameObject.name;
         UnRegisterLoadedNetID(myLoadedNetId);
 
         UnsubscribeMeshRendererCheck();
+        BasisCullingCameraRegistry.Unregister(captureCamera);
         ReleaseRenderTexture();
         if (pooledScreenshot != null) { Destroy(pooledScreenshot); pooledScreenshot = null; }
         if (actualMaterial != null) { Destroy(actualMaterial); actualMaterial = null; }
@@ -232,6 +242,7 @@ public partial class BasisHandHeldCamera : BasisHandHeldCameraInteractable
         SetResolution(PreviewCaptureWidth, PreviewCaptureHeight, AntialiasingQuality.Low);
         BasisDebug.Log($"[HandHeldCamera] Preview reset to {PreviewCaptureWidth}x{PreviewCaptureHeight} @ {AntialiasingQuality.Low}");
         captureCamera.targetTexture = renderTexture;
+        BasisCullingCameraRegistry.Register(captureCamera);
     }
 
     /// <summary>
@@ -601,6 +612,8 @@ public partial class BasisHandHeldCamera : BasisHandHeldCameraInteractable
             actualMaterial.SetTexture("_MainTex", CopyCameraColorToStaticRTFeature.OutputRT);
         }
 
+        UpdatePreviewScreenTexture();
+
         // Send PIP camera position to network
         if (BasisNetworkConnection.LocalPlayerPeer != null)
         {
@@ -637,6 +650,7 @@ public partial class BasisHandHeldCamera : BasisHandHeldCameraInteractable
         }
 
         VisibilityFlag(Renderer != null && Renderer.isVisible);
+        UpdatePreviewScreen();
     }
 
     /// <summary>UI callback to toggle recording view and apply <see cref="OverrideDesktopOutput"/>.</summary>
@@ -714,6 +728,7 @@ public partial class BasisHandHeldCamera : BasisHandHeldCameraInteractable
     private new void OnBootModeChanged(string obj)
     {
         OverrideDesktopOutput();
+        HandHeld.RefreshDesktopOutputButtonVisibility();
         // base.OnBootModeChanged(obj);
     }
 

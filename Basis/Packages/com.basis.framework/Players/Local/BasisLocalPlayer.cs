@@ -17,6 +17,18 @@ using static BasisHeightDriver;
 
 namespace Basis.Scripts.BasisSdk.Players
 {
+    public enum BasisTeleportMode
+    {
+        /// <summary>Root to the point using the supplied rotation (legacy default); in VR the body keeps its play-space offset.</summary>
+        WorldRoot = 0,
+        /// <summary>Feet (capsule / head ground projection) on the point, using the supplied rotation.</summary>
+        WorldFeet = 1,
+        /// <summary>Feet on the point, turned to face the point.</summary>
+        FacePoint = 2,
+        /// <summary>Feet on the point, matching the supplied rotation (e.g. a target player's facing).</summary>
+        ToPlayer = 3,
+    }
+
     /// <summary>
     /// Local player controller that coordinates camera, character, rig, avatar, hands,
     /// visemes, input, calibration, and scene lifecycle for the current user.
@@ -307,12 +319,21 @@ namespace Basis.Scripts.BasisSdk.Players
         /// </summary>
         /// <param name="position">Target world position.</param>
         /// <param name="rotation">Target world rotation.</param>
-        public void Teleport(Vector3 position, Quaternion rotation,bool BypassStand = false)
+        /// <param name="mode">Placement and facing behaviour for the teleport.</param>
+        public void Teleport(Vector3 position, Quaternion rotation, bool BypassStand = false, BasisTeleportMode mode = BasisTeleportMode.WorldRoot)
         {
             BasisDebug.Log("Teleporting", BasisDebug.LogTag.Local);
             if (BypassStand == false)
             {
                 LocalSeatDriver.Stand();
+            }
+            if (mode == BasisTeleportMode.FacePoint)
+            {
+                rotation = GetFacingToward(position);
+            }
+            if (mode != BasisTeleportMode.WorldRoot)
+            {
+                position = GetFeetAlignedRoot(position, rotation);
             }
             bool wasCharacterEnabled = LocalCharacterDriver.IsEnabled;
             LocalCharacterDriver.IsEnabled = false;
@@ -327,6 +348,33 @@ namespace Basis.Scripts.BasisSdk.Players
                 jiggleRigs[i].Teleport(deltaPosition);
             }
             OnTeleportEvent?.Invoke();
+        }
+        private Vector3 GetFeetAlignedRoot(Vector3 targetPosition, Quaternion targetRotation)
+        {
+            if (BasisLocalBoneDriver.HasEye == false)
+            {
+                return targetPosition;
+            }
+            this.transform.GetPositionAndRotation(out Vector3 rootPosition, out Quaternion rootRotation);
+            Vector3 headOffset = BasisLocalBoneDriver.EyeControl.OutgoingWorldData.position - rootPosition;
+            headOffset.y = 0f;
+            Vector3 localOffset = Quaternion.Inverse(rootRotation) * headOffset;
+            Vector3 aligned = targetPosition - (targetRotation * localOffset);
+            aligned.y = targetPosition.y;
+            return aligned;
+        }
+        private Quaternion GetFacingToward(Vector3 worldPoint)
+        {
+            Vector3 from = BasisLocalBoneDriver.HasEye
+                ? BasisLocalBoneDriver.EyeControl.OutgoingWorldData.position
+                : this.transform.position;
+            Vector3 direction = worldPoint - from;
+            direction.y = 0f;
+            if (direction.sqrMagnitude < 1e-6f)
+            {
+                return this.transform.rotation;
+            }
+            return Quaternion.LookRotation(direction.normalized, Vector3.up);
         }
         public void Respawn()
         {
@@ -451,6 +499,9 @@ namespace Basis.Scripts.BasisSdk.Players
             // now lets move the local player position.
             LocalCharacterDriver.SimulateMovement(DeltaTime);
 
+            // VR play space grab/drag override (no-op unless enabled and a controller input is held).
+            BasisLocalPlayspaceMover.Simulate(this, DeltaTime);
+
             // Apply virtual data (e.g. seat driver) before polling input devices so that
             // localToWorldMatrix reflects the seat-adjusted player position. This ensures
             // bone world positions and raycast origins are correct while seated (#514).
@@ -460,6 +511,11 @@ namespace Basis.Scripts.BasisSdk.Players
                 transform.GetPositionAndRotation(out Vector3 seatPos, out Quaternion seatRot);
                 localToWorldMatrix = Matrix4x4.TRS(seatPos, seatRot, transform.lossyScale);
             }
+
+            // Apply the play-space flip (OVRAS-style) to the avatar's local->world matrix so the body
+            // tips/inverts with the view. The view, controllers, and trackers get the same flip in
+            // BasisInput.ApplyFinalMovement. No-op unless a flip is active; the capsule is never rotated.
+            localToWorldMatrix = BasisLocalPlayspaceMover.ApplyFlipToMatrix(localToWorldMatrix);
 
             OnLateSimulateBones(this);
 

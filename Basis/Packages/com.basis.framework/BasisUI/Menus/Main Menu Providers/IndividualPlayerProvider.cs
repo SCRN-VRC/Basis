@@ -143,6 +143,9 @@ namespace Basis.BasisUI
                 player.OnChatMessageReceived?.Invoke(string.Empty);
             }
             player.OnNamePlateActiveStateShouldRefresh?.Invoke();
+#if !UNITY_SERVER
+            BasisNetworkPIPCameraDriver.RefreshPipNamePlateVisibilityFromPlayerState();
+#endif
 
             // Mirror the block onto the other side so they also can't see/hear us
             // (session-scoped temp block).
@@ -448,7 +451,6 @@ namespace Basis.BasisUI
             var audioGroup = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, root);
             audioGroup.SetTitle(BasisLocalization.Get("settings.tab.audio"));
             audioGroup.SetDescription(BasisLocalization.Get("menu.individualPlayer.audio.description"));
-            audioGroup.IsolateAsCanvas();
 
             string indivdualusersettingsvolume = "indivdualusersettingsvolume";
             BasisSettingsBinding<float> Binding = new BasisSettingsBinding<float>(indivdualusersettingsvolume);
@@ -616,7 +618,9 @@ namespace Basis.BasisUI
 
             string DirectConnLabelKey(Basis.Scripts.Networking.BasisP2PManager.P2PSessionState st)
             {
-                if (BasisSettingsDefaults.DisableDirectConnections.RawValue &&
+                bool blockedByPolicy = BasisSettingsDefaults.DisableDirectConnections.RawValue ||
+                    (BasisNetworkModeration.GlobalDirectConnectLocked && !BasisNetworkModeration.LocalPlayerHasGlobalLockBypass());
+                if (blockedByPolicy &&
                     st != Basis.Scripts.Networking.BasisP2PManager.P2PSessionState.Connected &&
                     st != Basis.Scripts.Networking.BasisP2PManager.P2PSessionState.Reconnecting)
                 {
@@ -659,6 +663,16 @@ namespace Basis.BasisUI
                 if (st == Basis.Scripts.Networking.BasisP2PManager.P2PSessionState.Idle ||
                     st == Basis.Scripts.Networking.BasisP2PManager.P2PSessionState.Failed)
                 {
+                    if (BasisNetworkModeration.GlobalDirectConnectLocked && !BasisNetworkModeration.LocalPlayerHasGlobalLockBypass())
+                    {
+                        BasisMainMenu.Instance.OpenDialogue(
+                            BasisLocalization.Get("menu.individualPlayer.directConnection.disabledDialog.title"),
+                            BasisLocalization.Get("menu.individualPlayer.directConnection.serverLockedDialog.body"),
+                            BasisLocalization.Get("ui.ok"),
+                            _ => { });
+                        return;
+                    }
+
                     if (BasisSettingsDefaults.DisableDirectConnections.RawValue)
                     {
                         BasisMainMenu.Instance.OpenDialogue(
@@ -791,6 +805,35 @@ namespace Basis.BasisUI
                 avatarErrorField.SetTitle(BasisLocalization.Get("menu.individualPlayer.avatarLoadError"));
                 avatarErrorField.SetDescription(remotePlayer.AvatarLoadErrorMessage);
             }
+
+            PanelButton matchEyeHeightBtn = PanelButton.CreateNew(avatarGroup.ContentParent);
+            matchEyeHeightBtn.Descriptor.SetTitle(BasisLocalization.Get("menu.individualPlayer.matchEyeHeight"));
+            if (BasisHeightDriver.TryGetMatchedEyeHeightOverrideMeters(remotePlayer, out float initialRemoteEyeHeight))
+            {
+                matchEyeHeightBtn.Descriptor.SetDescription(BasisLocalization.Get("menu.individualPlayer.matchEyeHeight.description", initialRemoteEyeHeight));
+            }
+            else
+            {
+                matchEyeHeightBtn.Descriptor.SetDescription(BasisLocalization.Get("menu.individualPlayer.matchEyeHeight.unavailable"));
+            }
+
+            matchEyeHeightBtn.OnClicked += () =>
+            {
+                if (!BasisHeightDriver.TryGetMatchedEyeHeightOverrideMeters(remotePlayer, out float remoteEyeHeight))
+                {
+                    BasisDebug.LogWarning("Cannot match eye height because the selected remote avatar eye height is unavailable.", BasisDebug.LogTag.Avatar);
+                    return;
+                }
+
+                if (!SMModuleCalibration.ApplyCustomScale)
+                {
+                    BasisSettingsDefaults.CustomScale.SetValue(true);
+                    SMModuleCalibration.ApplyCustomScale = true;
+                }
+
+                BasisHeightDriver.ApplyRuntimeOscEyeHeightOverride(remoteEyeHeight);
+                matchEyeHeightBtn.Descriptor.SetDescription(BasisLocalization.Get("menu.individualPlayer.matchEyeHeight.description", remoteEyeHeight));
+            };
 
             // Performance filter result — tells the local user why a specific remote
             // avatar was hard-blocked and/or what the trim pass removed from it,
@@ -1183,7 +1226,6 @@ namespace Basis.BasisUI
             var audioDebugGroup = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, root);
             audioDebugGroup.SetTitle(BasisLocalization.Get("menu.individualPlayer.audioDebug"));
             audioDebugGroup.SetDescription(BasisLocalization.Get("menu.individualPlayer.audioDebug.description"));
-            audioDebugGroup.IsolateAsCanvas();
 
             // Toggle to show/hide the audio debug fields for this player
             PanelToggle audioDebugToggle = PanelToggle.CreateNewEntry(audioDebugGroup.ContentParent);
@@ -1299,7 +1341,6 @@ namespace Basis.BasisUI
             var avatarDataDebugGroup = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, root);
             avatarDataDebugGroup.SetTitle(BasisLocalization.Get("menu.individualPlayer.avatarDataDebug"));
             avatarDataDebugGroup.SetDescription(BasisLocalization.Get("menu.individualPlayer.avatarDataDebug.description"));
-            avatarDataDebugGroup.IsolateAsCanvas();
 
             PanelToggle avatarDataDebugToggle = PanelToggle.CreateNewEntry(avatarDataDebugGroup.ContentParent);
             avatarDataDebugToggle.Descriptor.SetTitle(BasisLocalization.Get("menu.individualPlayer.showAvatarDataDebug"));

@@ -313,6 +313,14 @@ namespace Basis.BasisUI
 
             await BasisLoadHandler.EnsureInitializationComplete();
 
+            // Local BEE files aren't written to the on-disc meta cache; their connector is already
+            // populated on the wrapper by the meta-only pass, so return it directly instead of
+            // treating the missing cache entry as a reason to drop the item.
+            if (BasisIOManagement.TryResolveLocalBeePath(item.Url, out _))
+            {
+                return wrapper;
+            }
+
             // If the metadata is missing on disk, remove the key and DO NOT attempt to create a bundle from it.
             var (onDisc, info) = await BasisLoadHandler.IsMetaDataOnDiscAsync(item.Url);
             if (onDisc)
@@ -839,9 +847,11 @@ namespace Basis.BasisUI
             CachedMetaData.CachedContent metadata;
             bool hasMeta = CachedMetaData.TryGetMeta(item.Url, out metadata);
 
-            // embedded items are always local, otherwise default to networked when connected
+            // embedded items are always local, otherwise default to networked when connected.
+            // Local-file content only exists on this device, so it can never be networked either.
             bool isEmbedded = item.EmbeddedSettings.IsEmbedded;
-            BundledContentHolder.NetworkType desiredNetworkType = isEmbedded
+            bool isLocalItem = BasisIOManagement.IsLocalBeeUrl(item.Url);
+            BundledContentHolder.NetworkType desiredNetworkType = (isEmbedded || isLocalItem)
                 ? BundledContentHolder.NetworkType.Local
                 : BasisNetworkConnection.LocalPlayerIsConnected
                     ? BundledContentHolder.NetworkType.Networked
@@ -1258,24 +1268,22 @@ namespace Basis.BasisUI
 
                 // content sync mode dropdown determines whether the new item is flagged as networked or local, which affects filtering and how the item is loaded later
                 PanelDropdown contentSyncModeDropDown = PanelDropdown.CreateNew(PanelDropdown.DropdownStyles.Entry, advancedActionsPanel.TabButtonParent);
-                List<string> contentSyncModeDisplayNames = GetNetworkTypeDisplayNames();
+                bool netConnectedForTypes = BasisNetworkConnection.LocalPlayerIsConnected;
+                List<string> contentSyncModeDisplayNames = GetAvailableNetworkTypes(netConnectedForTypes, isLocalItem).Select(GetNetworkTypeDisplayName).ToList();
                 contentSyncModeDropDown.Descriptor.SetTitle(BasisLocalization.Get("library.networkType"));
                 contentSyncModeDropDown.Descriptor.SetDescription(GetNetworkTypeDescription(desiredNetworkType));
                 contentSyncModeDropDown.Descriptor.SetIcon(AddressableAssets.Sprites.Network);
                 contentSyncModeDropDown.AssignEntries(contentSyncModeDisplayNames);
                 contentSyncModeDropDown.Descriptor.SetSize(new Vector2(700, 80));
 
-                // disable network type selection
-                if (contentSyncModeDropDown.Descriptor.gameObject.TryGetComponent<PanelDropdown>(out PanelDropdown dropdown))
+                // Local and Load-on-Boot work offline; Networked only appears when connected. The
+                // dropdown is interactable for any non-embedded item so a local/boot world can be
+                // chosen without a server.
                 {
-                    if (dropdown.DropdownComponent != null)
-                    {
-                        // only interactable when the player is connected and the item is not embedded
-                        dropdown.DropdownComponent.interactable =
-                            BasisNetworkConnection.LocalPlayerIsConnected &&
-                            !(item.EmbeddedSettings.IsEmbedded && item.EmbeddedSettings.SourceType == BasisDataStoreItemKeys.EmbeddedSource.Addressable);
-
-                    }
+                    bool embeddedAddressable = item.EmbeddedSettings.IsEmbedded && item.EmbeddedSettings.SourceType == BasisDataStoreItemKeys.EmbeddedSource.Addressable;
+                    contentSyncModeDropDown.SetInteractable(
+                        !embeddedAddressable,
+                        embeddedAddressable ? BasisLocalization.Get("library.disabled.embedded") : null);
                 }
 
                 // set the default network type
@@ -1312,11 +1320,9 @@ namespace Basis.BasisUI
                 };
 
                 // DISABLE THIS TOGGLE IF THE ITEM IS EMBEDDED
-                if (contentPersistenceToggle.Descriptor.gameObject.TryGetComponent<Toggle>(out Toggle toggle))
-                {
-                    // if the item is embedded dont interact
-                    toggle.interactable = !item.EmbeddedSettings.IsEmbedded;
-                }
+                contentPersistenceToggle.SetInteractable(
+                    !item.EmbeddedSettings.IsEmbedded,
+                    item.EmbeddedSettings.IsEmbedded ? BasisLocalization.Get("library.disabled.embedded") : null);
             }
 
             #endregion
@@ -1337,10 +1343,9 @@ namespace Basis.BasisUI
             // which the server enforces via PermNodes.ConfigurationEditor (non-admins
             // get a "permission denied" reply popped via SendBackMessage).
             bool isServerProvided = BasisServerProvidedItems.IsServerProvided(item);
-            if (deletePanelButton.Descriptor.gameObject.TryGetComponent<Button>(out Button deleteButtonComponent))
-            {
-                deleteButtonComponent.interactable = !item.EmbeddedSettings.IsEmbedded;
-            }
+            deletePanelButton.SetInteractable(
+                !item.EmbeddedSettings.IsEmbedded,
+                item.EmbeddedSettings.IsEmbedded ? BasisLocalization.Get("library.disabled.embedded") : null);
 
             // upon delete we do these actions
             deletePanelButton.OnClicked += async () =>
@@ -1383,13 +1388,14 @@ namespace Basis.BasisUI
             sharePanelButton.Descriptor.SetTitle(BasisLocalization.Get("library.share"));
             sharePanelButton.Descriptor.SetWidth(150);
             sharePanelButton.Descriptor.SetHeight(60);
-            if (sharePanelButton.Descriptor.gameObject.TryGetComponent<Button>(out Button shareButtonComponent))
-            {
-                shareButtonComponent.interactable = BasisNetworkConnection.LocalPlayerIsConnected;
-            }
+            sharePanelButton.SetInteractable(
+                BasisNetworkConnection.LocalPlayerIsConnected && !isLocalItem,
+                !BasisNetworkConnection.LocalPlayerIsConnected ? BasisLocalization.Get("library.disabled.notConnected")
+                : isLocalItem ? BasisLocalization.Get("library.disabled.local")
+                : null);
             sharePanelButton.OnClicked += async () =>
             {
-                if (!BasisNetworkConnection.LocalPlayerIsConnected) return;
+                if (!BasisNetworkConnection.LocalPlayerIsConnected || isLocalItem) return;
                 ContentShareType shareType;
                 switch (item.Mode)
                 {
@@ -1426,22 +1432,18 @@ namespace Basis.BasisUI
             {
                 case BundledContentHolder.Mode.Avatar:
                     bool sameAvatar = item.Url == BasisLocalPlayer.Instance.AvatarMetaData.BasisRemoteBundleEncrypted.RemoteBeeFileLocation;
-                    if (loadPanelButton.Descriptor.gameObject.TryGetComponent<Button>(out Button loadButtonComponent))
-                    {
-                        // if the item is embedded dont interact
-                        loadButtonComponent.interactable = !sameAvatar;
-                    }
+                    loadPanelButton.SetInteractable(
+                        !sameAvatar,
+                        sameAvatar ? BasisLocalization.Get("library.alreadyInAvatar") : null);
                     loadPanelButton.Descriptor.SetTitle(sameAvatar ? BasisLocalization.Get("library.alreadyInAvatar") : BasisLocalization.Get("library.load"));
                     break;
                 case BundledContentHolder.Mode.World:
                     bool worldAlreadyExists = spawnItemCount > 0;
  
-                    if (loadPanelButton.Descriptor.gameObject.TryGetComponent<Button>(out Button loadButtonComponent2))
-                    {
-                        // disable the button
-                        loadButtonComponent2.interactable = !worldAlreadyExists;
-                    }
                     // you can only load one instance of a scene
+                    loadPanelButton.SetInteractable(
+                        !worldAlreadyExists,
+                        worldAlreadyExists ? BasisLocalization.Get("library.sceneAlreadyLoaded") : null);
                     loadPanelButton.Descriptor.SetTitle(worldAlreadyExists ? BasisLocalization.Get("library.sceneAlreadyLoaded") : BasisLocalization.Get("library.load"));
                     break;
                 case BundledContentHolder.Mode.Prop:
@@ -1502,18 +1504,33 @@ namespace Basis.BasisUI
         {
             [BundledContentHolder.NetworkType.Local] = BasisLocalization.Get("library.networkType.local"),
             [BundledContentHolder.NetworkType.Networked] = BasisLocalization.Get("library.networkType.networked"),
+            [BundledContentHolder.NetworkType.LoadOnBoot] = BasisLocalization.Get("library.networkType.loadOnBoot"),
             // TODO: Re-enable once synchronized loading is fully working (late joiner + prop unload bugs)
             // [BundledContentHolder.NetworkType.Synchronized] = "Everyone (Wait & Spawn Together)",
         };
 
+        /// <summary>
+        /// Network types offered in the load dropdown. Local and Load-on-Boot work offline; Networked
+        /// only appears when connected to a server. Local-file content is never networkable (it does
+        /// not exist on other clients), so it is restricted to Local and Load-on-Boot.
+        /// </summary>
+        private static List<BundledContentHolder.NetworkType> GetAvailableNetworkTypes(bool connected, bool isLocal)
+        {
+            List<BundledContentHolder.NetworkType> types = new List<BundledContentHolder.NetworkType>
+            {
+                BundledContentHolder.NetworkType.Local
+            };
+            if (connected && !isLocal)
+            {
+                types.Add(BundledContentHolder.NetworkType.Networked);
+            }
+            types.Add(BundledContentHolder.NetworkType.LoadOnBoot);
+            return types;
+        }
+
         private static string GetNetworkTypeDisplayName(BundledContentHolder.NetworkType networkType)
         {
             return NetworkTypeDisplayNames.TryGetValue(networkType, out string name) ? name : networkType.ToString();
-        }
-
-        private static List<string> GetNetworkTypeDisplayNames()
-        {
-            return new List<string>(NetworkTypeDisplayNames.Values);
         }
 
         private static bool TryParseNetworkTypeFromDisplayName(string displayName, out BundledContentHolder.NetworkType networkType)
@@ -1540,6 +1557,8 @@ namespace Basis.BasisUI
                     BasisLocalization.Get("library.networkType.networked.description"),
                 BundledContentHolder.NetworkType.Synchronized =>
                     BasisLocalization.Get("library.networkType.synchronized.description"),
+                BundledContentHolder.NetworkType.LoadOnBoot =>
+                    BasisLocalization.Get("library.networkType.loadOnBoot.description"),
                 _ =>
                     BasisLocalization.Get("library.networkType.unknown.description"),
             };
@@ -1569,6 +1588,23 @@ namespace Basis.BasisUI
         {
             await PersistServerProvidedItemOnLoad(item);
 
+            // Local-file content only exists on this device — it can never be networked or synchronized,
+            // so force it back to a local load if something requested otherwise.
+            if ((networkType == BundledContentHolder.NetworkType.Networked || networkType == BundledContentHolder.NetworkType.Synchronized)
+                && BasisIOManagement.IsLocalBeeUrl(item.Url))
+            {
+                BasisDebug.LogWarning($"Local content {item.Url} cannot be networked; loading it locally instead.");
+                networkType = BundledContentHolder.NetworkType.Local;
+            }
+
+            // Load-on-Boot loads the item now (locally) and records it so it auto-loads next launch.
+            // Worlds are recorded here; props are recorded after load so the placed transform is captured.
+            bool persistBoot = networkType == BundledContentHolder.NetworkType.LoadOnBoot;
+            if (persistBoot)
+            {
+                networkType = BundledContentHolder.NetworkType.Local;
+            }
+
             // At this point the item should be fully loaded and ready to use. What happens next is up to you and your application needs.
             // For example, you could raise an event that other parts of your app listen for, or directly instantiate the loaded content if it's a prefab.
             //BasisDebug.Log($"Attempting to load selected item: {item.Url} item type {item.Mode} with network type {networkType} persistent = {persistence} modifyScale = {modifyScale}");
@@ -1583,14 +1619,73 @@ namespace Basis.BasisUI
                         break;
                     case BundledContentHolder.Mode.Prop:
                         await ContentLoader.LoadProp(item, networkType, persistence, IsProtected, modifyScale);
+                        if (persistBoot)
+                        {
+                            await PersistPropBootEntry(item);
+                        }
                         break;
                     case BundledContentHolder.Mode.World:
+                        if (persistBoot)
+                        {
+                            await BasisPreloadContentStore.Add(new BasisPreloadContentStore.PreloadEntry
+                            {
+                                Url = item.Url,
+                                Pass = item.Pass,
+                                Mode = item.Mode,
+                                PlacementType = item.PlacementType,
+                            });
+                        }
                         await ContentLoader.LoadWorld(item, networkType, persistence, IsProtected);
                         break;
                     default:
                         BasisDebug.LogError($"LoadSelectedItem was given an item with an unknown mode of {item.Mode}, cannot determine how to load!");
                         break;
                 }
+            }
+            catch (Exception ex)
+            {
+                BasisDebug.LogError(ex);
+            }
+        }
+
+        /// <summary>
+        /// Records a just-loaded prop in the boot store together with the world transform it was
+        /// placed at, so it respawns in the same spot next launch. No-op if the prop never spawned
+        /// (e.g. the user cancelled placement).
+        /// </summary>
+        private static async Task PersistPropBootEntry(BasisDataStoreItemKeys.ItemKey item)
+        {
+            try
+            {
+                IReadOnlyList<BasisRuntimeSpawnRegistry.SpawnInstance> instances = BasisRuntimeSpawnRegistry.GetInstances(item.Url);
+                if (instances == null || instances.Count == 0)
+                {
+                    return;
+                }
+
+                BasisRuntimeSpawnRegistry.SpawnInstance instance = instances
+                    .OrderByDescending(i => i.SpawnedUtc)
+                    .FirstOrDefault();
+
+                if (instance == null ||
+                    !BasisRuntimeSpawnRegistry.SpawnedGameobjects.TryGetValue(instance.LoadedNetID, out GameObject go) ||
+                    go == null)
+                {
+                    return;
+                }
+
+                Transform t = go.transform;
+                await BasisPreloadContentStore.Add(new BasisPreloadContentStore.PreloadEntry
+                {
+                    Url = item.Url,
+                    Pass = item.Pass,
+                    Mode = item.Mode,
+                    PlacementType = item.PlacementType,
+                    HasTransform = true,
+                    Position = t.position,
+                    Rotation = t.rotation,
+                    Scale = t.localScale,
+                });
             }
             catch (Exception ex)
             {
@@ -1829,6 +1924,12 @@ namespace Basis.BasisUI
                     PlacementManager.RemoveSelectionSpawnInstanceID(instance);
 
                     break;
+                case BasisRuntimeSpawnRegistry.RegistryChangeType.Modified:
+
+                    // a per-item flag changed (e.g. Static) — rebuild so the row reflects it
+                    UpdateInstantiatedTab();
+
+                    break;
                 case BasisRuntimeSpawnRegistry.RegistryChangeType.ClearedAll:
                 case BasisRuntimeSpawnRegistry.RegistryChangeType.ClearedUrl:
                     BasisDebug.LogWarning($"LibraryProvider.cs rec -> OnRegistryChanged for changeType = {changeType}, ignoring! if the menu breaks nothing was linked in the menu for this.");
@@ -1897,6 +1998,7 @@ namespace Basis.BasisUI
                 PanelImage adminPanelImage = PanelImage.CreateNew(PanelImage.ImageStyles.SimpleSquare, itemListPanel.TabButtonParent);
                 adminPanelImage.SetSize(new Vector2(80, 80));
                 adminPanelImage.SetIcon(AddressableAssets.Sprites.Admin);
+                adminPanelImage.Descriptor.SetTooltip(BasisLocalization.Get("library.instantiated.icon.admin.tooltip"));
             }
 
             // create an image for the list entry to show what type of spawn method was used
@@ -1907,12 +2009,15 @@ namespace Basis.BasisUI
             {
                 case BasisRuntimeSpawnRegistry.SpawnMode.Avatar:
                     spawnModePanelImage.SetIcon(AddressableAssets.Sprites.Avatars);
+                    spawnModePanelImage.Descriptor.SetTooltip(BasisLocalization.Get("library.instantiated.icon.type.avatar.tooltip"));
                     break;
                 case BasisRuntimeSpawnRegistry.SpawnMode.GameObject:
                     spawnModePanelImage.SetIcon(AddressableAssets.Sprites.Items);
+                    spawnModePanelImage.Descriptor.SetTooltip(BasisLocalization.Get("library.instantiated.icon.type.gameObject.tooltip"));
                     break;
                 case BasisRuntimeSpawnRegistry.SpawnMode.Scene:
                     spawnModePanelImage.SetIcon(AddressableAssets.Sprites.World);
+                    spawnModePanelImage.Descriptor.SetTooltip(BasisLocalization.Get("library.instantiated.icon.type.scene.tooltip"));
                     break;
             }
 
@@ -1924,12 +2029,15 @@ namespace Basis.BasisUI
             {
                 case BasisRuntimeSpawnRegistry.SpawnMethod.Embedded:
                     spawnMethodPanelImage.SetIcon(AddressableAssets.Sprites.Embedded);
+                    spawnMethodPanelImage.Descriptor.SetTooltip(BasisLocalization.Get("library.instantiated.icon.method.embedded.tooltip"));
                     break;
                 case BasisRuntimeSpawnRegistry.SpawnMethod.Local:
                     spawnMethodPanelImage.SetIcon(AddressableAssets.Sprites.Computer);
+                    spawnMethodPanelImage.Descriptor.SetTooltip(BasisLocalization.Get("library.instantiated.icon.method.local.tooltip"));
                     break;
                 case BasisRuntimeSpawnRegistry.SpawnMethod.Network:
                     spawnMethodPanelImage.SetIcon(AddressableAssets.Sprites.Network);
+                    spawnMethodPanelImage.Descriptor.SetTooltip(BasisLocalization.Get("library.instantiated.icon.method.network.tooltip"));
                     break;
             }
 
@@ -1942,9 +2050,11 @@ namespace Basis.BasisUI
             {
                 case true:
                     persistencePanelImage.SetIcon(AddressableAssets.Sprites.Pin);
+                    persistencePanelImage.Descriptor.SetTooltip(BasisLocalization.Get("library.instantiated.icon.persistent.tooltip"));
                     break;
                 case false:
                     persistencePanelImage.SetIcon(AddressableAssets.Sprites.HourGlass);
+                    persistencePanelImage.Descriptor.SetTooltip(BasisLocalization.Get("library.instantiated.icon.ephemeral.tooltip"));
                     break;
             }
 
@@ -1971,6 +2081,13 @@ namespace Basis.BasisUI
 
             itemTextInfo.Descriptor.SetDescription(BasisLocalization.Get("library.instantiated.createdAgoBy", LibraryProviderStrUtil.TimeAgoUtc(itemKey.SpawnedUtc), createdDisplayName)); // {description}
 
+            // Tooltip surfaces the content's own description when present — never the source URL, which
+            // must not be exposed in the UI. (For items without metadata the visible name is already the
+            // raw URL, so we don't repeat it here either.)
+            if (hasMetaData && !string.IsNullOrEmpty(itemKey.bundleConnector.BasisBundleDescription.AssetBundleDescription))
+            {
+                itemTextInfo.Descriptor.SetTooltip(itemKey.bundleConnector.BasisBundleDescription.AssetBundleDescription);
+            }
             itemTextInfo.Descriptor.SetHeight(50);
             itemTextInfo.Descriptor.SetWidth(400);
 
@@ -1989,6 +2106,7 @@ namespace Basis.BasisUI
             selectItem.Descriptor.IconImage.rectTransform.sizeDelta = new Vector2(-30, -30);
 
             selectItem.Descriptor.SetActive(!isScene);
+            selectItem.Descriptor.SetTooltip(BasisLocalization.Get("library.instantiated.select.tooltip"));
             selectItem.OnClicked += async () =>
             {
                 if(hasSelected)
@@ -2015,6 +2133,7 @@ namespace Basis.BasisUI
             TeleportToItem.Descriptor.IconImage.rectTransform.sizeDelta = new Vector2(-30, -30);
 
             TeleportToItem.Descriptor.SetActive(!isScene);
+            TeleportToItem.Descriptor.SetTooltip(BasisLocalization.Get("library.instantiated.teleport.tooltip"));
             TeleportToItem.OnClicked += () =>
             {
 
@@ -2033,7 +2152,7 @@ namespace Basis.BasisUI
                                 offsetTarget.y = offsetTarget.y + itemKey.bundleConnector.Bounds.max.y;
                             }
 
-                            BasisLocalPlayer.Instance.Teleport( offsetTarget, Quaternion.identity );
+                            BasisLocalPlayer.Instance.Teleport( offsetTarget, Quaternion.identity, mode: BasisTeleportMode.WorldFeet );
                         }
 
                     break;
@@ -2043,21 +2162,76 @@ namespace Basis.BasisUI
                 }
             };
 
+            // Static / lock toggle — networked game objects only; applies for everyone (server-authoritative).
+            // Cycles None -> Static (creator or moderator) -> Admin-locked (moderator only) -> None.
+            if (itemKey.SpawnMethod == BasisRuntimeSpawnRegistry.SpawnMethod.Network && itemKey.SpawnMode == BasisRuntimeSpawnRegistry.SpawnMode.GameObject)
+            {
+                bool isAdmin = IsProtected;
+                bool isCreator = itemKey.UUIDOfCreator == BasisLocalPlayer.Instance.UUID;
+
+                // Current lock level: 0 = none, 1 = static (creator/mod), 2 = admin-locked (mod only).
+                int lockLevel = itemKey.StaticAdminLocked ? 2 : (itemKey.Static ? 1 : 0);
+
+                // Decide what the next press does and whether the local player is allowed to do it.
+                bool nextStatic;
+                bool nextAdmin;
+                bool canToggle;
+                switch (lockLevel)
+                {
+                    case 0: // none -> static
+                        nextStatic = true; nextAdmin = false;
+                        canToggle = isCreator || isAdmin;
+                        break;
+                    case 1: // static -> admin-lock (moderator) or -> none (creator)
+                        if (isAdmin) { nextStatic = true; nextAdmin = true; canToggle = true; }
+                        else { nextStatic = false; nextAdmin = false; canToggle = isCreator; }
+                        break;
+                    default: // 2: admin-lock -> none (moderator only)
+                        nextStatic = false; nextAdmin = false;
+                        canToggle = isAdmin;
+                        break;
+                }
+
+                PanelButton staticToggle = PanelButton.CreateNew(ButtonStyles.StandardButton, itemListPanel.TabButtonParent);
+                staticToggle.Descriptor.SetTitle(string.Empty);
+                staticToggle.SetIcon(lockLevel == 0 ? AddressableAssets.Sprites.Unlocked
+                                   : lockLevel == 1 ? AddressableAssets.Sprites.Locked
+                                   : AddressableAssets.Sprites.Admin);
+                staticToggle.SetSize(new Vector2(80, 80));
+                staticToggle.Descriptor.IconImage.rectTransform.sizeDelta = new Vector2(-30, -30);
+                staticToggle.Descriptor.SetTooltip(BasisLocalization.Get(
+                    lockLevel == 0 ? "library.instantiated.static.tooltip"
+                  : lockLevel == 1 ? "library.instantiated.static.lockedTooltip"
+                  : "library.instantiated.static.adminTooltip"));
+
+                // Disabled reason depends on why: an admin-locked item can only be changed by a moderator.
+                string disabledReason = lockLevel == 2
+                    ? BasisLocalization.Get("library.instantiated.static.adminOnly")
+                    : BasisLocalization.Get("library.instantiated.static.noPermission");
+                staticToggle.SetInteractable(canToggle, canToggle ? null : disabledReason);
+
+                staticToggle.OnClicked += () =>
+                {
+                    // Mode 0 = GameObject. The server authorizes per tier and rebroadcasts; the row
+                    // icon updates when that broadcast arrives (RegistryChangeType.Modified).
+                    BasisNetworkSpawnItem.RequestSetStatic(itemKey.LoadedNetID, 0, nextStatic, nextAdmin);
+                };
+            }
+
             PanelButton removeItem = PanelButton.CreateNew(ButtonStyles.CancelButton, itemListPanel.TabButtonParent);
             removeItem.Descriptor.SetTitle(string.Empty);
             removeItem.SetIcon(AddressableAssets.Sprites.Trash);
             removeItem.SetSize(new Vector2(80, 80));
             removeItem.Descriptor.IconImage.rectTransform.sizeDelta = new Vector2(-30, -30);
+            removeItem.Descriptor.SetTooltip(BasisLocalization.Get("library.instantiated.remove.tooltip"));
 
             // only apply this to items that are spawned on the network
             if(itemKey.SpawnMethod == BasisRuntimeSpawnRegistry.SpawnMethod.Network)
             {
                 // determine if we can actually remove this via admin
-                if (removeItem.Descriptor.gameObject.TryGetComponent<Button>(out Button removeButtonComponent))
-                {
-                    // if the item is embedded only allow an admin to interact
-                    removeButtonComponent.interactable = !itemKey.isProtected || IsProtected;
-                }
+                // if the item is embedded only allow an admin to interact
+                bool canRemove = !itemKey.isProtected || IsProtected;
+                removeItem.SetInteractable(canRemove, canRemove ? null : BasisLocalization.Get("library.disabled.protected"));
             }
 
             removeItem.OnClicked += async () =>
@@ -2078,6 +2252,10 @@ namespace Basis.BasisUI
                 {
                     case BasisRuntimeSpawnRegistry.SpawnMethod.Local:
                     case BasisRuntimeSpawnRegistry.SpawnMethod.Embedded:
+
+                        // If this content was set to load on boot, removing it here also stops it
+                        // from coming back next launch. No-op when it was never a boot item.
+                        _ = BasisPreloadContentStore.Remove(itemKey.Url);
 
                         switch(itemKey.SpawnMode)
                         {

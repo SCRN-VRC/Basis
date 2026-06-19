@@ -88,14 +88,27 @@ namespace Basis.Scripts.Device_Management.Devices.Unity_Spatial_Tracking
             }
 
             // Unscaled device coord in *real* tracking space
-            ComputeUnscaledDeviceCoord(
-                ref UnscaledDeviceCoord,
-                devicePose.mDeviceToAbsoluteTracking.GetPosition()
-            );
-            UnscaledDeviceCoord.rotation = devicePose.mDeviceToAbsoluteTracking.GetRotation();
+            Vector3 devicePosition = devicePose.mDeviceToAbsoluteTracking.GetPosition();
+            Quaternion deviceRotation = devicePose.mDeviceToAbsoluteTracking.GetRotation();
+
+            // The HMD's tracked origin isn't the eyes. Cache the full head-local origin->center-eye offset
+            // (averaged eye-to-head; head-local so head pitch can't leak the forward term into the height).
+            if (Device.deviceIndex == Valve.VR.OpenVR.k_unTrackedDeviceIndex_Hmd
+                && SteamVR.instance != null && SteamVR.instance.eyes != null && SteamVR.instance.eyes.Length >= 2)
+            {
+                CenterEyeOffset = (SteamVR.instance.eyes[0].pos + SteamVR.instance.eyes[1].pos) * 0.5f;
+                CenterEyeVerticalOffset = CenterEyeOffset.y;
+            }
+
+            ComputeUnscaledDeviceCoord(ref UnscaledDeviceCoord, devicePosition);
+            UnscaledDeviceCoord.rotation = deviceRotation;
 
             // Your existing scaling pipeline
             ConvertToScaledDeviceCoord();
+
+            // Place the avatar eye bone at the true center-eye (Control only -- the camera keeps the device-
+            // origin pose so SteamVR's per-eye render offset isn't doubled), scaled with the avatar.
+            ScaledControlPositionOffset = ScaledDeviceCoord.rotation * (CenterEyeOffset * BasisHeightDriver.DeviceScale);
 
             // CenterEye extra simulation path
             if (TryGetRole(out var currentRole) && currentRole == BasisBoneTrackedRole.CenterEye)

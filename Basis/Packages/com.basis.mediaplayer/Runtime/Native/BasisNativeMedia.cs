@@ -33,6 +33,12 @@ internal static class BasisNativeMedia
     [DllImport(Lib, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
     private static extern IntPtr basis_media_open([MarshalAs(UnmanagedType.LPStr)] string url);
 
+    [DllImport(Lib, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
+    private static extern IntPtr basis_media_open_dual(
+        [MarshalAs(UnmanagedType.LPStr)] string videoUrl,
+        [MarshalAs(UnmanagedType.LPStr)] string audioUrl,
+        int deliveryHint);
+
     [DllImport(Lib, CallingConvention = CallingConvention.StdCall)]
     private static extern void basis_media_close(IntPtr engine);
 
@@ -108,6 +114,9 @@ internal static class BasisNativeMedia
     [DllImport(Lib, CallingConvention = CallingConvention.StdCall)]
     private static extern int basis_media_seek_back_us(IntPtr engine, long backUs);
 
+    [DllImport(Lib, CallingConvention = CallingConvention.StdCall)]
+    private static extern int basis_media_poll_caption(IntPtr engine, byte[] buf, int bufSize, out long startUs, out long endUs);
+
     // ---- Managed wrappers (translate the flat ABI into friendlier types) ----
 
     public static IntPtr Open(string url)
@@ -122,6 +131,35 @@ internal static class BasisNativeMedia
                 "basis_media_native shared library not found. Build it from " +
                 "com.basis.mediaplayer/Native~/ (CMake on desktop, NDK on Android) and place the " +
                 "result under com.basis.mediaplayer/Plugins/<platform>/.", ex);
+        }
+    }
+
+    // Opens a video stream plus an optional separate audio-only stream, synced by
+    // the engine onto one clock. delivery selects the live-vs-on-demand clock; Auto
+    // lets the engine detect it at open. A single muxed stream with Auto delivery is
+    // exactly Open(videoUrl) (which opens with the Auto hint); everything else routes
+    // through basis_media_open_dual, so the load path can always call here. A native
+    // lib that predates split-stream has no basis_media_open_dual export; surface that
+    // as an actionable rebuild message rather than a hard crash.
+    public static IntPtr OpenWithAudio(string videoUrl, string audioUrl, BasisMediaDelivery delivery)
+    {
+        if (string.IsNullOrEmpty(audioUrl) && delivery == BasisMediaDelivery.Auto) return Open(videoUrl);
+        try
+        {
+            return basis_media_open_dual(videoUrl, audioUrl, (int)delivery);
+        }
+        catch (DllNotFoundException ex)
+        {
+            throw new InvalidOperationException(
+                "basis_media_native shared library not found. Build it from " +
+                "com.basis.mediaplayer/Native~/ and place the result under " +
+                "com.basis.mediaplayer/Plugins/<platform>/.", ex);
+        }
+        catch (EntryPointNotFoundException ex)
+        {
+            throw new InvalidOperationException(
+                "basis_media_native is present but predates split-stream playback " +
+                "(no basis_media_open_dual). Rebuild it from com.basis.mediaplayer/Native~/.", ex);
         }
     }
 
@@ -285,6 +323,18 @@ internal static class BasisNativeMedia
         if (e == IntPtr.Zero) return false;
         try { return basis_media_seek_back_us(e, backUs) == 0; }
         catch (EntryPointNotFoundException) { return false; }
+    }
+
+    // Polls the in-band caption cue active at the current presentation position into
+    // a caller-owned buffer (avoids per-frame allocation on the poll path). Returns
+    // the number of UTF-8 bytes written (0 = no active cue), or -1 when the engine is
+    // gone or the native lib predates captions (older build without the export).
+    public static int PollCaption(IntPtr e, byte[] buf, out long startUs, out long endUs)
+    {
+        startUs = 0; endUs = 0;
+        if (e == IntPtr.Zero || buf == null || buf.Length == 0) return -1;
+        try { return basis_media_poll_caption(e, buf, buf.Length, out startUs, out endUs); }
+        catch (EntryPointNotFoundException) { return -1; }
     }
 
     private static string ReadCString(byte[] buf)

@@ -47,6 +47,10 @@ public class SMModuleCalibration : BasisSettingsBase
     private static string K_SELECTED_SCALE => BasisSettingsDefaults.SelectedScale.BindingKey;     // "selected scale"
     private static string K_REALWORLD_EYE_HEIGHT => BasisSettingsDefaults.realworldeyeheight.BindingKey; // "real world eye height"
     private static string K_PITCH_CALIBRATION => BasisSettingsDefaults.PitchCalibration.BindingKey;     // "pitchcalibration"
+    private static string K_STANDING_EYE_CORRECTION => BasisSettingsDefaults.CalibrationStandingEyeHeightMeters.BindingKey; // "calibrationstandingeyeheightmeters"
+    private static string K_ENABLE_STANDING_EYE_CORRECTION => BasisSettingsDefaults.EnableStandingEyeHeightCorrection.BindingKey; // "enablestandingeyeheightcorrection"
+    private static string K_ADDITIONAL_PLAYER_HEIGHT => BasisSettingsDefaults.AdditionalPlayerHeight.BindingKey; // "additionalplayerheight"
+    private static string K_ENABLE_STANDING_HEIGHT_NUDGE => BasisSettingsDefaults.EnableStandingHeightNudge.BindingKey; // "enablestandingheightnudge"
 
     // One Euro globals
     private static string K_FBIK_MINCUTOFF => BasisSettingsDefaults.FBIKMinCutoff.BindingKey;                 // "fbikmincutoff"
@@ -149,6 +153,7 @@ public class SMModuleCalibration : BasisSettingsBase
     // IK Collider & Tuning keys
     private static string K_FBIK_COLLISIONS_ENABLED => BasisSettingsDefaults.FBIKCollisionsEnabled.BindingKey;
     private static string K_FBIK_PROTECT_ELBOW => BasisSettingsDefaults.FBIKProtectElbow.BindingKey;
+    private static string K_FBIK_COLLIDE_TRACKED_ELBOW => BasisSettingsDefaults.FBIKCollideTrackedElbow.BindingKey;
     private static string K_FBIK_USE_HAND_CAPSULE => BasisSettingsDefaults.FBIKUseHandCapsule.BindingKey;
     private static string K_FBIK_CHEST_RADIUS => BasisSettingsDefaults.FBIKChestRadius.BindingKey;
     private static string K_FBIK_COLLISION_SKIN => BasisSettingsDefaults.FBIKCollisionSkin.BindingKey;
@@ -268,6 +273,7 @@ public class SMModuleCalibration : BasisSettingsBase
                     {
                         if (!Mathf.Approximately(old, parsed))
                         {
+                            BasisHeightDriver.ClearRuntimeOscEyeHeightOverride();
                             SelectedScale = parsed;
                             _dirty = true;
                         }
@@ -302,6 +308,23 @@ public class SMModuleCalibration : BasisSettingsBase
                 {
                     PitchCalibrationEnabled = pitchVal;
                 }
+                break;
+
+            case var s when s == K_STANDING_EYE_CORRECTION:
+                // Persistent standing eye-height correction changed: re-apply height/scale now so
+                // DeviceScale picks up the new denominator. Applied directly (not via the _dirty path,
+                // which only re-applies on height-mode/scale/custom-scale changes).
+                BasisHeightDriver.ApplyScaleAndHeight();
+                break;
+
+            case var s when s == K_ENABLE_STANDING_EYE_CORRECTION:
+                // Toggling the correction on/off flips whether the stored metres apply; re-apply now.
+                BasisHeightDriver.ApplyScaleAndHeight();
+                break;
+
+            case var s when s == K_ADDITIONAL_PLAYER_HEIGHT || s == K_ENABLE_STANDING_HEIGHT_NUDGE:
+                // Standing-height nudge value or its gate changed: re-apply so the DeviceScale denominator updates.
+                BasisHeightDriver.ApplyScaleAndHeight();
                 break;
 
             // ---------- GLOBAL ONE EURO PARAMS ----------
@@ -591,6 +614,10 @@ public class SMModuleCalibration : BasisSettingsBase
 
             case var s when s == K_FBIK_PROTECT_ELBOW:
                 if (bool.TryParse(optionValue, out var peVal)) ApplyIKDataBool((ref BasisFullBodyData d) => d.ProtectElbow = peVal);
+                break;
+
+            case var s when s == K_FBIK_COLLIDE_TRACKED_ELBOW:
+                if (bool.TryParse(optionValue, out var cteVal)) ApplyIKDataBool((ref BasisFullBodyData d) => d.CollideTrackedElbow = cteVal);
                 break;
 
             case var s when s == K_FBIK_USE_HAND_CAPSULE:
