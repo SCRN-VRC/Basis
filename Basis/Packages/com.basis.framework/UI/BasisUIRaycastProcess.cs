@@ -23,6 +23,7 @@ namespace Basis.Scripts.UI
         public const float SliderJoystickDeadzone = 0.2f;
         public const float SliderJoystickRangePerSecond = 0.6f;
         private PanelSlider _joystickDrivenSlider;
+        private Vector2 _vrScrollStick;
 
         private static bool IsTriggerDown(BasisInput input, bool wasDown)
         {
@@ -75,6 +76,7 @@ namespace Basis.Scripts.UI
             // list with the old cached count throws ArgumentOutOfRange.
             List<BasisInput> snapshot = Inputs;
             int DevicesCount = snapshot.Count;
+            _vrScrollStick = ReadRightHandScrollStick(snapshot, DevicesCount);
             HasTarget = false;
             var EffectiveMouseAction = false;
 
@@ -257,6 +259,19 @@ namespace Basis.Scripts.UI
             return null;
         }
 
+        private static Vector2 ReadRightHandScrollStick(List<BasisInput> snapshot, int DevicesCount)
+        {
+            for (int Index = 0; Index < DevicesCount; Index++)
+            {
+                BasisInput input = snapshot[Index];
+                if (input != null && input.TryGetRole(out BasisBoneTrackedRole role) && role == BasisBoneTrackedRole.RightHand)
+                {
+                    return input.CurrentInputState.Primary2DAxisDeadZoned;
+                }
+            }
+            return Vector2.zero;
+        }
+
         private const string CursorPos = "_CursorPos";
 
         public void SimulateOnCanvas(RaycastResult raycastResult, BasisRaycastUIHitData hit, BasisPointerEventData currentEventData, BasisInput BaseInput)
@@ -272,7 +287,7 @@ namespace Basis.Scripts.UI
             Vector2 previousPosition = currentEventData.position;
             currentEventData.delta = hit.screenPosition - previousPosition;
             currentEventData.position = hit.screenPosition;
-            currentEventData.scrollDelta = BaseInput.CurrentInputState.Secondary2DAxisDeadZoned;
+            currentEventData.scrollDelta = ComputeScrollDelta(BaseInput);
 
             // Always keep latest raycast, so movement / scroll / hover use up-to-date info
             currentEventData.pointerCurrentRaycast = raycastResult;
@@ -307,10 +322,10 @@ namespace Basis.Scripts.UI
             // Button UP is handled in Simulate() based on trigger state
 
             // ---- OTHER POINTER EVENTS ----
+            ProcessPointerMovement(currentEventData);
             ProcessScrollWheel(currentEventData);
 
             // VR-friendly: larger drag threshold so tiny jitter isn't a drag.
-            ProcessPointerMovement(currentEventData);
             ProcessPointerButtonDrag(currentEventData, pixelDragThresholdMultiplier: 3.0f);
         }
 
@@ -436,11 +451,29 @@ namespace Basis.Scripts.UI
             return CurrentEventData.used;
         }
 
+        // Continuous VR stick → per-second rate × unscaledDeltaTime (frame-rate independent).
+        // Desktop mouse wheel (CenterEye) is already a discrete tick, so pass it through unscaled.
+        private Vector2 ComputeScrollDelta(BasisInput input)
+        {
+            if (input.TryGetRole(out BasisBoneTrackedRole role) && role == BasisBoneTrackedRole.CenterEye)
+            {
+                return input.CurrentInputState.Secondary2DAxisDeadZoned;
+            }
+
+            Vector2 axis = _vrScrollStick + input.CurrentInputState.Secondary2DAxisDeadZoned;
+            return axis * (SMModuleControllerSettings.ScrollSpeed * Time.unscaledDeltaTime);
+        }
+
         public void ProcessScrollWheel(BasisPointerEventData eventData)
         {
             var scrollDelta = eventData.scrollDelta;
             if (!Mathf.Approximately(scrollDelta.sqrMagnitude, 0f))
             {
+                if (_vrScrollStick.sqrMagnitude > 0f && ResolveActiveSlider() != null)
+                {
+                    return;
+                }
+
                 GameObject scrollTarget = eventData.pointerEnter;
                 if (scrollTarget == null)
                 {

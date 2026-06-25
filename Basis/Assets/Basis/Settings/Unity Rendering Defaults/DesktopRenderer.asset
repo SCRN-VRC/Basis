@@ -1,5 +1,19 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!114 &-6138350381377972815
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 81b0beab58c84cc99fcc3ff19bd91dde, type: 3}
+  m_Name: BasisHighlightFeature
+  m_EditorClassIdentifier: Basis Framework::Basis.Scripts.BasisSdk.Highlight.BasisHighlightFeature
+  m_Active: 1
+  settings: {fileID: 11400000, guid: c301ac59f1dce524f8e770032f059e8f, type: 2}
 --- !u!114 &-4357968347084770853
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -22,6 +36,24 @@ MonoBehaviour:
   scaleBlurWith: 2
   scaleReferenceSize: 1080
   shader: {fileID: 4800000, guid: bb11bdc2e8aaf4c80b5315f3778d7ad4, type: 3}
+--- !u!114 &-1772261579603543917
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b68e02a3d21e52c4ca5f271ae91b3325, type: 3}
+  m_Name: BasisVariableRateShadingFeature
+  m_EditorClassIdentifier: Basis Framework::Basis.Scripts.Rendering.BasisVariableRateShadingFeature
+  m_Active: 1
+  maskShader: {fileID: 4800000, guid: efef13fc8131a1d47b28eea231ceb441, type: 3}
+  gazeProjectDistance: 3
+  yFlip: 1
+  debugVisualize: 0
+  debugShowColorMask: 0
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -49,8 +81,9 @@ MonoBehaviour:
   m_RendererFeatures:
   - {fileID: 8304327589836468309}
   - {fileID: 7574712923221662252}
-  m_RendererFeatureMap: 55b0addaf1e53e732c1a306845c91e69
-  m_UseNativeRenderPass: 1
+  - {fileID: -6138350381377972815}
+  - {fileID: -1772261579603543917}
+  m_RendererFeatureMap: 55b0addaf1e53e732c1a306845c91e69b11515bbd932d0aa9378a8b27ba967e7
   xrSystemData: {fileID: 0}
   postProcessData: {fileID: 11400000, guid: 41439944d30ece34e96484bdb6645b55, type: 2}
   m_AssetVersion: 3
@@ -72,12 +105,13 @@ MonoBehaviour:
     zFailOperation: 0
   m_ShadowTransparentReceive: 1
   m_RenderingMode: 2
-  m_DepthPrimingMode: 0
+  m_DepthPrimingMode: 2
   m_CopyDepthMode: 1
   m_DepthAttachmentFormat: 0
   m_DepthTextureFormat: 0
   m_AccurateGbufferNormals: 0
   m_IntermediateTextureMode: 0
+  m_TileOnlyMode: 0
 --- !u!114 &1677690431011315535
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -93,9 +127,17 @@ MonoBehaviour:
   m_Active: 1
   downsampleDepthShader: {fileID: 4800000, guid: cffeaeec0396a2c4dad475266cc8dfeb, type: 3}
   volumetricFogShader: {fileID: 4800000, guid: 08f816187f9af0244a95556ee0cab83f, type: 3}
+  blueNoiseTexture: {fileID: 2800000, guid: 31528b9dd703c9241afc8298d713bc0f, type: 3}
+  bakeAPVComputeShader: {fileID: 7200000, guid: 79b0de35be4da5541aaa573ddd692afc, type: 3}
+  bakeBoundsCenter: {x: 0, y: 0, z: 0}
+  bakeBoundsSize: {x: 128, y: 32, z: 128}
+  bakeVoxelSize: 1
+  bakeMaxResolution: 256
+  bakedAPVVolumeAsset: {fileID: 0}
+  bakeUseAsyncCompute: 0
 --- !u!114 &7574712923221662252
 MonoBehaviour:
-  m_ObjectHideFlags: 0
+  m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
@@ -150,9 +192,17 @@ MonoBehaviour:
   m_Active: 1
   downsampleDepthShader: {fileID: 4800000, guid: cffeaeec0396a2c4dad475266cc8dfeb, type: 3}
   volumetricFogShader: {fileID: 4800000, guid: 08f816187f9af0244a95556ee0cab83f, type: 3}
+  blueNoiseTexture: {fileID: 2800000, guid: 31528b9dd703c9241afc8298d713bc0f, type: 3}
+  bakeAPVComputeShader: {fileID: 7200000, guid: 79b0de35be4da5541aaa573ddd692afc, type: 3}
+  bakeBoundsCenter: {x: 0, y: 0, z: 0}
+  bakeBoundsSize: {x: 128, y: 32, z: 128}
+  bakeVoxelSize: 1
+  bakeMaxResolution: 256
+  bakedAPVVolumeAsset: {fileID: 0}
+  bakeUseAsyncCompute: 0
 --- !u!114 &8304327589836468309
 MonoBehaviour:
-  m_ObjectHideFlags: 0
+  m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
@@ -165,3 +215,11 @@ MonoBehaviour:
   m_Active: 1
   downsampleDepthShader: {fileID: 4800000, guid: cffeaeec0396a2c4dad475266cc8dfeb, type: 3}
   volumetricFogShader: {fileID: 4800000, guid: 08f816187f9af0244a95556ee0cab83f, type: 3}
+  blueNoiseTexture: {fileID: 2800000, guid: 31528b9dd703c9241afc8298d713bc0f, type: 3}
+  bakeAPVComputeShader: {fileID: 7200000, guid: 79b0de35be4da5541aaa573ddd692afc, type: 3}
+  bakeBoundsCenter: {x: 0, y: 0, z: 0}
+  bakeBoundsSize: {x: 128, y: 32, z: 128}
+  bakeVoxelSize: 1
+  bakeMaxResolution: 256
+  bakedAPVVolumeAsset: {fileID: 0}
+  bakeUseAsyncCompute: 0

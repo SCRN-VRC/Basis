@@ -148,6 +148,8 @@ namespace Basis.BasisUI
 
         public static BasisSettingsBinding<float> SmoothTurnSpeed = new("smoothturnspeed", new BasisPlatformDefault<float>(200f));
 
+        public static BasisSettingsBinding<float> ScrollSpeed = new("scrollspeed", new BasisPlatformDefault<float>(90f));
+
         // ---------------- PLAYSPACE MOVER ----------------
         // VR-only grab-and-drag of the play space. Off by default; opt-in under Body Tracking.
         public static BasisSettingsBinding<bool> EnablePlayspaceMover = new("enableplayspacemover", new BasisPlatformDefault<bool>(false));
@@ -219,6 +221,13 @@ namespace Basis.BasisUI
         public const float FOG_DENSITY_MAX = 1f;
 
         /// <summary>
+        /// When enabled, volumetric fog samples APV lighting from a fast runtime-baked static volume
+        /// instead of evaluating the adaptive probe volumes live every raymarch step. The bake is
+        /// produced on demand from the world's APV and used immediately.
+        /// </summary>
+        public static BasisSettingsBinding<bool> VolumetricFogBakedAPV = new("volumetricfogbakedapv", new BasisPlatformDefault<bool>(true));
+
+        /// <summary>
         /// When enabled, ReflectionProbe components in the scene whose mode is Realtime are
         /// driven by Basis at the rate selected by <see cref="RealtimeReflectionProbeRate"/>.
         /// When disabled, Basis does not modify any probe state.
@@ -243,15 +252,28 @@ namespace Basis.BasisUI
 
         public static BasisSettingsBinding<string> Antialiasing = new("antialiasing", new BasisPlatformDefault<string>("msaa 2x"));
 
-        // Master gizmo gate. When off, every gizmo sub-toggle below is inert and
-        // BasisGizmoManager tears down its parent + cached gizmo dictionaries.
+        public static BasisSettingsBinding<bool> DevVariableRateShading = new("devvariablerateshading", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> DevVariableRateShadingDesktop = new("devvariablerateshadingdesktop", new BasisPlatformDefault<bool>(false));
+
+        public static BasisSettingsBinding<bool> EyeTrackingPreferOsc = new("eyetrackingpreferosc", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> EyeFoveationAutoManage = new("eyefoveationautomanage", new BasisPlatformDefault<bool>(true));
+
+        public const float VRS_RADIUS_MIN = 0f;
+        public const float VRS_RADIUS_MAX = 1f;
+        public static BasisSettingsBinding<float> VrsFovealInnerRadius = new("vrsfovealinner_v2", new BasisPlatformDefault<float>(0.25f));
+        public static BasisSettingsBinding<float> VrsFovealOuterRadius = new("vrsfovealouter_v2", new BasisPlatformDefault<float>(0.31f));
+
+        // Legacy master gizmo gate. The Developer UI no longer exposes this — gizmo
+        // rendering now turns on whenever any individual gizmo toggle below is enabled
+        // (see SMModuleDebugOptions.RecomputeUseGizmos). Kept so resets/loads stay valid.
         public static BasisSettingsBinding<bool> ShowGizmos = new("showgizmos", new BasisPlatformDefault<bool>(false));
 
-        // Sub-gizmos default on so flipping ShowGizmos preserves the pre-split
-        // experience (skeleton lines + calibration spheres + jiggle render all visible).
-        public static BasisSettingsBinding<bool> GizmoSkeletonLines = new("gizmoskeletonlines", new BasisPlatformDefault<bool>(true));
-        public static BasisSettingsBinding<bool> GizmoCalibrationSpheres = new("gizmocalibrationspheres", new BasisPlatformDefault<bool>(true));
-        public static BasisSettingsBinding<bool> GizmoJiggleVisuals = new("gizmojigglevisuals", new BasisPlatformDefault<bool>(true));
+        // Every gizmo defaults off so the derived render gate stays off until the user
+        // opts in to a specific gizmo. Keys bumped (_v2) so installs that persisted the
+        // old default-on values don't suddenly render gizmos once the master gate is gone.
+        public static BasisSettingsBinding<bool> GizmoSkeletonLines = new("gizmoskeletonlines_v2", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> GizmoCalibrationSpheres = new("gizmocalibrationspheres_v2", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> GizmoJiggleVisuals = new("gizmojigglevisuals_v2", new BasisPlatformDefault<bool>(false));
 
         public static BasisSettingsBinding<bool> TrackerGizmos = new("trackergizmos", new BasisPlatformDefault<bool>(false));
 
@@ -327,10 +349,7 @@ namespace Basis.BasisUI
 
         public static BasisSettingsBinding<bool> EnableShaderPrewarm = new("enableshaderprewarm", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> EnableMaterialCorrection = new("enablematerialcorrection", new BasisPlatformDefault<bool>(false));
-
-        public static BasisSettingsBinding<string> RecorderCountdownSeconds = new("recordercountdownseconds", new BasisPlatformDefault<string>("3"));
-        public static BasisSettingsBinding<bool> RecorderAutoStop = new("recorderautostop", new BasisPlatformDefault<bool>(false));
-        public static BasisSettingsBinding<string> RecorderMaxDurationSeconds = new("recordermaxdurationseconds", new BasisPlatformDefault<string>("30"));
+        public static BasisSettingsBinding<bool> EnableGraphicsStatePrewarm = new("enablegraphicsstateprewarm", new BasisPlatformDefault<bool>(false));
 
         /// <summary>
         /// When enabled, suppresses all <see cref="BasisDebug"/> log output (Log, LogWarning, LogError).
@@ -397,7 +416,9 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<float> MicrophoneIconOffsetX = new("microphoneiconoffsetx", new BasisPlatformDefault<float>(0f));
         public static BasisSettingsBinding<float> MicrophoneIconOffsetY = new("microphoneiconoffsety", new BasisPlatformDefault<float>(0f));
 
-        public static BasisSettingsBinding<string> VisualState = new("visualstate", new BasisPlatformDefault<string>("off"));
+        public static BasisSettingsBinding<bool> AvatarRangeIndicator = new("avatarrangeindicator", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> HearingRangeIndicator = new("hearingrangeindicator", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> MicrophoneRangeIndicator = new("microphonerangeindicator", new BasisPlatformDefault<bool>(false));
 
         public static BasisSettingsBinding<string> IKMode = new("ikmode", new BasisPlatformDefault<string>("eye height"));
 
@@ -681,7 +702,7 @@ namespace Basis.BasisUI
         // ---------------- RAYCAST / INTERACTION VISUALS ----------------
         public static BasisSettingsBinding<float> RaycastLineWidth = new("raycastlinewidth", new BasisPlatformDefault<float>(1f));
         public static BasisSettingsBinding<string> RaycastLineColor = new("raycastlinecolor", new BasisPlatformDefault<string>(""));
-        public static BasisSettingsBinding<string> PickupHighlightColor = new("pickuphighlightcolor", new BasisPlatformDefault<string>(""));
+        public static BasisSettingsBinding<string> HighlightColor = new("highlightcolor", new BasisPlatformDefault<string>(""));
         public static BasisSettingsBinding<string> PickupLineColor = new("pickuplinecolor", new BasisPlatformDefault<string>(""));
 
         // ---------------- GLOBAL ONE EURO PARAMS ----------------
@@ -1409,6 +1430,7 @@ namespace Basis.BasisUI
             DominantHand.LoadBindingValue();
             usesnapturn.LoadBindingValue();
             SmoothTurnSpeed.LoadBindingValue();
+            ScrollSpeed.LoadBindingValue();
 
             // Avatar / IK / Body
             SelectedHeight.LoadBindingValue();
@@ -1458,10 +1480,15 @@ namespace Basis.BasisUI
             ShadowQuality.LoadBindingValue();
             HDRSupport.LoadBindingValue();
             Antialiasing.LoadBindingValue();
+            DevVariableRateShading.LoadBindingValue();
+            DevVariableRateShadingDesktop.LoadBindingValue();
+            VrsFovealInnerRadius.LoadBindingValue();
+            VrsFovealOuterRadius.LoadBindingValue();
             UseBloomOverride.LoadBindingValue();
             BloomIntensity.LoadBindingValue();
             UseVolumetricFogOverride.LoadBindingValue();
             VolumetricFogDensity.LoadBindingValue();
+            VolumetricFogBakedAPV.LoadBindingValue();
             UseRealtimeReflectionProbes.LoadBindingValue();
             RealtimeReflectionProbeRate.LoadBindingValue();
             ShowGizmos.LoadBindingValue();
@@ -1497,6 +1524,9 @@ namespace Basis.BasisUI
             EnableMaterialCorrection.LoadBindingValue();
             ContentPoliceControl.MaterialCorrectionEnabled = EnableMaterialCorrection.RawValue;
             EnableMaterialCorrection.OnChanged += value => ContentPoliceControl.MaterialCorrectionEnabled = value;
+            EnableGraphicsStatePrewarm.LoadBindingValue();
+            BasisGraphicsStatePrewarm.Enabled = EnableGraphicsStatePrewarm.RawValue;
+            EnableGraphicsStatePrewarm.OnChanged += value => BasisGraphicsStatePrewarm.Enabled = value;
             DebugLogTagFilter.LoadBindingValue();
             ApplyDebugLogTagFilter(DebugLogTagFilter.RawValue);
             DebugLogTagFilter.OnChanged += ApplyDebugLogTagFilter;
@@ -1511,7 +1541,9 @@ namespace Basis.BasisUI
             // on startup when the user already had it enabled, not only after a manual toggle.
             BasisStreamingMetaRuntime.ApplyFromSettings();
             MemoryAllocation.LoadBindingValue();
-            VisualState.LoadBindingValue();
+            AvatarRangeIndicator.LoadBindingValue();
+            HearingRangeIndicator.LoadBindingValue();
+            MicrophoneRangeIndicator.LoadBindingValue();
             FoveatedRendering.LoadBindingValue();
             FieldOfView.LoadBindingValue();
             RenderResolution.LoadBindingValue();
@@ -1923,7 +1955,7 @@ namespace Basis.BasisUI
 
             RaycastLineWidth.LoadBindingValue();
             RaycastLineColor.LoadBindingValue();
-            PickupHighlightColor.LoadBindingValue();
+            HighlightColor.LoadBindingValue();
             PickupLineColor.LoadBindingValue();
 
             // Subscribers that read RawValue (Apply* in OnSettingsFinishedChanges)
