@@ -6,35 +6,27 @@ using UnityEngine.Rendering.Universal;
 namespace Basis.Scripts.Rendering
 {
     /// <summary>
-    /// Gaze-driven Variable Rate Shading for desktop (DirectX 12). Generates a per-frame
-    /// shading rate image that keeps the foveal region sharp (1x1) and coarsens the
-    /// periphery (2x2 then 4x4), then binds it onto URP's opaque and transparent passes.
-    /// Add this only to the Desktop renderer; Quest keeps its native OpenXR foveation.
+    /// Gaze-driven Variable Rate Shading for desktop (DirectX 12). Builds a per-frame
+    /// shading rate image that keeps each eye's foveal region sharp and coarsens the
+    /// periphery, then binds it onto URP's depth, depth-normals, opaque and transparent
+    /// passes. Desktop only; Quest keeps its native OpenXR foveation.
     /// </summary>
     [DisallowMultipleRendererFeature("BasisVariableRateShading")]
     public class BasisVariableRateShadingFeature : ScriptableRendererFeature
     {
-        [SerializeField] private Shader maskShader;
+        [SerializeField] private ComputeShader buildShader;
         [SerializeField] private float gazeProjectDistance = 3f;
         [SerializeField] private bool yFlip = true;
         [SerializeField] private bool debugVisualize;
-        [SerializeField] private bool debugShowColorMask;
 
-        private Material _maskMaterial;
         private BasisVariableRateShadingPass _pass;
         private BasisVariableRateShadingDebugPass _debugPass;
 
         public override void Create()
         {
-            if (maskShader == null)
-                maskShader = Shader.Find("Hidden/Basis/VrsMask");
-
-            if (maskShader != null && _maskMaterial == null)
-                _maskMaterial = CoreUtils.CreateEngineMaterial(maskShader);
-
-            _pass = new BasisVariableRateShadingPass(_maskMaterial)
+            _pass = new BasisVariableRateShadingPass(buildShader)
             {
-                renderPassEvent = RenderPassEvent.BeforeRenderingOpaques,
+                renderPassEvent = RenderPassEvent.BeforeRendering,
             };
             _pass.Configure(gazeProjectDistance, yFlip);
 
@@ -46,7 +38,7 @@ namespace Basis.Scripts.Rendering
 
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
         {
-            if (_pass == null || _maskMaterial == null)
+            if (_pass == null || buildShader == null)
                 return;
 
             if (!BasisSettingsDefaults.DevVariableRateShading.RawValue
@@ -56,18 +48,14 @@ namespace Basis.Scripts.Rendering
             _pass.Configure(gazeProjectDistance, yFlip);
             renderer.EnqueuePass(_pass);
 
-            if ((debugVisualize || debugShowColorMask) && _debugPass != null)
-            {
-                _debugPass.showColorMask = debugShowColorMask;
+            if (debugVisualize && _debugPass != null)
                 renderer.EnqueuePass(_debugPass);
-            }
         }
 
         protected override void Dispose(bool disposing)
         {
-            CoreUtils.Destroy(_maskMaterial);
-            _maskMaterial = null;
             _pass = null;
+            _debugPass = null;
         }
     }
 }

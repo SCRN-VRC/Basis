@@ -38,11 +38,11 @@ namespace Basis.Scripts.Networking.Receivers
 
         [SerializeReference]
         public BasisAudioReceiver AudioReceiverModule = new BasisAudioReceiver();
-        [SerializeField]
+        [System.NonSerialized]
         public ConcurrentQueue<BasisAvatarBuffer> PayloadQueue = new ConcurrentQueue<BasisAvatarBuffer>();
         // Volatile counter avoids ConcurrentQueue.TryDequeue on empty queues (1k volatile reads vs 1k TryDequeue).
         private volatile int _pendingCount;
-        public BasisRemotePlayer RemotePlayer;
+        [System.NonSerialized] public BasisRemotePlayer RemotePlayer;
 
         public bool hasEvents = false;
         /// <summary>
@@ -88,7 +88,7 @@ namespace Basis.Scripts.Networking.Receivers
         /// T-pose local rotations for this receiver's avatar bones.
         /// Set during calibration and passed to RemoteBoneJobSystem for the skeleton apply job.
         /// </summary>
-        public NativeArray<quaternion> TposeLocalRotations;
+        [System.NonSerialized] public NativeArray<quaternion> TposeLocalRotations;
 
         /// <summary>
         /// Bone transforms for this receiver's avatar.
@@ -155,6 +155,15 @@ namespace Basis.Scripts.Networking.Receivers
         private float _dynamicJitterDepth = InitialJitterDepth;
         private float _lastPlaybackRate = 1f;
 
+        // Received bytes-on-wire metering for the per-player network gizmos. Accumulated off the
+        // main thread in AccountReceivedBytes (Interlocked) and windowed into a rate in ComputeData.
+        private const double BandwidthWindow = 0.5;
+        private long _bwBytes;
+        private long _bwPackets;
+        private double _bwTime;
+        private float _bytesPerSecond;
+        private float _packetsPerSecond;
+
         /// <summary>
         /// Sets the adaptive jitter depth parameters from a single user-facing "target depth"
         /// value. Initial matches target so cold starts don't overshoot into the slowdown
@@ -197,6 +206,15 @@ namespace Basis.Scripts.Networking.Receivers
         public byte HighestSequence => _highestSequence;
         public int SeenPackets => _seenPackets;
         public float CachedHumanScaleDebug => CachedHumanScale;
+        public float BytesPerSecond => _bytesPerSecond;
+        public float PacketsPerSecond => _packetsPerSecond;
+
+        /// <summary>Records received bytes-on-wire for this player (call from the packet handler; thread-safe).</summary>
+        public void AccountReceivedBytes(int bytes)
+        {
+            System.Threading.Interlocked.Add(ref _bwBytes, bytes);
+            System.Threading.Interlocked.Increment(ref _bwPackets);
+        }
 
         public bool hasRequiredData = false;
         /// <summary>
@@ -254,6 +272,17 @@ namespace Basis.Scripts.Networking.Receivers
         /// </summary>
         public void ComputeData(double unscaledDeltaTime)
         {
+            _bwTime += unscaledDeltaTime;
+            if (_bwTime >= BandwidthWindow)
+            {
+                long b = System.Threading.Interlocked.Exchange(ref _bwBytes, 0);
+                long p = System.Threading.Interlocked.Exchange(ref _bwPackets, 0);
+                float inv = (float)(1.0 / _bwTime);
+                _bytesPerSecond = b * inv;
+                _packetsPerSecond = p * inv;
+                _bwTime = 0.0;
+            }
+
             // Audio decode is thread-safe (per-receiver decoder/buffers, no Unity API).
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             UnityEngine.Profiling.Profiler.BeginSample("ComputeData.AudioDecode");
