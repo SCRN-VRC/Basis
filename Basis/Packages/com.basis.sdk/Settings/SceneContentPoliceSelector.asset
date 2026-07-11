@@ -162,7 +162,6 @@ MonoBehaviour:
   - UnityEngine.AudioHighPassFilter
   - UnityEngine.AudioReverbFilter
   - UnityEngine.AudioBehaviour
-  - UnityEngine.AudioListener
   - UnityEngine.AudioDistortionFilter
   - UnityEngine.AudioReverbZone
   - UnityEngine.AudioChorusFilter
@@ -399,3 +398,4 @@ MonoBehaviour:
   - BakeryAlwaysRender
   - BakeryPackAsSingleSquare
   - BakerySharedLodUv
+  - Basis.Shims.BasisActionTrigger

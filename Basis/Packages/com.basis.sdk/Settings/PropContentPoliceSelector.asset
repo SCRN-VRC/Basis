@@ -162,7 +162,6 @@ MonoBehaviour:
   - UnityEngine.AudioHighPassFilter
   - UnityEngine.AudioReverbFilter
   - UnityEngine.AudioBehaviour
-  - UnityEngine.AudioListener
   - UnityEngine.AudioDistortionFilter
   - UnityEngine.AudioReverbZone
   - UnityEngine.AudioChorusFilter
@@ -349,3 +348,4 @@ MonoBehaviour:
   - Basis.Shims.BasisOsc
   - UnityEngine.Video.VideoPlayer
   - Basis.Scripts.BasisSdk.Highlight.BasisHighlightOverride
+  - Basis.Shims.BasisActionTrigger
