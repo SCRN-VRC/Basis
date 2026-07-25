@@ -46,6 +46,21 @@ namespace Basis.Scripts.Networking.Receivers
         private const float MeterReleaseFactor = 0.90f;
 
         [System.NonSerialized] public BasisNetworkReceiver BasisNetworkReceiver;
+
+        /// <summary>
+        /// Optional decoded-PCM tap used by the voice-recording system. Invoked on the
+        /// decode thread with the freshly decoded mono frame; the callback MUST copy the
+        /// samples out because <see cref="pcmBuffer"/> is reused. Null when nobody records.
+        /// </summary>
+        public volatile System.Action<float[], int> OnDecodedFrame;
+
+        /// <summary>
+        /// Optional encoded-frame tap used to feed a spatialized voice re-emit source.
+        /// Invoked with the inbound segment as it is inserted; the handler must consume it
+        /// synchronously (the segment buffer is reused). Null when not routed to an object.
+        /// </summary>
+        public volatile System.Action<AudioSegmentDataMessage> OnEncodedFrame;
+
         public static float[] silentData;
         public static int outputSampleRate;
         private static bool _loggedOutputRate;
@@ -92,6 +107,14 @@ namespace Basis.Scripts.Networking.Receivers
         /// buffer), so the realistic trigger is a true sender-side mute.
         /// </summary>
         private const int IdleResetThresholdUnits = 10; // 200 ms
+
+        /// <summary>
+        /// Separate, much longer threshold for disabling the AudioSource. Disable/re-enable
+        /// churn restarts Steam Audio's per-source state and clicks on every resume, so the
+        /// source must survive whole inter-sentence pauses even though the decoder/jitter
+        /// rearm fires at <see cref="IdleResetThresholdUnits"/>.
+        /// </summary>
+        private const int SourceIdleDisableUnits = 150; // 3 s
 
         // Latched so the idle reset fires once per idle cycle, not every drain tick
         // while the jitter buffer is filling back up.
@@ -142,6 +165,7 @@ namespace Basis.Scripts.Networking.Receivers
         public void Insert(AudioSegmentDataMessage msg)
         {
             VoiceBuffer.InsertEncoded(msg.SequenceNumber, msg.buffer, msg.LengthUsed, msg.TotalPlayedInSilence);
+            OnEncodedFrame?.Invoke(msg);
         }
 
         // ==================== Decode pipeline ====================
@@ -161,6 +185,7 @@ namespace Basis.Scripts.Networking.Receivers
                 {
                     pcmLength = decoder.Decode(data, length, pcmBuffer, RemoteOpusSettings.MaxFrameSize, false);
                     VoiceBuffer.PushDecoded(pcmBuffer, pcmLength, true);
+                    OnDecodedFrame?.Invoke(pcmBuffer, pcmLength);
                 }
                 catch
                 {
@@ -181,6 +206,7 @@ namespace Basis.Scripts.Networking.Receivers
                 {
                     pcmLength = decoder.Decode(null, 0, pcmBuffer, RemoteOpusSettings.FrameSize, false);
                     VoiceBuffer.PushDecoded(pcmBuffer, pcmLength, true);
+                    OnDecodedFrame?.Invoke(pcmBuffer, pcmLength);
                 }
                 catch
                 {
@@ -206,6 +232,7 @@ namespace Basis.Scripts.Networking.Receivers
             {
                 pcmLength = decoder.Decode(data, length, pcmBuffer, RemoteOpusSettings.FrameSize, true);
                 VoiceBuffer.PushDecoded(pcmBuffer, pcmLength, true);
+                OnDecodedFrame?.Invoke(pcmBuffer, pcmLength);
             }
             catch
             {
@@ -392,7 +419,7 @@ namespace Basis.Scripts.Networking.Receivers
         {
             if (VoiceBuffer.HasRealAudio) return true;
 #pragma warning disable CS0420 // Volatile.Read provides correct semantics for this volatile field
-            return System.Threading.Volatile.Read(ref _silentUnits20ms) < IdleResetThresholdUnits;
+            return System.Threading.Volatile.Read(ref _silentUnits20ms) < SourceIdleDisableUnits;
 #pragma warning restore CS0420
         }
 
@@ -748,7 +775,27 @@ namespace Basis.Scripts.Networking.Receivers
         {
             // Top up the decoded queue on the audio clock (not only the per-frame network pass)
             // so a render-frame hitch can't starve this read and underrun into the fade-to-silence.
-            DrainAndDecodeThreadSafe();
+            int spins = 0;
+            while (System.Threading.Interlocked.CompareExchange(ref _decoding, 1, 0) != 0)
+            {
+                if (++spins > 256)
+                {
+                    spins = -1;
+                    break;
+                }
+                System.Threading.Thread.SpinWait(32);
+            }
+            if (spins >= 0)
+            {
+                try
+                {
+                    DrainAndDecodeLocked();
+                }
+                finally
+                {
+                    System.Threading.Volatile.Write(ref _decoding, 0);
+                }
+            }
 
             int frames = length / channels;
             double msThisCallback = 1000.0 * frames / outputSampleRate;
@@ -758,6 +805,11 @@ namespace Basis.Scripts.Networking.Receivers
             {
                 // No signal this callback — bleed the level meter toward silence.
                 SourcePeak *= MeterReleaseFactor;
+
+                if (_fadeEnvelope > 0f)
+                {
+                    VoiceBuffer.NoteUnderrun();
+                }
 
                 // Fade the last produced sample down toward zero over ~2 ms instead
                 // of an abrupt step to silence. Once the envelope hits 0 the output
@@ -787,11 +839,7 @@ namespace Basis.Scripts.Networking.Receivers
                 int newUnits = (int)(_silentUsAccum / 20000L);
                 if (newUnits > 0)
                 {
-#pragma warning disable CS0420 // Volatile.Read provides correct semantics for this volatile field
-                    int delta = newUnits - System.Threading.Volatile.Read(ref _silentUnits20ms);
-#pragma warning restore CS0420
-                    if (delta > 0)
-                        System.Threading.Interlocked.Add(ref _silentUnits20ms, delta);
+                    System.Threading.Interlocked.Add(ref _silentUnits20ms, newUnits);
                     _silentUsAccum -= newUnits * 20000L;
                 }
                 return;
@@ -845,6 +893,7 @@ namespace Basis.Scripts.Networking.Receivers
                 // Faded out mid-callback to silence; restart the envelope so the
                 // next callback with real audio fades back in instead of stepping
                 // up from 0 to full amplitude.
+                VoiceBuffer.NoteUnderrun();
                 _fadeEnvelope = 0f;
                 _lastOutputSample = 0f;
             }
@@ -973,6 +1022,7 @@ namespace Basis.Scripts.Networking.Receivers
             // 3) Smooth the boundary to silence if the queue underran.
             if (produced < frames)
             {
+                underrun = true;
                 FadeFillUnderrun(resampled, produced, frames);
             }
 
@@ -980,6 +1030,7 @@ namespace Basis.Scripts.Networking.Receivers
 
             if (underrun)
             {
+                VoiceBuffer.NoteUnderrun();
                 _fadeEnvelope = 0f;
                 _lastOutputSample = 0f;
             }

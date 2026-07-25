@@ -95,6 +95,7 @@ public static class BasisContentShareManager
         };
 
         NetDataWriter writer = new NetDataWriter();
+        writer.Put(BasisNetworkCommons.ContentShareSub_Drop);
         msg.Serialize(writer);
 
         BasisDebug.Log($"Dropping content sphere: {msg.SphereNetID} type={contentType}", BasisDebug.LogTag.Networking);
@@ -171,6 +172,7 @@ public static class BasisContentShareManager
         };
 
         NetDataWriter writer = new NetDataWriter();
+        writer.Put(BasisNetworkCommons.ContentShareSub_Drop);
         msg.Serialize(writer);
 
         BasisDebug.Log($"Sharing server entry sphere: {connectionString}", BasisDebug.LogTag.Networking);
@@ -199,11 +201,12 @@ public static class BasisContentShareManager
         };
 
         NetDataWriter writer = new NetDataWriter();
+        writer.Put(BasisNetworkCommons.ContentShareSub_Cleanup);
         msg.Serialize(writer);
 
         BasisNetworkConnection.LocalPlayerPeer?.Send(
             writer,
-            BasisNetworkCommons.ContentShareCleanupChannel,
+            BasisNetworkCommons.ContentShareChannel,
             DeliveryMethod.ReliableOrdered
         );
     }
@@ -265,11 +268,12 @@ public static class BasisContentShareManager
         {
             return;
         }
-        var InSceneOrb = Addressables.InstantiateAsync(orbKey, position, Quaternion.identity, BasisDeviceManagement.Instance.transform).WaitForCompletion();
+        GameObject InSceneOrb = Addressables.InstantiateAsync(orbKey, BasisDeviceManagement.Instance.transform, false).WaitForCompletion();
         if (InSceneOrb == null)
         {
             return;
         }
+        InSceneOrb.transform.position = position;
         // Add the content sphere component
         if (InSceneOrb.TryGetComponent<BasisContentSphere>(out BasisContentSphere Sphere))
         {

@@ -3,6 +3,8 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
+using UnityEngine;
+using UnityEngine.Jobs;
 
 namespace Basis.Scripts.Drivers
 {
@@ -42,6 +44,7 @@ namespace Basis.Scripts.Drivers
     {
         [ReadOnly] public NativeArray<byte> mode;
         [ReadOnly] public NativeArray<float3> rawInputs;
+        [ReadOnly] public NativeArray<float4> tuning;
 
         public NativeArray<BasisEuroVec3State> euroStates;
         public NativeArray<float3> fallbackStates;
@@ -49,10 +52,6 @@ namespace Basis.Scripts.Drivers
         [WriteOnly] public NativeArray<float3> outputs;
 
         public float dt;
-        public float minCutoff;
-        public float beta;
-        public float dCutoff;
-        public float fallbackAlpha;
 
         public unsafe void Execute(int i)
         {
@@ -66,17 +65,19 @@ namespace Basis.Scripts.Drivers
                 return;
             }
 
+            float4 t = UnsafeUtility.ReadArrayElement<float4>(tuning.GetUnsafeReadOnlyPtr(), i);
+
             if (m == (byte)BasisFilterMode.Fallback)
             {
                 ref float3 fs = ref UnsafeUtility.ArrayElementAsRef<float3>(fallbackStates.GetUnsafePtr(), i);
-                fs = math.lerp(fs, x, fallbackAlpha);
+                fs = math.lerp(fs, x, t.w);
                 UnsafeUtility.WriteArrayElement(outPtr, i, fs);
                 return;
             }
 
             // Euro — operate on array slot by ref, avoiding read/write struct copies.
             ref BasisEuroVec3State st = ref UnsafeUtility.ArrayElementAsRef<BasisEuroVec3State>(euroStates.GetUnsafePtr(), i);
-            float3 result = BasisFilterMath.EuroVec3(ref st, x, math.max(dt, 1e-6f), minCutoff, beta, dCutoff);
+            float3 result = BasisFilterMath.EuroVec3(ref st, x, math.max(dt, 1e-6f), t.x, t.y, t.z);
             UnsafeUtility.WriteArrayElement(outPtr, i, result);
         }
     }
@@ -91,6 +92,7 @@ namespace Basis.Scripts.Drivers
     {
         [ReadOnly] public NativeArray<byte> mode;
         [ReadOnly] public NativeArray<quaternion> rawInputs;
+        [ReadOnly] public NativeArray<float4> tuning;
 
         public NativeArray<BasisEuroQuatState> euroStates;
         public NativeArray<quaternion> fallbackStates;
@@ -98,10 +100,6 @@ namespace Basis.Scripts.Drivers
         [WriteOnly] public NativeArray<quaternion> outputs;
 
         public float dt;
-        public float minCutoff;
-        public float beta;
-        public float dCutoff;
-        public float fallbackAlpha;
 
         public unsafe void Execute(int i)
         {
@@ -115,18 +113,35 @@ namespace Basis.Scripts.Drivers
                 return;
             }
 
+            float4 t = UnsafeUtility.ReadArrayElement<float4>(tuning.GetUnsafeReadOnlyPtr(), i);
+
             if (m == (byte)BasisFilterMode.Fallback)
             {
                 ref quaternion fs = ref UnsafeUtility.ArrayElementAsRef<quaternion>(fallbackStates.GetUnsafePtr(), i);
-                fs = BasisFilterMath.SlerpShortest(fs, q, fallbackAlpha);
+                fs = BasisFilterMath.SlerpShortest(fs, q, t.w);
                 UnsafeUtility.WriteArrayElement(outPtr, i, fs);
                 return;
             }
 
             // Euro — ref the slot; EuroQuat mutates st.logVecState in-place too.
             ref BasisEuroQuatState st = ref UnsafeUtility.ArrayElementAsRef<BasisEuroQuatState>(euroStates.GetUnsafePtr(), i);
-            quaternion result = BasisFilterMath.EuroQuat(ref st, q, math.max(dt, 1e-6f), minCutoff, beta, dCutoff);
+            quaternion result = BasisFilterMath.EuroQuat(ref st, q, math.max(dt, 1e-6f), t.x, t.y, t.z);
             UnsafeUtility.WriteArrayElement(outPtr, i, result);
+        }
+    }
+
+    /// <summary>IJobParallelForTransform that batch-reads each bone's solved world pose into parallel arrays.</summary>
+    [BurstCompile]
+    public struct BasisReadBoneWorldPoseJob : IJobParallelForTransform
+    {
+        public NativeArray<float3> Positions;
+        public NativeArray<quaternion> Rotations;
+
+        public void Execute(int index, TransformAccess transform)
+        {
+            transform.GetPositionAndRotation(out Vector3 position, out Quaternion rotation);
+            Positions[index] = position;
+            Rotations[index] = rotation;
         }
     }
 

@@ -4,15 +4,11 @@ using System;
 using System.Linq;
 using Basis.Scripts.Device_Management;
 using System.Threading;
-using Unity.Collections;
-using Unity.Jobs;
 
 public static class BasisLocalMicrophoneDriver
 {
-    // Written under processingLock by ProcessAudioData (background thread) and by
-    // the mic lifecycle methods (main). Read by MicrophoneUpdate on main without
-    // the lock, so it must be volatile to prevent torn/cached reads.
-    private static volatile int head = 0;
+    private static int head = 0;
+    private static int captured = 0;
     private static int bufferLength;
 
     public static bool HasEvents = false;
@@ -28,11 +24,7 @@ public static class BasisLocalMicrophoneDriver
     // a manual Reset(), stalling one tick of processing.
     private static AutoResetEvent processingEvent = new AutoResetEvent(false);
     private static readonly object processingLock = new object();
-
-    private static volatile int position;
-
-    private static BasisVolumeAdjustmentJob VAJ = new BasisVolumeAdjustmentJob();
-    private static JobHandle handle;
+    private static readonly object ringLock = new object();
 
     public const string MicrophoneState = "MicrophoneState";
     public const string SettingStartOff = "Muted";
@@ -111,9 +103,29 @@ public static class BasisLocalMicrophoneDriver
     private static string _pendingDeviceWhenPaused = null;
     private static int channels = 1;
     // Small interleaved scratch sized to ProcessFrameSize * channels. Holds one chunk
-    // pulled from the AudioClip ring per iteration, then downmixed into the mono ring.
+    // pulled from the AudioClip ring per iteration, then staged raw for the worker.
     // Replaces a previous full-clip snapshot that copied ~192 KB every Unity tick.
     private static float[] _micDelta;
+
+    // Raw interleaved capture staging. PumpCapture (main thread, top of the frame — the
+    // Unity Microphone/AudioClip APIs are main-thread-only) enqueues whole 20 ms chunks
+    // straight off the clip; the processing thread downmixes them into the mono ring and
+    // carries everything from there (AGC, limiter, denoise, gate, Opus encode, network
+    // send). This keeps the capture read as the ONLY main-thread stage of the pipeline.
+    private static readonly object stagingLock = new object();
+    private static float[] stagingBuffer;
+    private static int stagingChunkStride; // ProcessFrameSize * channels at alloc time
+    private static int stagingChannels = 1;
+    private static int stagingReadChunk;
+    private static int stagingWriteChunk;
+    private static int stagingCount;
+    private const int StagingChunkCapacity = 16; // 320 ms of worker-stall tolerance
+    // Worker-only scratch a staged chunk is copied into, so the downmix runs outside stagingLock.
+    private static float[] _stagingScratch;
+    // Mono-ring write head, advanced by the worker as staged chunks are downmixed in.
+    // `captured` stays the clip-read cursor and total-in-flight tail: the free-space
+    // check against it naturally accounts for staged-but-not-yet-downmixed chunks.
+    private static int written;
     private static bool IsPaused
     {
         get => isPaused;
@@ -198,9 +210,6 @@ public static class BasisLocalMicrophoneDriver
         UnregisterEvents();
         StopSelectedMicrophone();
 
-        if (!handle.IsCompleted) handle.Complete();
-        if (VAJ.processBufferArray.IsCreated) VAJ.processBufferArray.Dispose();
-
         Denoiser?.Dispose();
         Denoiser = null;
 
@@ -252,15 +261,13 @@ public static class BasisLocalMicrophoneDriver
     /// </summary>
     private static void ApplyMicSettings(SMDMicrophone.MicSettings s)
     {
-        // 1) Update Volume mapping (affects VAJ.Volume too)
+        // 1) Update Volume mapping
         ChangeMicrophoneVolume(s.Volume01);
 
-        // 2) Update job params that are consumed during AdjustVolume()
+        // 2) AdjustVolume reads the limiter values straight off the settings snapshot it
+        //    is handed each frame, so only the AGC state needs touching here.
         lock (processingLock)
         {
-            VAJ.LimitThreshold = Mathf.Clamp01(s.LimitThreshold);
-            VAJ.LimitKnee = Mathf.Clamp01(s.LimitKnee);
-
             // AGC internal state reset when disabled
             if (!s.UseAGC) agcGainDb = 0f;
         }
@@ -359,9 +366,6 @@ public static class BasisLocalMicrophoneDriver
                 return false;
             }
 
-            head = 0;
-            position = 0;
-
             // Unity clip samples are in FRAMES (per-channel samples at a time index)
             // GetData returns floats = frames * channels (interleaved)
             channels = (clip != null) ? clip.channels : 1;
@@ -370,32 +374,51 @@ public static class BasisLocalMicrophoneDriver
                 channels = 1;
             }
 
-            // circular buffer length in FRAMES (what your head/position math uses)
-            bufferLength = LocalOpusSettings.RecordingFullLength * LocalOpusSettings.MicrophoneSampleRate;
-
-            // small interleaved scratch sized to one process chunk (ProcessFrameSize * channels)
-            CreateOrResizeArray(ProcessFrameSize * channels, ref _micDelta);
-
-            // mono circular buffer (downmixed)
-            LocalOpusSettings.CreateOrResizeArray(bufferLength, ref microphoneBufferArray);
-
             // processBufferArray is mono frame sized (your existing pipeline)
             LocalOpusSettings.EnsureProcessBuffer(ref processBufferArray, out ProcessFrameLength);
 
             CreateOrResizeArray(ProcessFrameLength, ref _denoiseDry);
 
-            HandleBasisVolumeAdjustmentJob();
+            PrimeVolumeRamp();
 
             LocalOpusSettings.CreateOrResizeArray(LocalOpusSettings.rmsWindowSize, ref rmsValues);
             Array.Clear(rmsValues, 0, rmsValues.Length);
             rmsIndex = 0;
             averageRms = 0f;
 
-            warmupSamples = ProcessFrameLength * 2;
-            inWarmup = true;
+            lock (ringLock)
+            {
+                head = 0;
+                captured = 0;
+                written = 0;
 
-            if (_micDelta != null) Array.Clear(_micDelta, 0, _micDelta.Length);
-            if (microphoneBufferArray != null) Array.Clear(microphoneBufferArray, 0, microphoneBufferArray.Length);
+                bufferLength = LocalOpusSettings.RecordingFullLength * LocalOpusSettings.MicrophoneSampleRate;
+                if (clip.samples > 0 && clip.samples < bufferLength)
+                {
+                    bufferLength = clip.samples;
+                }
+
+                // small interleaved scratch sized to one process chunk (ProcessFrameSize * channels)
+                CreateOrResizeArray(ProcessFrameSize * channels, ref _micDelta);
+
+                // mono circular buffer (downmixed)
+                LocalOpusSettings.CreateOrResizeArray(bufferLength, ref microphoneBufferArray);
+
+                warmupSamples = ProcessFrameLength * 2;
+                inWarmup = true;
+
+                if (_micDelta != null) Array.Clear(_micDelta, 0, _micDelta.Length);
+                if (microphoneBufferArray != null) Array.Clear(microphoneBufferArray, 0, microphoneBufferArray.Length);
+            }
+
+            // A restart without a full stop-clear must not carry raw chunks from the old config.
+            lock (stagingLock)
+            {
+                stagingReadChunk = 0;
+                stagingWriteChunk = 0;
+                stagingCount = 0;
+            }
+
             if (processBufferArray != null) Array.Clear(processBufferArray, 0, processBufferArray.Length);
             if (_denoiseDry != null) Array.Clear(_denoiseDry, 0, _denoiseDry.Length);
 
@@ -430,14 +453,28 @@ public static class BasisLocalMicrophoneDriver
 
     private static void ClearStateAfterStop()
     {
-        head = 0;
-        position = 0;
-        inWarmup = false;
-        warmupSamples = 0;
+        lock (ringLock)
+        {
+            head = 0;
+            captured = 0;
+            written = 0;
+            inWarmup = false;
+            warmupSamples = 0;
+
+            if (_micDelta != null) Array.Clear(_micDelta, 0, _micDelta.Length);
+            if (microphoneBufferArray != null) Array.Clear(microphoneBufferArray, 0, microphoneBufferArray.Length);
+        }
+
+        // Drop any raw chunks captured for the old device/config.
+        lock (stagingLock)
+        {
+            stagingReadChunk = 0;
+            stagingWriteChunk = 0;
+            stagingCount = 0;
+        }
+
         _noiseGateGain = 0f;
 
-        if (_micDelta != null) Array.Clear(_micDelta, 0, _micDelta.Length);
-        if (microphoneBufferArray != null) Array.Clear(microphoneBufferArray, 0, microphoneBufferArray.Length);
         if (processBufferArray != null) Array.Clear(processBufferArray, 0, processBufferArray.Length);
 
         if (rmsValues != null)
@@ -460,32 +497,10 @@ public static class BasisLocalMicrophoneDriver
         }
     }
 
-    public static void HandleBasisVolumeAdjustmentJob()
+    /// <summary>Primes the gain ramp so the first frame after (re)init doesn't ramp.</summary>
+    public static void PrimeVolumeRamp()
     {
-        if (!handle.IsCompleted) handle.Complete();
-
-        if (VAJ.processBufferArray.IsCreated)
-        {
-            if (VAJ.processBufferArray.Length != processBufferArray.Length)
-            {
-                VAJ.processBufferArray.Dispose();
-                VAJ.processBufferArray = new NativeArray<float>(processBufferArray, Allocator.Persistent);
-            }
-        }
-        else
-        {
-            VAJ.processBufferArray = new NativeArray<float>(processBufferArray, Allocator.Persistent);
-        }
-
-        VAJ.Volume = Volume;
-        VAJ.VolumePrev = Volume; // prime so the first frame after (re)init doesn't ramp
-        VAJ.FrameLength = processBufferArray.Length;
         _prevVolume = Volume;
-
-        // Pull limiter settings from snapshot (authoritative)
-        var s = SMDMicrophone.Current;
-        VAJ.LimitThreshold = Mathf.Clamp01(s.LimitThreshold);
-        VAJ.LimitKnee = Mathf.Clamp01(s.LimitKnee);
     }
 
     private static void PollDeviceChanges()
@@ -556,67 +571,16 @@ public static class BasisLocalMicrophoneDriver
         return true;
     }
 
-    public static void MicrophoneUpdate()
+    /// <summary>
+    /// Main-thread capture pump. Call at the top of the frame: reads every complete 20 ms
+    /// chunk the clip has captured (Microphone.GetPosition / AudioClip.GetData are
+    /// main-thread-only APIs) into the raw staging ring and wakes the processing thread,
+    /// which then owns downmix, filtering, encode and the network send for the rest of
+    /// the frame. Nothing joins back to the main thread except the mic-icon flags below.
+    /// </summary>
+    public static void PumpCapture()
     {
         PollDeviceChanges();
-
-        if (!MicrophoneIsStarted || string.IsNullOrEmpty(MicrophoneDevice) || clip == null) return;
-
-        int currentPosition = Microphone.GetPosition(MicrophoneDevice);
-        position = currentPosition;
-        if (position <= 0)
-        {
-            return;
-        }
-
-        int clipFrames = clip.samples;
-        if (clipFrames <= 0)
-        {
-            return;
-        }
-
-        int ch = clip.channels;
-        if (ch < 1)
-        {
-            ch = 1;
-        }
-
-        channels = ch;
-
-        // Clamp to min(bufferLength, clipFrames) so a device restart that produced a
-        // smaller clip mid-flight can't push reads out of range.
-        int framesToUse = Mathf.Min(bufferLength, clipFrames);
-        LocalOpusSettings.CreateOrResizeArray(framesToUse, ref microphoneBufferArray);
-
-        int dataLength = GetDataLength(framesToUse, head, position);
-        if (dataLength < ProcessFrameSize)
-        {
-            return;
-        }
-
-        int chunkInterleaved = ProcessFrameSize * channels;
-        if (_micDelta == null || _micDelta.Length != chunkInterleaved)
-        {
-            _micDelta = new float[chunkInterleaved];
-        }
-
-        // Serialize ring-buffer writes against the bg processor reading the same
-        // region and advancing `head`. Without the lock, ProcessAudioData can read
-        // half-written frames at the boundary = pop.
-        lock (processingLock)
-        {
-            int readHead = head;
-            int remaining = dataLength;
-            while (remaining >= ProcessFrameSize)
-            {
-                clip.GetData(_micDelta, readHead);
-                DownmixDeltaIntoRingMono(readHead, ProcessFrameSize, framesToUse, channels, _micDelta, microphoneBufferArray);
-                readHead = (readHead + ProcessFrameSize) % framesToUse;
-                remaining -= ProcessFrameSize;
-            }
-        }
-
-        processingEvent.Set();
 
         if (Interlocked.Exchange(ref _scheduleMainHasAudio, 0) == 1)
         {
@@ -625,6 +589,71 @@ public static class BasisLocalMicrophoneDriver
         else if (Interlocked.Exchange(ref _scheduleMainHasSilence, 0) == 1)
         {
             MainThreadOnHasSilence?.Invoke();
+        }
+
+        if (!MicrophoneIsStarted || string.IsNullOrEmpty(MicrophoneDevice) || clip == null) return;
+
+        int currentPosition = Microphone.GetPosition(MicrophoneDevice);
+        if (currentPosition <= 0)
+        {
+            return;
+        }
+
+        // channels is latched from the clip at StartLocalMicrophone and cannot change
+        // without a restart — re-reading clip.channels here was a native call per frame.
+        int ch = channels;
+        int chunkInterleaved = ProcessFrameSize * ch;
+        if (_micDelta == null || _micDelta.Length != chunkInterleaved)
+        {
+            _micDelta = new float[chunkInterleaved];
+        }
+
+        if (microphoneBufferArray == null || bufferLength <= 0)
+        {
+            return;
+        }
+
+        // `head` advances monotonically on the worker; a stale read only under-estimates
+        // free space, so no lock is needed for a conservative trim.
+        int headSnapshot = Volatile.Read(ref head);
+
+        int newFrames = GetDataLength(bufferLength, captured, currentPosition);
+        int backlog = GetDataLength(bufferLength, headSnapshot, captured);
+        int freeFrames = bufferLength - backlog - ProcessFrameSize;
+        if (newFrames > freeFrames)
+        {
+            newFrames = freeFrames > 0 ? freeFrames - (freeFrames % ProcessFrameSize) : 0;
+        }
+
+        bool queuedAny = false;
+        lock (stagingLock)
+        {
+            if (stagingBuffer == null || stagingChunkStride != chunkInterleaved)
+            {
+                stagingBuffer = new float[StagingChunkCapacity * chunkInterleaved];
+                stagingChunkStride = chunkInterleaved;
+                stagingReadChunk = 0;
+                stagingWriteChunk = 0;
+                stagingCount = 0;
+            }
+            stagingChannels = ch;
+
+            while (newFrames >= ProcessFrameSize && stagingCount < StagingChunkCapacity)
+            {
+                clip.GetData(_micDelta, captured);
+                Array.Copy(_micDelta, 0, stagingBuffer, stagingWriteChunk * chunkInterleaved, chunkInterleaved);
+                stagingWriteChunk = (stagingWriteChunk + 1) % StagingChunkCapacity;
+                stagingCount++;
+
+                captured = (captured + ProcessFrameSize) % bufferLength;
+                newFrames -= ProcessFrameSize;
+                queuedAny = true;
+            }
+        }
+
+        if (queuedAny)
+        {
+            processingEvent.Set();
         }
     }
 
@@ -682,13 +711,16 @@ public static class BasisLocalMicrophoneDriver
         {
             while (!processingTokenSource.IsCancellationRequested)
             {
-                processingEvent.WaitOne();
-                if (processingTokenSource.IsCancellationRequested) break;
-
-                lock (processingLock)
+                try
                 {
-                    if (MicrophoneIsStarted && clip != null)
-                        ProcessAudioData(position);
+                    processingEvent.WaitOne();
+                    if (processingTokenSource.IsCancellationRequested) break;
+
+                    ProcessPendingFrames();
+                }
+                catch (Exception ex)
+                {
+                    BasisDebug.LogErrorOnce($"Microphone processing thread: {ex}", BasisDebug.LogTag.Voice);
                 }
             }
         });
@@ -710,29 +742,88 @@ public static class BasisLocalMicrophoneDriver
         processingTokenSource = null;
     }
 
-    public static void ProcessAudioData(int posSnapshot)
+    public static void ProcessPendingFrames()
     {
-        // Read snapshot ONCE per processing call so settings are consistent for the frame.
-        // This assumes SMDMicrophone.Current changes on main thread; the lock makes it coherent with ApplyMicSettings.
-        var s = SMDMicrophone.Current;
-
-        if (inWarmup)
+        while (true)
         {
-            int available = GetDataLength(bufferLength, head, posSnapshot);
-            if (available >= warmupSamples)
+            lock (processingLock)
             {
+                DrainStagingIntoRing();
+
+                if (!TryDequeueCapturedFrame())
+                {
+                    return;
+                }
+
+                ProcessCurrentFrame();
+            }
+        }
+    }
+
+    // Downmixes every staged raw chunk into the mono ring, advancing `written`. Runs on
+    // the processing thread; each chunk is copied out to worker scratch first so the
+    // per-sample downmix never holds stagingLock against the main-thread pump.
+    private static void DrainStagingIntoRing()
+    {
+        while (true)
+        {
+            int chunkStride;
+            int ch;
+            lock (stagingLock)
+            {
+                if (stagingCount == 0 || stagingBuffer == null)
+                {
+                    return;
+                }
+                chunkStride = stagingChunkStride;
+                ch = stagingChannels;
+                if (_stagingScratch == null || _stagingScratch.Length != chunkStride)
+                {
+                    _stagingScratch = new float[chunkStride];
+                }
+                Array.Copy(stagingBuffer, stagingReadChunk * chunkStride, _stagingScratch, 0, chunkStride);
+                stagingReadChunk = (stagingReadChunk + 1) % StagingChunkCapacity;
+                stagingCount--;
+            }
+
+            lock (ringLock)
+            {
+                if (microphoneBufferArray == null || bufferLength <= 0)
+                {
+                    return;
+                }
+                DownmixDeltaIntoRingMono(written, ProcessFrameSize, bufferLength, ch, _stagingScratch, microphoneBufferArray);
+                written = (written + ProcessFrameSize) % bufferLength;
+            }
+        }
+    }
+
+    private static bool TryDequeueCapturedFrame()
+    {
+        lock (ringLock)
+        {
+            if (!MicrophoneIsStarted || microphoneBufferArray == null || processBufferArray == null)
+            {
+                return false;
+            }
+
+            // Gate on `written` (data actually downmixed into the ring), not `captured`
+            // (the clip cursor, which is ahead by whatever is still in raw staging).
+            if (inWarmup)
+            {
+                if (GetDataLength(bufferLength, head, written) < warmupSamples)
+                {
+                    return false;
+                }
                 head = (head + warmupSamples) % bufferLength;
                 inWarmup = false;
             }
-            else
-            {
-                return;
-            }
-        }
 
-        int dataLength = GetDataLength(bufferLength, head, posSnapshot);
-        while (dataLength >= ProcessFrameSize)
-        {
+            if (GetDataLength(bufferLength, head, written) < ProcessFrameSize)
+            {
+                return false;
+            }
+
             int remain = bufferLength - head;
             if (remain < ProcessFrameSize)
             {
@@ -744,82 +835,111 @@ public static class BasisLocalMicrophoneDriver
                 Array.Copy(microphoneBufferArray, head, processBufferArray, 0, ProcessFrameSize);
             }
 
-            // --- Optional AGC ---
-            if (s.UseAGC)
-            {
-                float thisRms = GetRMS();
-                UpdateAgc(thisRms, s.AgcTargetRms, s.AgcMaxGainDb, s.AgcAttack, s.AgcRelease);
-
-                float agcAmp = DbToAmp(agcGainDb);
-                if (!Mathf.Approximately(agcAmp, 1f))
-                {
-                    for (int i = 0; i < ProcessFrameSize; i++)
-                        processBufferArray[i] *= agcAmp;
-                }
-            }
-
-            // --- User gain + limiter in Burst job ---
-            AdjustVolume(s);
-
-            if (s.UseDenoiser)
-            {
-                ApplyDeNoise(s);
-            }
-
-            if (s.UseNoiseGate)
-            {
-                ApplyNoiseGate(s);
-            }
-
-            RollingRMS();
-
-            if (!isPaused && IsTransmitWorthy())
-            {
-                OnHasAudio?.Invoke();
-                Interlocked.Exchange(ref _scheduleMainHasAudio, 1);
-                Interlocked.Exchange(ref _scheduleMainHasSilence, 0);
-            }
-            else
-            {
-                OnHasSilence?.Invoke();
-                Interlocked.Exchange(ref _scheduleMainHasSilence, 1);
-                Interlocked.Exchange(ref _scheduleMainHasAudio, 0);
-            }
-
             head = (head + ProcessFrameSize) % bufferLength;
-            dataLength -= ProcessFrameSize;
+            return true;
+        }
+    }
+
+    private static void ProcessCurrentFrame()
+    {
+        // Read snapshot ONCE per processing call so settings are consistent for the frame.
+        // This assumes SMDMicrophone.Current changes on main thread; the lock makes it coherent with ApplyMicSettings.
+        var s = SMDMicrophone.Current;
+
+        // --- Optional AGC ---
+        if (s.UseAGC)
+        {
+            float thisRms = GetRMS();
+            UpdateAgc(thisRms, s.AgcTargetRms, s.AgcMaxGainDb, s.AgcAttack, s.AgcRelease);
+
+            float agcAmp = DbToAmp(agcGainDb);
+            if (!Mathf.Approximately(agcAmp, 1f))
+            {
+                for (int i = 0; i < ProcessFrameSize; i++)
+                    processBufferArray[i] *= agcAmp;
+            }
+        }
+
+        // --- User gain + limiter in Burst job ---
+        AdjustVolume(s);
+
+        if (s.UseDenoiser)
+        {
+            ApplyDeNoise(s);
+        }
+
+        if (s.UseNoiseGate)
+        {
+            ApplyNoiseGate(s);
+        }
+
+        RollingRMS();
+
+        if (!isPaused && IsTransmitWorthy())
+        {
+            OnHasAudio?.Invoke();
+            Interlocked.Exchange(ref _scheduleMainHasAudio, 1);
+            Interlocked.Exchange(ref _scheduleMainHasSilence, 0);
+        }
+        else
+        {
+            OnHasSilence?.Invoke();
+            Interlocked.Exchange(ref _scheduleMainHasSilence, 1);
+            Interlocked.Exchange(ref _scheduleMainHasAudio, 0);
         }
     }
 
     public static void AdjustVolume(SMDMicrophone.MicSettings s)
     {
+        float[] buffer = processBufferArray;
+        int frameLength = buffer.Length;
+
         // Linearly ramp gain across the frame from the previous frame's end-of-frame
         // value to the current Volume, so a UI slider change does not step between
         // 20 ms frames (= click at the boundary).
-        VAJ.VolumePrev = _prevVolume;
-        VAJ.Volume = Volume;
-        VAJ.FrameLength = processBufferArray.Length;
-        _prevVolume = Volume;
+        float volumeStart = _prevVolume;
+        float volumeEnd = Volume;
+        _prevVolume = volumeEnd;
 
-        VAJ.LimitThreshold = Mathf.Clamp01(s.LimitThreshold);
-        VAJ.LimitKnee = Mathf.Clamp01(s.LimitKnee);
+        float limitT = Mathf.Clamp01(s.LimitThreshold);
+        float limitK = Mathf.Max(1e-6f, Mathf.Clamp01(s.LimitKnee));
+        float capped = limitT + limitK;
 
-        VAJ.processBufferArray.CopyFrom(processBufferArray);
-        handle = VAJ.Schedule(processBufferArray.Length, 64);
-        handle.Complete();
-        VAJ.processBufferArray.CopyTo(processBufferArray);
+        // Inline on this (microphone) thread. The former Burst job cost a full copy into
+        // a NativeArray, a cross-thread dispatch, a blocking fence and a copy back out,
+        // every 20 ms audio frame — for one multiply and a clamp per sample.
+        float rampStep = frameLength > 1 ? 1f / (frameLength - 1) : 0f;
+        for (int index = 0; index < frameLength; index++)
+        {
+            float gain = frameLength > 1 ? Mathf.Lerp(volumeStart, volumeEnd, index * rampStep) : volumeEnd;
+            float x = buffer[index] * gain;
+
+            // Soft limiter: passthrough below the threshold, smooth cubic knee within
+            // [threshold, threshold + knee], hard cap above.
+            float ax = Mathf.Abs(x);
+            if (ax >= capped)
+            {
+                x = Mathf.Sign(x) * capped;
+            }
+            else if (ax > limitT)
+            {
+                float t = (ax - limitT) / limitK;
+                x = Mathf.Sign(x) * (limitT + limitK * (1f - Mathf.Pow(1f - t, 3f)));
+            }
+
+            buffer[index] = x;
+        }
     }
 
     public static float GetRMS()
     {
         double sum = 0.0;
-        int len = processBufferArray.Length;
-        for (int i = 0; i < len; i++)
+        for (int i = 0; i < ProcessFrameSize; i++)
         {
             float v = processBufferArray[i];
             sum += v * v;
         }
-        return Mathf.Sqrt((float)(sum / len));
+        return Mathf.Sqrt((float)(sum / ProcessFrameSize));
     }
 
     public static int GetDataLength(int len, int h, int pos)
@@ -836,7 +956,6 @@ public static class BasisLocalMicrophoneDriver
         float db = Mathf.Lerp(minDb, maxDb, ui);
 
         Volume = DbToAmp(db);
-        VAJ.Volume = Volume;
 
         BasisDebug.Log($"Set Microphone Gain To {db:F1} dB (amp {Volume:F3})", BasisDebug.LogTag.Voice);
     }
@@ -918,13 +1037,12 @@ public static class BasisLocalMicrophoneDriver
     public static void RollingRMS()
     {
         double sumSq = 0.0;
-        int len = processBufferArray.Length;
-        for (int i = 0; i < len; i++)
+        for (int i = 0; i < ProcessFrameSize; i++)
         {
             float v = processBufferArray[i];
             sumSq += v * v;
         }
-        float currentMeanSq = (float)(sumSq / len);
+        float currentMeanSq = (float)(sumSq / ProcessFrameSize);
 
         rmsValues[rmsIndex] = currentMeanSq;
         rmsIndex = (rmsIndex + 1) % LocalOpusSettings.rmsWindowSize;
