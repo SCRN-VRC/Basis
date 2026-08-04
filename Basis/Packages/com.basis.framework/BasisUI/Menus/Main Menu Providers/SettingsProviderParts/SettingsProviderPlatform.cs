@@ -1,5 +1,6 @@
 using Basis.BasisUI;
 using Basis.Scripts.Device_Management;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -15,20 +16,20 @@ public static class SettingsProviderPlatform
         BasisConstants.OpenXRLoader,
     };
 
-    public static void BuildDeviceModeUI(RectTransform container)
+    public static void BuildDeviceModeUI(RectTransform container, Action<bool> onExpandedChanged = null)
     {
         string currentMode = BasisDeviceManagement.StaticCurrentMode ?? BasisConstants.None;
 
         // Current mode info
-        PanelElementDescriptor infoGroup =
-            PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
-        if (infoGroup.Header != null)
-        {
-            infoGroup.Header.gameObject.SetActive(false);
-        }
+        PanelSectionToggle deviceModeToggle = PanelSectionToggle.CreateNewEntry(container);
+        PanelElementDescriptor infoGroup = PanelSectionToggleHelpers.CreateCollapsibleContentGroup(
+            deviceModeToggle,
+            container,
+            BasisLocalization.Get("settings.platform.activeMode"),
+            showGroupTitle: false);
 
         var currentModeField = PanelTextField.CreateNew(infoGroup.ContentParent);
-        currentModeField.Descriptor.SetTitle(BasisLocalization.Get("settings.platform.activeMode"));
+        currentModeField.Descriptor.SetTitle(BasisLocalization.Get("settings.platform.deviceMode"));
         currentModeField.SetValue(currentMode);
 
         BasisDeviceManagement dm = BasisDeviceManagement.Instance;
@@ -40,6 +41,17 @@ public static class SettingsProviderPlatform
             var softSwapField = PanelTextField.CreateNew(infoGroup.ContentParent);
             softSwapField.Descriptor.SetTitle(BasisLocalization.Get("settings.platform.vrRuntime"));
             softSwapField.SetValue($"{dm.AutoSwapPreviousVRMode} (kept alive)");
+        }
+
+        // Offered next to the manual switch buttons because turning it off is what leaves those
+        // buttons as the only way to change mode. Hidden where no SDK reports presence at all,
+        // since the toggle would govern a signal that never arrives.
+        if (BasisHMDPresence.HasPresenceProvider)
+        {
+            PanelToggle togglePresenceSensor = PanelToggle.CreateNewEntry(infoGroup.ContentParent);
+            togglePresenceSensor.Descriptor.SetTitle(BasisLocalization.Get("settings.platform.usePresenceSensor"));
+            togglePresenceSensor.Descriptor.SetTooltip(BasisLocalization.Get("settings.platform.usePresenceSensor.tooltip"));
+            togglePresenceSensor.AssignBinding(BasisSettingsDefaults.UsePresenceSensor);
         }
 #endif
 
@@ -69,6 +81,14 @@ public static class SettingsProviderPlatform
                 modeButton.Descriptor.SetTitle(BasisLocalization.Get("settings.platform.switchTo", displayName) + suffix);
                 modeButton.Descriptor.SetTooltip(BasisLocalization.Get("settings.platform.switchTo.tooltip"));
                 modeButton.Descriptor.SetDescription(GetModeDescription(capturedMode));
+
+                // A VR runtime that is already up cannot be handed over to the other one inside
+                // the session, so that entry is greyed out rather than left to fail on click.
+                if (!isActive && !BasisDeviceManagement.CanEnterMode(capturedMode, out string blockedReason))
+                {
+                    modeButton.SetInteractable(false, blockedReason);
+                }
+
                 modeButton.OnClicked += () =>
                 {
                     if (isActive) return;
@@ -84,6 +104,8 @@ public static class SettingsProviderPlatform
                 };
             }
         }
+
+        PanelSectionToggleHelpers.FinalizeCollapsibleGroup(deviceModeToggle, infoGroup, true, onExpandedChanged);
     }
 
     public static void BuildAutoSwapUI(RectTransform container)
@@ -105,12 +127,7 @@ public static class SettingsProviderPlatform
 #endif
     }
 
-    private static string GetModeDisplayName(string mode)
-    {
-        if (mode == BasisConstants.OpenVRLoader) return "OpenVR (SteamVR)";
-        if (mode == BasisConstants.OpenXRLoader) return "OpenXR";
-        return mode;
-    }
+    private static string GetModeDisplayName(string mode) => BasisXRRuntimeNotice.ModeDisplayName(mode);
 
     private static string GetModeDescription(string mode)
     {

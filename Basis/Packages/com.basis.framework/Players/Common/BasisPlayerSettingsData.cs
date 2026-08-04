@@ -51,16 +51,56 @@ public struct BasisPlayerSettingsData
     public bool AlwaysShowAvatar;
 
     /// <summary>
+    /// When true, this player's incoming voice is normalised to a common loudness on the
+    /// local client, independent of whatever gain their own microphone chain applied.
+    /// <see cref="VolumeLevel"/> is applied on top, so the slider still works as a trim.
+    /// Off by default — opt in per player from the individual player panel.
+    /// </summary>
+    public bool NormalizeLoudness;
+
+    /// <summary>
+    /// Whether jiggle grab-and-pull is allowed between the local player and this player,
+    /// in both directions: when false they cannot grab our jiggle and we will not grab
+    /// theirs. Blocking always denies regardless of this value.
+    /// </summary>
+    public bool JiggleGrabAllowed;
+
+    /// <summary>
     /// Version number of the settings schema. Used to upgrade old files gracefully.
     /// A value of <c>0</c> after deserialization signals a missing/corrupt record.
     /// </summary>
     public int Version;
+
+    /// <summary>Schema version written by this build.</summary>
+    public const int CurrentVersion = 8;
 
     /// <summary>
     /// Default settings (volume 1.0, avatar visible, avatar interaction enabled, chat visible, not blocked).
     /// Useful as a baseline when creating new profiles or repairing corrupted files.
     /// </summary>
     public static readonly BasisPlayerSettingsData Default = new BasisPlayerSettingsData("", 1.0f, true, true, true, false);
+
+    /// <summary>
+    /// Brings a record loaded from an older schema up to <see cref="CurrentVersion"/>.
+    /// Fields added after a record was written deserialize to <c>default</c>, which is the
+    /// wrong answer for anything that should be opt-out rather than opt-in.
+    /// </summary>
+    public void UpgradeSchema()
+    {
+        if (Version < 7)
+        {
+            JiggleGrabAllowed = true;
+        }
+        // v6 and v7 forced normalisation on for every player; v8 turns it back off across the
+        // board. Anyone still on those versions inherited the old default rather than choosing
+        // it, so there is no opt-in here worth preserving — they can re-enable it per player.
+        if (Version < 8)
+        {
+            NormalizeLoudness = false;
+        }
+
+        Version = CurrentVersion;
+    }
 
     /// <summary>
     /// Creates a new player settings record with explicit values.
@@ -81,7 +121,9 @@ public struct BasisPlayerSettingsData
         ChatVisible = chatVisible;
         IsBlocked = isBlocked;
         AlwaysShowAvatar = alwaysShowAvatar;
-        Version = 5;
+        NormalizeLoudness = false;
+        JiggleGrabAllowed = true;
+        Version = CurrentVersion;
     }
 
     /// <summary>

@@ -168,16 +168,23 @@ namespace Basis.Tests.Camera
         [Test]
         public void UpgradingAPreV2File_RestoresFollowDefaultsRatherThanZeroFill()
         {
-            // A save written before the auto-follow fields existed lacks them entirely. JsonUtility
-            // zero-fills the gaps, so without migration follow would load disabled and pointed at
-            // the player's feet. Simulate that old file: a v1 JSON with none of the new fields.
+            // A save written before the auto-follow fields existed lacks them entirely. Simulate
+            // that old file: a v1 JSON with none of the new fields.
             string legacyJson =
                 "{\"settingsVersion\":1,\"resolutionIndex\":1,\"formatIndex\":0,\"fov\":50}";
 
             var loaded = JsonUtility.FromJson<BasisHandHeldCameraUI.CameraSettings>(legacyJson);
-            // Pre-migration: the zero-fill damage is visible.
-            Assert.That(loaded.autoFollowPlayspace, Is.False, "sanity: raw zero-fill");
-            Assert.That(loaded.autoFollowPositionOffset, Is.EqualTo(Vector3.zero), "sanity: raw zero-fill");
+
+            // This originally asserted the opposite, on the belief that JsonUtility zero-fills a
+            // field the JSON does not carry. It does not, for a class with a constructor: the
+            // object is constructed first and only the fields actually present are written over,
+            // so an absent field arrives holding its constructor default. That makes the migration
+            // below belt-and-braces for these particular fields — and it is the migrations that
+            // correct a value the old file states outright, like the unusable f/1 aperture, that
+            // are doing real work. See MissingFieldsLoadTheirConstructorDefault.
+            Assert.That(loaded.autoFollowPlayspace, Is.True, "sanity: the constructor default survives");
+            Assert.That(loaded.autoFollowPositionOffset, Is.Not.EqualTo(Vector3.zero),
+                "sanity: the constructor default survives");
 
             BasisHandHeldCameraUI.MigrateSettingsForTest(loaded);
 
@@ -209,6 +216,33 @@ namespace Basis.Tests.Camera
             var loadedOff = JsonUtility.FromJson<BasisHandHeldCameraUI.CameraSettings>(legacyOff);
             BasisHandHeldCameraUI.MigrateSettingsForTest(loadedOff);
             Assert.That(loadedOff.depthIsActive, Is.False, "Off in the old file meant DoF was off.");
+        }
+
+        [Test]
+        public void UpgradingAPreV5File_ReplacesTheUnusableOptics()
+        {
+            // f/1 on a 125mm lens is a depth of field about 3cm deep at portrait range, so nobody
+            // could ever be usefully in focus. Old files have to be taken off it, not just new ones.
+            string legacy =
+                "{\"settingsVersion\":4,\"depthAperture\":1,\"dofFocalLength\":125}";
+            var loaded = JsonUtility.FromJson<BasisHandHeldCameraUI.CameraSettings>(legacy);
+
+            BasisHandHeldCameraUI.MigrateSettingsForTest(loaded);
+
+            var defaults = new BasisHandHeldCameraUI.CameraSettings();
+            Assert.That(loaded.depthAperture, Is.EqualTo(defaults.depthAperture).Within(1e-4f));
+            Assert.That(loaded.dofFocalLength, Is.EqualTo(defaults.dofFocalLength).Within(1e-4f));
+            Assert.That(loaded.settingsVersion, Is.EqualTo(BasisHandHeldCameraUI.CameraSettings.CurrentVersion));
+        }
+
+        [Test]
+        public void ShippedApertureDefault_IsInsideTheRangeURPWillAccept()
+        {
+            // URP clamps DepthOfField.aperture to [1, 32]; a default outside it is silently ignored
+            // and the slider below it is dead travel.
+            var defaults = new BasisHandHeldCameraUI.CameraSettings();
+
+            Assert.That(defaults.depthAperture, Is.InRange(BasisHandHeldCameraUI.MinAperture, BasisHandHeldCameraUI.MaxAperture));
         }
 
         [Test]

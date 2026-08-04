@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Basis.BasisUI;
 using Basis.Scripts.Drivers;
 using Basis.Scripts.Networking;
@@ -388,7 +388,11 @@ public static class BasisAudioGizmos
             occ = Mathf.Clamp01(sa.occlusionValue);
         }
 #endif
-        float netGain = slider * cone * main * dist * dir * occ;
+        // The listener cone and the talker's mouth directivity are now part filter,
+        // part gain. Fold the shelves' speech-weighted broadband equivalent in, or the
+        // meter under-reports everything that is actually reaching the listener.
+        float tone = BasisVoiceAcoustics.ShelfBroadbandGain(audio.DirectivityShelfDb, audio.ConeShelfDb);
+        float netGain = slider * cone * main * dist * dir * occ * tone;
         float net = source * netGain;
         Color fillColor = GainColor(netGain);
 
@@ -438,7 +442,8 @@ public static class BasisAudioGizmos
                 if (g.LevelLabel <= 0 || netPct != g.LastNetPct || g.LevelText == null)
                 {
                     g.LastNetPct = netPct;
-                    g.LevelText = BuildLevelText(receiver.displayName, source, net, slider, dist, dir, occ, cone, main);
+                    g.LevelText = BuildLevelText(receiver.displayName, source, net, slider, dist, dir, occ, cone, main,
+                        audio.NormalizeLoudness, audio.NormalizerGainDb);
                 }
             }
             // Anchor at the bar's fixed full-scale top, not the live sourceTop, so the
@@ -483,7 +488,7 @@ public static class BasisAudioGizmos
         }
     }
 
-    private static string BuildLevelText(string name, float source, float net, float slider, float dist, float dir, float occ, float cone, float main)
+    private static string BuildLevelText(string name, float source, float net, float slider, float dist, float dir, float occ, float cone, float main, bool normalizing, float normalizerGainDb)
     {
         _levelText.Clear();
         if (!string.IsNullOrEmpty(name))
@@ -500,6 +505,10 @@ public static class BasisAudioGizmos
 #endif
         AppendFactor("Cone", cone);
         AppendFactor("Main", main);
+        if (normalizing)
+        {
+            _levelText.Append("Norm ").Append(normalizerGainDb.ToString("+0.0;-0.0;0.0")).Append(" dB\n");
+        }
         return _levelText.ToString();
     }
 

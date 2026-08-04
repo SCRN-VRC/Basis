@@ -1,4 +1,4 @@
-using Basis.Scripts.Networking;
+﻿using Basis.Scripts.Networking;
 using Basis.Scripts.Networking.Receivers;
 using SteamAudio;
 using System;
@@ -88,9 +88,12 @@ namespace Basis.BasisUI
             void RebuildLayout() => LayoutRebuilder.ForceRebuildLayoutImmediate(layoutRoot);
 
             // ─────────────── LISTENER DIRECTIONAL DAMPENING (always visible) ───────────────
-            PanelElementDescriptor listenerDampenGroup =
-                PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
-            listenerDampenGroup.SetTitle(BasisLocalization.Get("settings.remoteAudio.remotePlayers"));
+            PanelSectionToggle remotePlayersToggle = PanelSectionToggle.CreateNewEntry(container);
+            PanelElementDescriptor listenerDampenGroup = PanelSectionToggleHelpers.CreateCollapsibleContentGroup(
+                remotePlayersToggle,
+                container,
+                BasisLocalization.Get("settings.remoteAudio.remotePlayers"),
+                showGroupTitle: false);
 
             // Hearing Range (relocated from General). Lives here because it
             // governs at what distance any remote player becomes audible.
@@ -101,6 +104,7 @@ namespace Basis.BasisUI
                 PanelSlider.SliderSettings.Distance(BasisLocalization.Get("settings.general.hearingRange"), BasisNetworkModeration.ServerMaxHearingRangeMeters),
                 BasisSettingsDefaults.HearingRange);
             sliderHearingRange.Descriptor.SetTooltip(BasisLocalization.Get("settings.general.hearingRange.tooltip"));
+            BasisAudioRangeSliderLimit.Attach(sliderHearingRange, BasisAudioRangeSliderLimit.RangeKind.Hearing);
 
             PanelToggle toggleHearingRangeIndicator = PanelToggle.CreateNewEntry(listenerDampenGroup);
             toggleHearingRangeIndicator.AssignBinding(BasisSettingsDefaults.HearingRangeIndicator);
@@ -128,6 +132,9 @@ namespace Basis.BasisUI
                 RebuildLayout();
             };
 
+            PanelSectionToggleHelpers.FinalizeCollapsibleGroup(remotePlayersToggle, listenerDampenGroup, true,
+                _ => RebuildLayout());
+
             // ─────────────── ADVANCED ───────────────
             PanelSectionToggle advancedToggle = PanelSectionToggle.CreateNewEntry(container);
             PanelElementDescriptor advancedGroup = PanelSectionToggleHelpers.CreateCollapsibleContentGroup(
@@ -135,7 +142,7 @@ namespace Basis.BasisUI
             container = advancedGroup.ContentParent;
 
             // ─────────────── INTERFACE SOUNDS (advanced) ───────────────
-            PanelSectionToggleHelpers.CreateCollapsibleFlatSection(container,
+            PanelSectionToggleHelpers.CreateCollapsibleBoxedSection(container,
                 BasisLocalization.Get("settings.audio.sounds.title"), () =>
             {
                 PanelToggle toggleSoundHover = PanelToggle.CreateNewEntry(container);
@@ -173,7 +180,7 @@ namespace Basis.BasisUI
             // Frames-of-audio buffered ahead of playback. Lower = less latency,
             // higher = more resilience to packet jitter / loss before underrun.
             // Buffer is 20 ms per frame, so 1 ≈ 20 ms.
-            PanelSectionToggleHelpers.CreateCollapsibleFlatSection(container,
+            PanelSectionToggleHelpers.CreateCollapsibleBoxedSection(container,
                 BasisLocalization.Get("settings.ra.title.voiceBuffer"), () =>
             {
                 PanelSlider sliderJitterDepth = PanelSlider.CreateEntryAndBind(
@@ -182,8 +189,7 @@ namespace Basis.BasisUI
                     BasisSettingsDefaults.RAJitterBufferDepth);
                 sliderJitterDepth.Descriptor.SetTooltip(BasisLocalization.Get("settings.remoteAudio.bufferedFrames.tooltip"));
                 sliderJitterDepth.Descriptor.SetDescription(
-                    "Each frame is 20 ms. 1 = ~20 ms (default, low latency, more dropouts).\n" +
-                    "5 = ~100 ms. 15 = ~300 ms (max resilience).");
+                    BasisLocalization.Get("settings.remoteAudio.bufferedFrames.description"));
 
                 PanelSlider sliderClipBufferScalar = PanelSlider.CreateEntryAndBind(
                     container,
@@ -191,9 +197,7 @@ namespace Basis.BasisUI
                     BasisSettingsDefaults.RAClipBufferScalar);
                 sliderClipBufferScalar.Descriptor.SetTooltip(BasisLocalization.Get("settings.remoteAudio.clipBuffer.tooltip"));
                 sliderClipBufferScalar.Descriptor.SetDescription(
-                    "Multiplier on the per-player AudioClip length used by Unity's AudioSource.\n" +
-                    "Lower = tighter coupling to the decoded queue (less latency, more sensitive\n" +
-                    "to underruns). Default: 2. Live audio sources reload in place when changed.");
+                    BasisLocalization.Get("settings.remoteAudio.clipBuffer.description"));
             }, false, _ => RebuildLayout());
 
             // ─────────────── AUDIO SOURCE (advanced) ───────────────
@@ -202,7 +206,7 @@ namespace Basis.BasisUI
             PanelSlider sliderCurvePoint25 = null;
             PanelSlider sliderCurvePoint50 = null;
             PanelSlider sliderCurvePoint75 = null;
-            PanelSectionToggleHelpers.CreateCollapsibleFlatSection(container,
+            PanelSectionToggleHelpers.CreateCollapsibleBoxedSection(container,
                 BasisLocalization.Get("settings.remoteAudio.audioSource"), () =>
             {
                 PanelToggle toggleLimitAudio = PanelToggle.CreateNewEntry(container);
@@ -241,8 +245,8 @@ namespace Basis.BasisUI
                 dropdownCurvePreset.Descriptor.SetTitle(BasisLocalization.Get("settings.remoteAudio.curvePreset"));
                 dropdownCurvePreset.Descriptor.SetTooltip(BasisLocalization.Get("settings.remoteAudio.curvePreset.tooltip"));
                 dropdownCurvePreset.AssignLocalizedEntries(
-                    new List<string> { "Default", "Sharp Falloff", "Gradual", "Inverse Square", "Flat", "User Defined" },
-                    new List<string> { "settings.remoteAudio.curve.default", "settings.remoteAudio.curve.sharp", "settings.remoteAudio.curve.gradual", "settings.remoteAudio.curve.inverseSquare", "settings.remoteAudio.curve.flat", "settings.remoteAudio.curve.userDefined" });
+                    new List<string> { "Natural", "Legacy", "Sharp Falloff", "Gradual", "Inverse Square", "Flat", "User Defined" },
+                    new List<string> { "settings.remoteAudio.curve.natural", "settings.remoteAudio.curve.legacy", "settings.remoteAudio.curve.sharp", "settings.remoteAudio.curve.gradual", "settings.remoteAudio.curve.inverseSquare", "settings.remoteAudio.curve.flat", "settings.remoteAudio.curve.userDefined" });
                 dropdownCurvePreset.AssignBinding(BasisSettingsDefaults.RARolloffCurvePreset);
 
                 sliderCurvePoint25 = PanelSlider.CreateEntryAndBind(
@@ -331,7 +335,7 @@ namespace Basis.BasisUI
             // ─────────────── STEAM AUDIO - HRTF (advanced) ───────────────
             PanelDropdown dropdownInterpolation = null;
             PanelDropdown dropdownHrtfProfile = null;
-            PanelSectionToggleHelpers.CreateCollapsibleFlatSection(container,
+            PanelSectionToggleHelpers.CreateCollapsibleBoxedSection(container,
                 BasisLocalization.Get("settings.remoteAudio.hrtf"), () =>
             {
                 PanelToggle toggleDirectBinaural = PanelToggle.CreateNewEntry(container);
@@ -387,7 +391,7 @@ namespace Basis.BasisUI
             PanelSlider sliderAirAbsorptionLow = null;
             PanelSlider sliderAirAbsorptionMid = null;
             PanelSlider sliderAirAbsorptionHigh = null;
-            PanelSectionToggleHelpers.CreateCollapsibleFlatSection(container,
+            PanelSectionToggleHelpers.CreateCollapsibleBoxedSection(container,
                 BasisLocalization.Get("settings.remoteAudio.propagation"), () =>
             {
                 PanelToggle toggleDistanceAttenuation = PanelToggle.CreateNewEntry(container);
@@ -488,9 +492,14 @@ namespace Basis.BasisUI
             // ─────────────── STEAM AUDIO - DIRECTIVITY (advanced) ───────────────
             PanelSlider sliderDipoleWeight = null;
             PanelSlider sliderDipolePower = null;
-            PanelSectionToggleHelpers.CreateCollapsibleFlatSection(container,
+            PanelSectionToggleHelpers.CreateCollapsibleBoxedSection(container,
                 BasisLocalization.Get("settings.remoteAudio.directivity"), () =>
             {
+                PanelToggle toggleToneShaping = PanelToggle.CreateNewEntry(container);
+                toggleToneShaping.Descriptor.SetTitle(BasisLocalization.Get("settings.remoteAudio.toneShaping"));
+                toggleToneShaping.Descriptor.SetTooltip(BasisLocalization.Get("settings.remoteAudio.toneShaping.tooltip"));
+                toggleToneShaping.AssignBinding(BasisSettingsDefaults.RAVoiceToneShaping);
+
                 PanelToggle toggleDirectivity = PanelToggle.CreateNewEntry(container);
                 toggleDirectivity.Descriptor.SetTitle(BasisLocalization.Get("settings.remoteAudio.directivity"));
                 toggleDirectivity.Descriptor.SetTooltip(BasisLocalization.Get("settings.remoteAudio.directivity.toggle.tooltip"));
@@ -533,7 +542,7 @@ namespace Basis.BasisUI
             PanelDropdown dropdownOcclusionType = null;
             PanelSlider sliderOcclusionRadius = null;
             PanelSlider sliderOcclusionSamples = null;
-            PanelSectionToggleHelpers.CreateCollapsibleFlatSection(container,
+            PanelSectionToggleHelpers.CreateCollapsibleBoxedSection(container,
                 BasisLocalization.Get("settings.remoteAudio.occlusion"), () =>
             {
                 PanelToggle toggleOcclusion = PanelToggle.CreateNewEntry(container);
@@ -588,7 +597,7 @@ namespace Basis.BasisUI
             // ─────────────── STEAM AUDIO - TRANSMISSION (advanced) ───────────────
             PanelDropdown dropdownTransmissionType = null;
             PanelSlider sliderMaxTransmissionSurfaces = null;
-            PanelSectionToggleHelpers.CreateCollapsibleFlatSection(container,
+            PanelSectionToggleHelpers.CreateCollapsibleBoxedSection(container,
                 BasisLocalization.Get("settings.remoteAudio.transmission"), () =>
             {
                 PanelToggle toggleTransmission = PanelToggle.CreateNewEntry(container);
@@ -675,7 +684,7 @@ namespace Basis.BasisUI
 
             // ─────────────── LIP SYNC (advanced) ───────────────
             PanelSlider sliderLipSyncSlots = null;
-            PanelSectionToggleHelpers.CreateCollapsibleFlatSection(container,
+            PanelSectionToggleHelpers.CreateCollapsibleBoxedSection(container,
                 BasisLocalization.Get("settings.remoteAudio.lipSync"), () =>
             {
                 PanelToggle toggleLimitLipSync = PanelToggle.CreateNewEntry(container);
@@ -689,9 +698,7 @@ namespace Basis.BasisUI
                     BasisSettingsDefaults.OpenLipSyncMaxSlots);
                 sliderLipSyncSlots.Descriptor.SetTooltip(BasisLocalization.Get("settings.remoteAudio.lipSyncSlots.tooltip"));
                 sliderLipSyncSlots.Descriptor.SetDescription(
-                    "Number of concurrent OpenLipSync (neural viseme) instances.\n" +
-                    "Higher = better lip sync on more players, but more CPU.\n" +
-                    "Default: 30. Players beyond this get no visemes until a slot frees up.");
+                    BasisLocalization.Get("settings.remoteAudio.lipSyncSlots.description"));
 
                 // Only show the slider when the limit toggle is enabled
                 sliderLipSyncSlots.Descriptor.SetActive(toggleLimitLipSync.Value);
@@ -721,6 +728,7 @@ namespace Basis.BasisUI
 
             // AudioSource
             BasisSettingsDefaults.RAMinDistance.ResetToDefault();
+            BasisSettingsDefaults.RAVoiceToneShaping.ResetToDefault();
             BasisSettingsDefaults.RARolloffMode.ResetToDefault();
             BasisSettingsDefaults.RARolloffCurvePreset.ResetToDefault();
             BasisSettingsDefaults.RACurvePoint25.ResetToDefault();
@@ -795,6 +803,26 @@ namespace Basis.BasisUI
         }
 
         /// <summary>
+        /// (Re)builds the distance rolloff curve. Split out of <see cref="ApplyRemoteAudioTo"/>
+        /// because <c>BasisAudioReceiver.ApplyRangeData</c> has to redo exactly this
+        /// whenever <c>maxDistance</c> moves — a custom rolloff curve is evaluated at
+        /// <c>distance / maxDistance</c>, so it is denominated in hearing ranges and
+        /// cannot simply be carried across a range change.
+        /// </summary>
+        public static void ApplyDistanceCurves(BasisAudioReceiver receiver)
+        {
+            if (receiver == null || receiver.audioSource == null) return;
+            AudioSource source = receiver.audioSource;
+
+            if (source.rolloffMode == AudioRolloffMode.Custom)
+            {
+                source.SetCustomCurve(AudioSourceCurveType.CustomRolloff,
+                    GetRolloffCurvePreset(BasisSettingsDefaults.RARolloffCurvePreset.RawValue,
+                                          source.maxDistance));
+            }
+        }
+
+        /// <summary>
         /// Applies current remote audio settings to a single audio receiver.
         /// </summary>
         public static void ApplyRemoteAudioTo(BasisAudioReceiver receiver)
@@ -808,12 +836,12 @@ namespace Basis.BasisUI
 
             // AudioSource settings
             source.minDistance = BasisSettingsDefaults.RAMinDistance.RawValue;
+            // Before ApplyDistanceCurves, which only bakes the custom curve when the mode is
+            // already Custom. Nothing used to write this at all: the dropdown was bound,
+            // localized and persisted, but every remote source just kept whatever the prefab
+            // authored, so picking Logarithmic or Linear did nothing.
             source.rolloffMode = ParseRolloffMode(BasisSettingsDefaults.RARolloffMode.RawValue);
-            if (source.rolloffMode == AudioRolloffMode.Custom)
-            {
-                source.SetCustomCurve(AudioSourceCurveType.CustomRolloff,
-                    GetRolloffCurvePreset(BasisSettingsDefaults.RARolloffCurvePreset.RawValue));
-            }
+            ApplyDistanceCurves(receiver);
             source.spread = BasisSettingsDefaults.RASpread.RawValue;
             source.dopplerLevel = BasisSettingsDefaults.RADopplerLevel.RawValue;
             source.spatialBlend = BasisSettingsDefaults.RASpatialBlend.RawValue;
@@ -863,6 +891,16 @@ namespace Basis.BasisUI
                 sa.reflectionsMixLevel = BasisSettingsDefaults.RAReflectionsMixLevel.RawValue;
                 sa.applyHRTFToReflections = BasisSettingsDefaults.RAApplyHRTFToReflections.RawValue;
 
+                // Every boolean above feeds a flag set SteamAudioSource caches and only rebuilds
+                // when it is told to. Without this the simulator keeps whatever the prefab
+                // authored — occlusion, transmission and directivity silently never turn on in a
+                // build, no matter what the settings say — because the only invalidation that
+                // covers a plain field write is OnValidate, which is editor-only. ForceUpdate
+                // below does not cover it; it pushes DSP parameters, not simulation flags.
+                sa.MarkCacheDirty();
+                // The rolloff mode, distances and baked curve all just moved; the native
+                // attenuation callback reads its own snapshot of them, taken at init.
+                sa.RefreshAttenuationData();
                 sa.ForceUpdate();
             }
             else
@@ -954,10 +992,21 @@ namespace Basis.BasisUI
 
         /// <summary>
         /// Returns a custom rolloff AnimationCurve for the given preset name.
-        /// Curves are defined in normalized distance (0..1 maps to minDistance..maxDistance).
+        /// Unity evaluates a custom rolloff at <c>distance / maxDistance</c> and
+        /// ignores <c>minDistance</c> entirely, so every curve here is defined over
+        /// 0..maxDistance and any near-field reference has to be baked in.
         /// </summary>
-        private static AnimationCurve GetRolloffCurvePreset(string preset)
+        private static AnimationCurve GetRolloffCurvePreset(string preset, float maxDistance)
         {
+            if (string.Equals(preset, "natural", StringComparison.OrdinalIgnoreCase))
+            {
+                // Generated from the acoustic model rather than drawn by hand: the
+                // inverse distance law, tapered to zero so the hearing-range cull is silent.
+                return BasisVoiceAcoustics.BuildRolloffCurve(
+                    BasisSettingsDefaults.RAMinDistance.RawValue,
+                    maxDistance);
+            }
+
             if (string.Equals(preset, "sharp falloff", StringComparison.OrdinalIgnoreCase))
             {
                 // Drops quickly near the source, nearly silent by halfway
@@ -1014,7 +1063,11 @@ namespace Basis.BasisUI
                 );
             }
 
-            // "Default" — matches the original prefab curve
+            // "Legacy" — the hand-drawn curve that shipped before the acoustic model.
+            // Kept selectable, but it is flat to ~6 m (only 21 % of the real level
+            // change between 1 m and 4 m) and then falls 36 dB across the last
+            // doubling, which is what made everyone sound equally close and then
+            // vanish. Measured 8.3 dB RMS from a real talker over 0.5-15 m.
             return new AnimationCurve(
                 new Keyframe(0.036f, 1f, -2.214f, -2.214f),
                 new Keyframe(0.239f, 0.575f, -2.305f, -2.305f),

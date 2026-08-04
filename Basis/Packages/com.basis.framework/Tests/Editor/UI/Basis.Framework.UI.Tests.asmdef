@@ -3,6 +3,10 @@
     "rootNamespace": "",
     "references": [
         "Basis Framework",
+        "BasisSDK",
+        "BasisCommon",
+        "UnityEngine.UI",
+        "Unity.TextMeshPro",
         "UnityEngine.TestRunner"
     ],
     "includePlatforms": [

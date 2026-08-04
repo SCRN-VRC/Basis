@@ -64,6 +64,7 @@ public static class BasisPlayerSettingsManager
                     if (loaded.Version != 0)
                     {
                         if (string.IsNullOrEmpty(loaded.UUID)) loaded.UUID = uuid;
+                        loaded.UpgradeSchema();
                         data = loaded;
                         valid = true;
                     }
@@ -83,6 +84,20 @@ public static class BasisPlayerSettingsManager
         {
             sem.Release();
         }
+    }
+
+    /// <summary>
+    /// Synchronous cache probe for per-frame paths that must never await. Returns false
+    /// until <see cref="RequestPlayerSettings"/> has populated the cache for this UUID.
+    /// </summary>
+    public static bool TryGetCached(string uuid, out BasisPlayerSettingsData data)
+    {
+        data = default;
+        if (string.IsNullOrWhiteSpace(uuid))
+        {
+            return false;
+        }
+        return cache.TryGetValue(Sanitize(uuid), out data);
     }
 
     public static async Task SetPlayerSettings(BasisPlayerSettingsData settings)

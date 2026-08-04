@@ -27,13 +27,13 @@ namespace HVR.Basis.Comms
         static void BuildFaceTrackingSection(RectTransform parent)
         {
             PanelButton refreshButton = PanelButton.CreateNew(parent);
-            refreshButton.Descriptor.SetTitle("Refresh");
-            refreshButton.Descriptor.SetDescription("Poll the current face tracking state from all components.");
+            refreshButton.Descriptor.SetTitle(BasisLocalization.Get("settings.faceTracking.refresh"));
+            refreshButton.Descriptor.SetDescription(BasisLocalization.Get("settings.faceTracking.refresh.description"));
 
-            PanelElementDescriptor fieldFTActive = CreateInfoField(parent, "Face Tracking Active", "...");
-            PanelElementDescriptor fieldOSC = CreateInfoField(parent, "OSC Acquisition", "...");
-            PanelElementDescriptor fieldBlendshapeActive = CreateInfoField(parent, "Blendshape Tracking", "...");
-            PanelElementDescriptor fieldActuatedAddresses = CreateInfoField(parent, "Actuated Addresses", "...");
+            PanelElementDescriptor fieldFTActive = CreateInfoField(parent, BasisLocalization.Get("settings.faceTracking.faceTrackingActive"), "...");
+            PanelElementDescriptor fieldOSC = CreateInfoField(parent, BasisLocalization.Get("settings.faceTracking.oscAcquisition"), "...");
+            PanelElementDescriptor fieldBlendshapeActive = CreateInfoField(parent, BasisLocalization.Get("settings.faceTracking.blendshapeTracking"), "...");
+            PanelElementDescriptor fieldActuatedAddresses = CreateInfoField(parent, BasisLocalization.Get("settings.faceTracking.actuatedAddresses"), "...");
 
             void Refresh() => RefreshFaceState(fieldFTActive, fieldOSC, fieldBlendshapeActive, fieldActuatedAddresses);
             refreshButton.OnClicked += Refresh;
@@ -43,15 +43,15 @@ namespace HVR.Basis.Comms
         static void BuildEyeTrackingSection(RectTransform parent)
         {
             PanelButton refreshButton = PanelButton.CreateNew(parent);
-            refreshButton.Descriptor.SetTitle("Refresh");
-            refreshButton.Descriptor.SetDescription("Poll the current eye tracking state from all components.");
+            refreshButton.Descriptor.SetTitle(BasisLocalization.Get("settings.eyeTracking.refresh"));
+            refreshButton.Descriptor.SetDescription(BasisLocalization.Get("settings.eyeTracking.refresh.description"));
 
-            PanelElementDescriptor fieldEyeOverride = CreateInfoField(parent, "Eye Override", "...");
-            PanelElementDescriptor fieldEyeDriverEnabled = CreateInfoField(parent, "Eye Driver Enabled", "...");
-            PanelElementDescriptor fieldEyeParamsActive = CreateInfoField(parent, "Eye Params Active", "...");
-            PanelElementDescriptor fieldEyeLeftX = CreateInfoField(parent, "Eye Left X", "...");
-            PanelElementDescriptor fieldEyeRightX = CreateInfoField(parent, "Eye Right X", "...");
-            PanelElementDescriptor fieldEyeY = CreateInfoField(parent, "Eye Y", "...");
+            PanelElementDescriptor fieldEyeOverride = CreateInfoField(parent, BasisLocalization.Get("settings.faceTracking.eyeOverride"), "...");
+            PanelElementDescriptor fieldEyeDriverEnabled = CreateInfoField(parent, BasisLocalization.Get("settings.faceTracking.eyeDriverEnabled"), "...");
+            PanelElementDescriptor fieldEyeParamsActive = CreateInfoField(parent, BasisLocalization.Get("settings.faceTracking.eyeParamsActive"), "...");
+            PanelElementDescriptor fieldEyeLeftX = CreateInfoField(parent, BasisLocalization.Get("settings.faceTracking.eyeLeftX"), "...");
+            PanelElementDescriptor fieldEyeRightX = CreateInfoField(parent, BasisLocalization.Get("settings.faceTracking.eyeRightX"), "...");
+            PanelElementDescriptor fieldEyeY = CreateInfoField(parent, BasisLocalization.Get("settings.faceTracking.eyeY"), "...");
 
             void Refresh() => RefreshEyeState(
                 fieldEyeOverride, fieldEyeDriverEnabled, fieldEyeParamsActive,
@@ -86,7 +86,7 @@ namespace HVR.Basis.Comms
             if (oscAcq != null)
                 oscAcquisition.SetDescription(oscAcq.isActiveAndEnabled ? "Active" : "DISABLED");
             else
-                oscAcquisition.SetDescription("No component");
+                oscAcquisition.SetDescription(BasisLocalization.Get("settings.faceTracking.noComponent"));
 
             BlendshapeActuation blendshape = avatar != null
                 ? avatar.GetComponentInChildren<BlendshapeActuation>(true)
@@ -99,7 +99,7 @@ namespace HVR.Basis.Comms
             }
             else
             {
-                blendshapeActive.SetDescription("No component");
+                blendshapeActive.SetDescription(BasisLocalization.Get("settings.faceTracking.noComponent"));
                 actuatedAddresses.SetDescription("--");
             }
         }
@@ -130,7 +130,7 @@ namespace HVR.Basis.Comms
             }
             else
             {
-                eyeParamsActive.SetDescription("No component");
+                eyeParamsActive.SetDescription(BasisLocalization.Get("settings.faceTracking.noComponent"));
                 eyeLeftX.SetDescription("--");
                 eyeRightX.SetDescription("--");
                 eyeY.SetDescription("--");
@@ -154,9 +154,10 @@ namespace HVR.Basis.Comms
             var menuItems = avatar.GetComponentsInChildren<HVRVixxyMenuItem>(true);
             if (menuItems.Length <= 0) return;
 
-            var menuGroup = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
-            menuGroup.SetTitle("Vixxy");
-            menuGroup.SetDescription("Trigger effects on this avatar.");
+            var sectionToggle = PanelSectionToggle.CreateNewEntry(container);
+            var menuGroup = PanelSectionToggleHelpers.CreateCollapsibleContentGroup(
+                sectionToggle, container, "Vixxy");
+            menuGroup.SetDescription(BasisLocalization.Get("settings.faceTracking.vixxy.description"));
 
             var resetters = new List<Action>();
             foreach (var menuItem in menuItems)
@@ -181,13 +182,15 @@ namespace HVR.Basis.Comms
                 }
             }
 
-            var resetButton = PanelButton.CreateNew(container);
-            resetButton.Descriptor.SetTitle("Reset to Default");
-            resetButton.Descriptor.SetDescription("Restore all customization on this avatar to its defaults.");
+            var resetButton = PanelButton.CreateNew(menuGroup.ContentParent);
+            resetButton.Descriptor.SetTitle(BasisLocalization.Get("settings.faceTracking.resetToDefault"));
+            resetButton.Descriptor.SetDescription(BasisLocalization.Get("settings.faceTracking.resetToDefault.description"));
             resetButton.OnClicked += () =>
             {
                 foreach (var reset in resetters) reset();
             };
+
+            PanelSectionToggleHelpers.FinalizeCollapsibleGroup(sectionToggle, menuGroup, true);
         }
 
         private static void InitializeEyeTrackingPanel(RectTransform container)
@@ -199,13 +202,14 @@ namespace HVR.Basis.Comms
             var eyeActuation = avatar.GetComponentInChildren<EyeTrackingBoneActuation>(true);
             if (eyeActuation == null) return;
 
-            var eyeGroup = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, container);
-            eyeGroup.SetTitle("Eye Tracking");
-            eyeGroup.SetDescription("Limit and scale eye tracking rotation on this avatar.");
+            var sectionToggle = PanelSectionToggle.CreateNewEntry(container);
+            var eyeGroup = PanelSectionToggleHelpers.CreateCollapsibleContentGroup(
+                sectionToggle, container, BasisLocalization.Get("settings.faceTracking.eyeTracking"));
+            eyeGroup.SetDescription(BasisLocalization.Get("settings.faceTracking.eyeTracking.description"));
 
             var overrideToggle = PanelToggle.CreateNewEntry(eyeGroup.ContentParent);
-            overrideToggle.Descriptor.SetTitle("Override Rotation Limits");
-            overrideToggle.Descriptor.SetDescription("When off, the values baked into the avatar are used.");
+            overrideToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.faceTracking.overrideRotationLimits"));
+            overrideToggle.Descriptor.SetDescription(BasisLocalization.Get("settings.faceTracking.overrideRotationLimits.description"));
             overrideToggle.SetValueWithoutNotify(eyeActuation.RuntimeOverrideEnabled);
 
             var sliders = new List<PanelSlider>();
@@ -241,9 +245,9 @@ namespace HVR.Basis.Comms
                 ApplySliderVisibility(value);
             };
 
-            var resetButton = PanelButton.CreateNew(container);
-            resetButton.Descriptor.SetTitle("Reset Eye Tracking");
-            resetButton.Descriptor.SetDescription("Turn off the override and restore the values baked into this avatar.");
+            var resetButton = PanelButton.CreateNew(eyeGroup.ContentParent);
+            resetButton.Descriptor.SetTitle(BasisLocalization.Get("settings.faceTracking.resetEyeTracking"));
+            resetButton.Descriptor.SetDescription(BasisLocalization.Get("settings.faceTracking.resetEyeTracking.description"));
             resetButton.OnClicked += () =>
             {
                 eyeActuation.RuntimeOverrideEnabled = false;
@@ -251,6 +255,15 @@ namespace HVR.Basis.Comms
                 foreach (var reset in resetters) reset();
                 ApplySliderVisibility(false);
             };
+
+            PanelSectionToggleHelpers.FinalizeCollapsibleGroup(sectionToggle, eyeGroup, true,
+                visible =>
+                {
+                    if (visible)
+                    {
+                        ApplySliderVisibility(eyeActuation.RuntimeOverrideEnabled);
+                    }
+                });
         }
 
         private static Action BuildOverrideSlider(PanelElementDescriptor group, List<PanelSlider> sliders, string title, string description,

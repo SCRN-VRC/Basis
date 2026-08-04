@@ -654,6 +654,23 @@ namespace Basis.Scripts.Networking.Receivers
 
         public void EnQueueAvatarBuffer(BasisAvatarBuffer avatarBuffer)
         {
+            // Single choke point for every decoded remote pose (keyframe and delta). One
+            // non-finite component would snap this player's skeleton (and everything keyed off
+            // it — far avatar root, mouth/eye outputs, nameplate) to NaN on every client that
+            // receives it, and the transforms never recover. Drop the pose and keep the last
+            // good one instead.
+            if (!IsFinite(avatarBuffer.Position) || !IsFinite(avatarBuffer.Rotation) || !IsFinite(avatarBuffer.Scale))
+            {
+                BasisDebug.LogErrorOnce($"Dropped a non-finite network pose for player {playerId}: pos={avatarBuffer.Position} rot={avatarBuffer.Rotation} scale={avatarBuffer.Scale}", BasisDebug.LogTag.Networking);
+                return;
+            }
+            // Finite is not enough: a value near 3.4e38 overflows the per-frame filter's
+            // derivative term to Inf, and the resulting NaN latches into the filter history.
+            if (!IsWithinWorldBounds(avatarBuffer.Position))
+            {
+                BasisDebug.LogErrorOnce($"Dropped an out-of-range network pose for player {playerId}: pos={avatarBuffer.Position}", BasisDebug.LogTag.Networking);
+                return;
+            }
             Interlocked.Increment(ref _poseVersion);
             _latestNetworkPosition = avatarBuffer.Position;
             _latestNetworkRotation = avatarBuffer.Rotation;
@@ -662,6 +679,15 @@ namespace Basis.Scripts.Networking.Receivers
             PayloadQueue.Enqueue(avatarBuffer);
             System.Threading.Interlocked.Increment(ref _pendingCount);
         }
+
+        /// <summary>Half-extent of the coordinate range a remote pose may occupy (1000 km).</summary>
+        const float MaxNetworkPositionMagnitude = 1e6f;
+
+        static bool IsWithinWorldBounds(float3 v) => math.all(math.abs(v) < MaxNetworkPositionMagnitude);
+
+        static bool IsFinite(float3 v) => math.all(math.isfinite(v));
+
+        static bool IsFinite(quaternion q) => math.all(math.isfinite(q.value));
 
         public override void Initialize()
         {
@@ -709,6 +735,7 @@ namespace Basis.Scripts.Networking.Receivers
             // before CalibrationComplete fires, so no reset is needed here.
             AudioReceiverModule.AvatarChanged(this, true);
 
+            int behaviourCount = NetworkBehaviours != null ? NetworkBehaviours.Length : 0;
             List<byte> keysToRemove = new List<byte>();
             foreach (KeyValuePair<byte, ServerAvatarDataMessageQueue> message in NextMessages)
             {
@@ -720,23 +747,40 @@ namespace Basis.Scripts.Networking.Receivers
                 bool isSameAvatar = Remote.AvatarLinkIndex == LastLinkedAvatarIndex;
                 if (isSameAvatar)
                 {
-                    if (message.Value.Direct)
-                    {
-                        NetworkBehaviours[message.Key].OnDirectNetworkMessageReceived(
-                            playerIdMessage.playerID,
-                            Remote.payload,
-                            message.Value.Method
-                        );
-                    }
-                    else
-                    {
-                        NetworkBehaviours[message.Key].OnNetworkMessageReceived(
-                            playerIdMessage.playerID,
-                            Remote.payload,
-                            message.Value.Method
-                        );
-                    }
                     keysToRemove.Add(message.Key);
+
+                    var behaviour = message.Key < behaviourCount ? NetworkBehaviours[message.Key] : null;
+                    if (behaviour == null)
+                    {
+                        Interlocked.Increment(ref BasisAdditionalDataDiagnostics.ReceiverAvatarChannelDropped);
+                        continue;
+                    }
+
+                    try
+                    {
+                        if (message.Value.Direct)
+                        {
+                            behaviour.OnDirectNetworkMessageReceived(
+                                playerIdMessage.playerID,
+                                Remote.payload,
+                                message.Value.Method
+                            );
+                        }
+                        else
+                        {
+                            behaviour.OnNetworkMessageReceived(
+                                playerIdMessage.playerID,
+                                Remote.payload,
+                                message.Value.Method
+                            );
+                        }
+                        Interlocked.Increment(ref BasisAdditionalDataDiagnostics.ReceiverAvatarChannelDispatched);
+                    }
+                    catch (Exception ex)
+                    {
+                        Interlocked.Increment(ref BasisAdditionalDataDiagnostics.ReceiverAvatarChannelDropped);
+                        BasisDebug.LogError($"Queued avatar message for behaviour {message.Key} threw during calibration replay: {ex}");
+                    }
                 }
                 else
                 {

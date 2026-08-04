@@ -17,7 +17,7 @@ public abstract class BasisNetworkContentBase : MonoBehaviour
     }
     public Action<BasisContentInformation> OnClientIdentifierAssigned;
 
-    public virtual BasisContentInformation ContentInformation { get; protected set; } = default;
+    public virtual BasisContentInformation ContentInformation { get; protected set; } = new BasisContentInformation() { IsAdminLocked = false, LoadedNetID = string.Empty};
     /// <summary>
     /// Attempts to get the currently assigned GUID identifier.
     /// </summary>
@@ -25,7 +25,7 @@ public abstract class BasisNetworkContentBase : MonoBehaviour
     /// <returns>True if identifier is assigned</returns>
     public bool TryGetIdentifier(out BasisContentInformation identifier)
     {
-        if(ContentInformation.LoadedNetID == string.Empty)
+        if(string.IsNullOrEmpty(ContentInformation.LoadedNetID))
         {
             identifier = default;
             return false;
@@ -40,7 +40,7 @@ public abstract class BasisNetworkContentBase : MonoBehaviour
     /// <returns>True if identifier is assigned</returns>
     public bool TryGetNetworkGUIDIdentifier(out string identifier)
     {
-        if (ContentInformation.LoadedNetID == string.Empty)
+        if (string.IsNullOrEmpty(ContentInformation.LoadedNetID))
         {
             identifier = default;
             return false;

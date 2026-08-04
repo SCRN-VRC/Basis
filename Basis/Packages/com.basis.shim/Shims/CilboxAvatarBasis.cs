@@ -15,10 +15,17 @@ namespace Cilbox
 			"Basis.Shims.BasisAvatarShim+OnReady",
 			"Basis.Shims.BasisAvatarShim+AvatarReadyEvent",
 			"Basis.Shims.BasisCilboxInstantiateShim",
+			"Basis.Shims.BasisJiggleEventShim", // Restrictive, see method whitelist.
 			"Basis.Shims.BasisDebugPropsShim",
 			"Basis.Shims.BasisPlayspaceInputShim", // Restrictive, see method whitelist.
 			"Basis.Shims.BasisPlayerInputBlend",
 			"Basis.Shims.BasisVixxyShim", // Restrictive, see method whitelist.
+			// Bulk transform / blendshape get-set-copy. The prop and scene boxes pick these up
+			// from their blanket "Basis.Shims.*"; the avatar box enumerates, so they need naming.
+			// They grant no authority a script does not already have on a Transform or a
+			// SkinnedMeshRenderer it holds — only the per-call reflection overhead changes.
+			"Basis.Shims.BasisTransformSyncShim",
+			"Basis.Shims.BasisBlendShapeSyncShim",
 
 			// HVR Vixxy
 			"HVR.Vixxy.HVRVixxyMenuItem", // Restrictive, see method whitelist.
@@ -41,6 +48,14 @@ namespace Cilbox
 
 		static readonly Dictionary<Type, HashSet<string>> extraMethodWhitelist = new Dictionary<Type, HashSet<string>>()
 		{
+			// Jiggle grab/touch events — this is what lets an avatar react to being handled. Fetching
+			// the component is the opt-in; the callbacks are resolved by name off the script itself.
+			{ typeof(Basis.Shims.BasisJiggleEventShim), new HashSet<string>{
+				nameof(Basis.Shims.BasisJiggleEventShim.Rebind),
+				nameof(Basis.Shims.BasisJiggleEventShim.GetJiggleRigCount),
+				nameof(Basis.Shims.BasisJiggleEventShim.GetJiggleRigName),
+				nameof(Basis.Shims.BasisJiggleEventShim.FindJiggleRig),
+				} },
 			{ typeof(UnityEngine.GameObject), new HashSet<string>{
 				typeof(GameObject).GetProperty(nameof(GameObject.transform)).GetGetMethod().Name,
 				typeof(GameObject).GetProperty(nameof(GameObject.activeSelf)).GetGetMethod().Name,

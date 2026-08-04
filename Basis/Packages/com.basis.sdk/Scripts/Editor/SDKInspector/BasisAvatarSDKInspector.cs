@@ -209,15 +209,15 @@ public partial class BasisAvatarSDKInspector : Editor
     }
     private void OnMouthHeightValueChanged(ChangeEvent<Vector2> evt)
     {
-        Undo.RecordObject(Avatar, "Change Mouth Height");
-        Avatar.AvatarMouthPosition = new Vector3(evt.newValue.x, evt.newValue.y, 0);
+        Undo.RecordObject(Avatar, "Change Mouth Position");
+        Avatar.AvatarMouthPosition = evt.newValue;
         EditorUtility.SetDirty(Avatar);
         ValueChanged?.Invoke();
     }
     private void OnEyeHeightValueChanged(ChangeEvent<Vector2> evt)
     {
-        Undo.RecordObject(Avatar, "Change Eye Height");
-        Avatar.AvatarEyePosition = new Vector3(evt.newValue.x, evt.newValue.y, 0);
+        Undo.RecordObject(Avatar, "Change Eye Position");
+        Avatar.AvatarEyePosition = evt.newValue;
         EditorUtility.SetDirty(Avatar);
         ValueChanged?.Invoke();
     }
@@ -291,6 +291,11 @@ public partial class BasisAvatarSDKInspector : Editor
         BasisHelpersGizmo.CallBackVector2Field(uiElementsRoot, BasisSDKConstants.avatarEyePositionField, Avatar.AvatarEyePosition, OnEyeHeightValueChanged);
         BasisHelpersGizmo.CallBackVector2Field(uiElementsRoot, BasisSDKConstants.avatarMouthPositionField, Avatar.AvatarMouthPosition, OnMouthHeightValueChanged);
 
+        string heightLabel = BasisEditorLocalization.Get("sdk.avatar.position.height");
+        string forwardLabel = BasisEditorLocalization.Get("sdk.avatar.position.forward");
+        BasisHelpersGizmo.LabelVector2Field(uiElementsRoot, BasisSDKConstants.avatarEyePositionField, BasisEditorLocalization.Get("sdk.avatar.eyePosition.label"), heightLabel, forwardLabel);
+        BasisHelpersGizmo.LabelVector2Field(uiElementsRoot, BasisSDKConstants.avatarMouthPositionField, BasisEditorLocalization.Get("sdk.avatar.mouthPosition.label"), heightLabel, forwardLabel);
+
         // Eye Personality sliders
         Slider livelinessSlider = uiElementsRoot.Q<Slider>(BasisSDKConstants.EyeLivelinessField);
         if (livelinessSlider != null)
@@ -331,7 +336,6 @@ public partial class BasisAvatarSDKInspector : Editor
         animatorField.value = Avatar.Animator;
         faceBlinkMeshField.value = Avatar.FaceBlinkMesh;
         faceVisemeMeshField.value = Avatar.FaceVisemeMesh;
-        AvatarIconField.value = Avatar.BasisBundleDescription.AssetBundleIcon;
 
         AvatarNameField.value = Avatar.BasisBundleDescription.AssetBundleName;
         AvatarDescriptionField.value = Avatar.BasisBundleDescription.AssetBundleDescription;
@@ -351,11 +355,25 @@ public partial class BasisAvatarSDKInspector : Editor
         avatarAutomaticBlinkDetectionClick.clicked += AutomaticallyFindBlinking;
         AvatarTestInEditorClick.clicked += AvatarTestInEditorClickFunction;// unity editor window button
 
-        BasisSDKCommonInspector.CreateContentTagsFoldout(uiElementsRoot, Avatar);
-        BasisSDKCommonInspector.CreateBuildTargetOptions(uiElementsRoot);
-        BasisSDKCommonInspector.CreateBuildOptionsDropdown(uiElementsRoot);
+        // Parented into the UXML blocks so they pick up that styling rather than trailing off the
+        // end of the inspector: what the avatar is goes under Settings, how it is published goes in
+        // the build blocks above the build button, each its own collapsible section.
+        BasisSDKCommonInspector.CreateBuildTargetOptions(BasisSDKCommonInspector.ResolveBuildTargetsContainer(uiElementsRoot));
+        BasisSDKCommonInspector.CreateBuildOptionsDropdown(BasisSDKCommonInspector.ResolveBuildContainer(uiElementsRoot));
+
+        BasisSDKCommonInspector.CreateContentTagsFoldout(BasisSDKCommonInspector.ResolveContentTagsContainer(uiElementsRoot), Avatar);
+        BasisSDKCommonInspector.CreateContentGroupIdFoldout(BasisSDKCommonInspector.ResolveContentTagsContainer(uiElementsRoot), Avatar);
+        BasisSDKCommonInspector.StyleBuildButton(avatarBundleButton);
         BasisAssetBundleObject assetBundleObject = AssetDatabase.LoadAssetAtPath<BasisAssetBundleObject>(BasisAssetBundleObject.AssetBundleObject);
-        AvatarIconField.RegisterCallback<ChangeEvent<UnityEngine.Object>>(OnIconFieldChanged);
+        // Icon field, plus the capture buttons that fill it in. Bound to the serialized property
+        // rather than written by hand so both routes land on the undo stack.
+        BasisSDKCommonInspector.CreateIconTools(
+            AvatarIconField,
+            serializedObject,
+            Avatar,
+            BasisEditorLocalization.Get("sdk.avatar.icon.generate"),
+            BasisEditorLocalization.Get("sdk.avatar.icon.generate.tooltip"),
+            () => BasisIconCapture.CaptureGameObject(Avatar.gameObject, BasisIconCapture.AvatarYaw, BasisIconCapture.AvatarPitch));
         avatarBundleButton.clicked += () => EventCallbackAvatarBundle(assetBundleObject.selectedTargets, Avatar.BasisBundleDescription.AssetBundleIcon);
 
 
@@ -371,12 +389,6 @@ public partial class BasisAvatarSDKInspector : Editor
         avatarMouthPositionClick.text = BasisEditorLocalization.Get("sdk.avatar.mouthGizmo.label", AvatarHelper.BoolToText(AvatarMouthPositionState));
     }
 
-    private void OnIconFieldChanged(ChangeEvent<UnityEngine.Object> evt)
-    {
-        Avatar.BasisBundleDescription.AssetBundleIcon = evt.newValue as Texture2D;
-        EditorUtility.SetDirty(Avatar);
-        BasisDebug.Log($"Setting to {Avatar.BasisBundleDescription.AssetBundleIcon}");
-    }
     private async void EventCallbackAvatarBundle(List<BuildTarget> targets, Texture2D Image)
     {
         if (targets == null || targets.Count == 0)
@@ -413,7 +425,10 @@ public partial class BasisAvatarSDKInspector : Editor
             try
             {
                 BasisDebug.Log($"Building Avatar Bundles for: {string.Join(", ", targets.ConvertAll(t => BasisSDKConstants.targetDisplayNames[t]))}");
-                // Build from a stripped clone so the authored avatar stays untouched.
+                // Build from a stripped clone so the authored avatar stays untouched. The group id
+                // must be ensured on the ORIGINAL first — generating it on the clone would discard
+                // it when the clone is destroyed, breaking version stacking across uploads.
+                BasisContentGroupId.EnsurePersistent(Avatar);
                 buildRoot = GameObject.Instantiate(Avatar.gameObject);
                 buildRoot.TryGetComponent<BasisAvatar>(out Avatar);
                 //  if (Avatar.ProcessingAvatarOptions != null && Avatar.ProcessingAvatarOptions.RemoveUnusedBlendshapes)

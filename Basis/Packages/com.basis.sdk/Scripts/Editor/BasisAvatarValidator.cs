@@ -191,9 +191,42 @@ public class BasisAvatarValidator
             errors.Add(new BasisValidationIssue(BasisEditorLocalization.Get("sdk.avatarValidator.blinkViseme.missing"), ValidationCategory.MissingReference, null));
 
         if (Avatar.FaceVisemeMovement != null && Avatar.FaceVisemeMovement.Length > 0)
-            passes.Add(BasisEditorLocalization.Get("sdk.avatarValidator.faceVisemeMovement.assigned"));
+        {
+            bool anyVisemeMapped = false;
+            for (int Index = 0; Index < Avatar.FaceVisemeMovement.Length; Index++)
+            {
+                if (Avatar.FaceVisemeMovement[Index] != -1)
+                {
+                    anyVisemeMapped = true;
+                    break;
+                }
+            }
+
+            if (anyVisemeMapped)
+                passes.Add(BasisEditorLocalization.Get("sdk.avatarValidator.faceVisemeMovement.assigned"));
+            else
+                warnings.Add(new BasisValidationIssue(BasisEditorLocalization.Get("sdk.avatarValidator.faceVisemeMovement.allUnmapped"), ValidationCategory.Configuration, null));
+        }
         else
             errors.Add(new BasisValidationIssue(BasisEditorLocalization.Get("sdk.avatarValidator.faceVisemeMovement.missing"), ValidationCategory.MissingReference, null));
+
+        if (Avatar.FaceVisemeProfiles != null && Avatar.FaceVisemeProfiles.Length > 0)
+        {
+            if (Avatar.FaceVisemeMovement != null && Avatar.FaceVisemeProfiles.Length != Avatar.FaceVisemeMovement.Length)
+            {
+                warnings.Add(new BasisValidationIssue(BasisEditorLocalization.Get("sdk.avatarValidator.visemeProfiles.lengthMismatch"), ValidationCategory.Configuration, null));
+            }
+
+            for (int Index = 0; Index < Avatar.FaceVisemeProfiles.Length; Index++)
+            {
+                BasisVisemeProfile Profile = Avatar.FaceVisemeProfiles[Index];
+                if (Profile.OutMax <= Profile.OutMin && Avatar.FaceVisemeMovement != null && Index < Avatar.FaceVisemeMovement.Length && Avatar.FaceVisemeMovement[Index] != -1)
+                {
+                    warnings.Add(new BasisValidationIssue(BasisEditorLocalization.Get("sdk.avatarValidator.visemeProfiles.inertRange"), ValidationCategory.Configuration, null));
+                    break;
+                }
+            }
+        }
 
         if (Avatar.FaceBlinkMesh != null)
             passes.Add(BasisEditorLocalization.Get("sdk.avatarValidator.faceBlinkMesh.assigned"));
@@ -346,19 +379,24 @@ public class BasisAvatarValidator
     private void FixSetDefaultBundleName()
     {
         if (Avatar == null) return;
-        string name = Avatar.gameObject.name.Trim();
-        foreach (char c in Path.GetInvalidFileNameChars())
-            name = name.Replace(c, '_');
+        Undo.RecordObject(Avatar, "Set Default Bundle Name");
+        string name = BasisContentDefaults.ResolveName(Avatar.gameObject, BasisEditorLocalization.Get("sdk.avatarValidator.bundleName.default"));
         Avatar.BasisBundleDescription.AssetBundleName = name;
         EditorUtility.SetDirty(Avatar);
+        BasisContentDefaults.SyncField(Root, BasisSDKConstants.AvatarName, name);
     }
 
     private void FixSetDefaultDescription()
     {
         if (Avatar == null) return;
-        Avatar.BasisBundleDescription.AssetBundleDescription =
-            $"Avatar \"{Avatar.gameObject.name}\"";
+        Undo.RecordObject(Avatar, "Set Default Description");
+        string name = string.IsNullOrEmpty(Avatar.BasisBundleDescription.AssetBundleName)
+            ? BasisContentDefaults.ResolveName(Avatar.gameObject, BasisEditorLocalization.Get("sdk.avatarValidator.bundleName.default"))
+            : Avatar.BasisBundleDescription.AssetBundleName;
+        string description = BasisEditorLocalization.Get("sdk.avatarValidator.bundleDescription.default", name);
+        Avatar.BasisBundleDescription.AssetBundleDescription = description;
         EditorUtility.SetDirty(Avatar);
+        BasisContentDefaults.SyncField(Root, BasisSDKConstants.AvatarDescription, description);
     }
 
     private void FixDisableDoNotAutoRenameBones()

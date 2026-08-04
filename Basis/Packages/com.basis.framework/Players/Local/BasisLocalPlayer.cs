@@ -320,7 +320,11 @@ namespace Basis.Scripts.BasisSdk.Players
             var (onDisc, info) = await BasisLoadHandler.IsMetaDataOnDiscAsync(LastUsedAvatar.UniqueID);
             BasisLoadableBundle bundle = new BasisLoadableBundle
             {
-                BasisRemoteBundleEncrypted = onDisc ? info.StoredRemote : new BasisRemoteEncyptedBundle { RemoteBeeFileLocation = LastUsedAvatar.UniqueID },
+                // Cloned, not aliased: this bundle is held for the lifetime of the worn avatar and
+                // its version tag is part of the bundle registry key. Sharing the meta cache's
+                // record lets the library UI re-key the avatar you are currently wearing, which
+                // strands its DeIncrement and can unload it out from under you.
+                BasisRemoteBundleEncrypted = onDisc ? info.StoredRemote.Clone() : new BasisRemoteEncyptedBundle { RemoteBeeFileLocation = LastUsedAvatar.UniqueID },
                 BasisBundleConnector = new BasisBundleConnector("1", new BasisBundleDescription("Loading Avatar", "Loading Avatar"), new BasisBundleGenerated[] { new BasisBundleGenerated() }, null, new BasisBounds(Vector3.zero, Vector3.one), new BasisBundleConnector.BasisMetaData()),
                 BasisLocalEncryptedBundle = onDisc ? info.StoredLocal : new BasisStoredEncryptedBundle(),
                 UnlockPassword = unlockPassword
@@ -557,6 +561,7 @@ namespace Basis.Scripts.BasisSdk.Players
             LocalVisemeDriver.ProcessAudioSamples(BasisLocalMicrophoneDriver.processBufferArray,1,BasisLocalMicrophoneDriver.processBufferArray.Length);
 #endif
         }
+        static readonly ProfilerMarker sMarkerLocoPoseSchedule = new ProfilerMarker("BasisDriver.LocalPlayer.LocoPoseSchedule");
         static readonly ProfilerMarker sMarkerMovement = new ProfilerMarker("BasisDriver.LocalPlayer.Movement");
         static readonly ProfilerMarker sMarkerPlayspaceMover = new ProfilerMarker("BasisDriver.LocalPlayer.PlayspaceMover");
         static readonly ProfilerMarker sMarkerVirtualData = new ProfilerMarker("BasisDriver.LocalPlayer.VirtualData");
@@ -571,19 +576,24 @@ namespace Basis.Scripts.BasisSdk.Players
         {
             // Kick the locomotion pose job first: when active it fills the IK stream on a worker
             // while everything below runs, and is joined inside SimulateIKDestinations.
-            LocalRigDriver.ScheduleLocomotionPose(this, DeltaTime);
+            using (sMarkerLocoPoseSchedule.Auto())
+            {
+                LocalRigDriver.ScheduleLocomotionPose(this, DeltaTime);
+            }
 
             // now lets move the local player position.
             using (sMarkerMovement.Auto())
             {
                 LocalCharacterDriver.SimulateMovement(DeltaTime);
             }
+            BasisFiniteWatchdog.Checkpoint("LocalSim/PostCharacterMovement");
 
             // VR play space grab/drag override (no-op unless enabled and a controller input is held).
             using (sMarkerPlayspaceMover.Auto())
             {
                 BasisLocalPlayspaceMover.Simulate(this, DeltaTime);
             }
+            BasisFiniteWatchdog.Checkpoint("LocalSim/PostPlayspaceMover");
 
             using (sMarkerVirtualData.Auto())
             {
@@ -602,11 +612,13 @@ namespace Basis.Scripts.BasisSdk.Players
                 // BasisInput.ApplyFinalMovement. No-op unless a flip is active; the capsule is never rotated.
                 localToWorldMatrix = BasisLocalPlayspaceMover.ApplyFlipToMatrix(localToWorldMatrix);
             }
+            BasisFiniteWatchdog.Checkpoint("LocalSim/PostVirtualData (seat / flip)");
 
             using (sMarkerLateSimulateBones.Auto())
             {
                 OnLateSimulateBones(this);
             }
+            BasisFiniteWatchdog.Checkpoint("LocalSim/PostLatePollData");
 
             // moves all bones to where they belong
             // This also drives head and camera movement.
@@ -614,12 +626,15 @@ namespace Basis.Scripts.BasisSdk.Players
             {
                 LocalBoneDriver.Simulate(DeltaTime, localToWorldMatrix);
             }
+            BasisFiniteWatchdog.Checkpoint("LocalSim/PostBoneDriver");
+            BasisFiniteWatchdog.CheckpointBoneControls("LocalSim/PostBoneDriver (bone control pose data)");
 
             // moves Avatar Hip Transform to where it belongs in tpose.
             if (BasisLocalAvatarDriver.CurrentlyTposing)
             {
                 LocalRigDriver.ResetSmoothingState();
                 DriveTpose();
+                BasisFiniteWatchdog.Checkpoint("LocalSim/PostDriveTpose");
             }
 
             // Simulate Final Destination of IK then process Animator and IK processes.
@@ -627,23 +642,39 @@ namespace Basis.Scripts.BasisSdk.Players
             {
                 LocalRigDriver.SimulateIKDestinations(DeltaTime);
             }
+            BasisFiniteWatchdog.Checkpoint("LocalSim/PostIKDestinations");
 
             // Apply Animator Weights using most current data and outside movement effectors.
             using (sMarkerAnimator.Auto())
             {
                 LocalAnimatorDriver.SimulateAnimator(DeltaTime);
             }
+            BasisFiniteWatchdog.Checkpoint("LocalSim/PostAnimatorWeights");
 
             // schedule finger slerp job (completed by Apply in BasisEventDriver)
             using (sMarkerHandDriver.Auto())
             {
                 LocalHandDriver.Simulate(DeltaTime);
             }
+            BasisFiniteWatchdog.Checkpoint("LocalSim/PostHandSchedule");
+        }
+
+        /// <summary>
+        /// Second half of the local player tick. Simulate leaves the FBIK solve (and the finger
+        /// slerp job) in flight; BasisEventDriver runs the IK-independent remote stages, then calls
+        /// this to join the solve, scatter/publish the pose, and fire AfterSimulateOnLate — whose
+        /// subscribers (pickups, menus, interact) read the post-IK IKWorldData hand poses.
+        /// </summary>
+        public void FinishSimulate()
+        {
+            LocalRigDriver.CompleteIKSolve();
+            BasisFiniteWatchdog.Checkpoint("LocalFinish/PostIKSolveJoin");
 
             using (sMarkerAfterSimulate.Auto())
             {
                 AfterSimulateOnLate?.Invoke();
             }
+            BasisFiniteWatchdog.Checkpoint("LocalFinish/PostAfterSimulateOnLate");
         }
         public static void FireJustBeforeNetworkApply()
         {
@@ -661,9 +692,11 @@ namespace Basis.Scripts.BasisSdk.Players
         public void SimulateOnRender()
         {
             OnRenderSimulateBones(this);
+            BasisFiniteWatchdog.Checkpoint("LocalRender/PostRenderPollData");
 
             // now other things can move like UI and NON-CHILDREN OF BASISLOCALPLAYER.
             AfterSimulateOnRender?.Invoke();
+            BasisFiniteWatchdog.Checkpoint("LocalRender/PostAfterSimulateOnRender");
         }
         public void OnLateSimulateBones(BasisPlayer Player)
         {

@@ -44,6 +44,7 @@ public static class BasisNetworkLifeCycle
         BasisJoinLeaveNotification.Create();
         BasisNetworkHandleTempBlock.Initialize();
         BasisNetworkHandleChatTyping.Initialize();
+        Basis.Scripts.BasisSdk.Interactions.BasisJiggleGrabDriver.Initialize();
 #if !UNITY_SERVER
         BasisNetworkPIPCameraDriver.Create();
 #endif
@@ -93,7 +94,6 @@ public static class BasisNetworkLifeCycle
             BasisNetworkConnection.LocalPlayerIsConnected = false;
             BasisNetworkManagement.LocalAccessTransmitter = null;
             BasisNetworkConnection.LocalPlayerPeer = null;
-            BasisNetworkManagement.OnRequestServerSideDatabaseItem = null;
             if (DisplayReason)
             {
                 BasisDebug.Log($"Client disconnected from server [{peer?.RemoteId}] [{disconnectInfo.Reason}]");
@@ -109,6 +109,7 @@ public static class BasisNetworkLifeCycle
     public static async Task Destroy()
     {
         BasisDebug.Log($"Shutting Down Network Connection", BasisDebug.LogTag.Networking);
+        BasisNetworkConnectionWatchdog.Reset();
         if (BasisNetworkConnection.LocalPlayerPeer != null && BasisNetworkPlayers.Players.TryGetValue((ushort)BasisNetworkConnection.LocalPlayerPeer.RemoteId, out var networkedPlayer))
         {
             if (networkedPlayer?.Player is BasisLocalPlayer local)
@@ -145,7 +146,6 @@ public static class BasisNetworkLifeCycle
         BasisNetworkPlayer.OnRemotePlayerLeft = null;
         BasisNetworkManagement.OnEnableInstanceCreate = null;
         BasisNetworkConnection.LocalPlayerPeer = null;
-        BasisNetworkManagement.OnRequestServerSideDatabaseItem = null;
         BasisNetworkManagement.LocalAccessTransmitter = null;
         BasisNetworkConnection.LocalPlayerIsConnected = false;
         BasisNetworkManagement.NetworkRunning = false;
@@ -154,6 +154,7 @@ public static class BasisNetworkLifeCycle
         BasisJoinLeaveNotification.Shutdown();
         BasisNetworkHandleTempBlock.Shutdown();
         BasisNetworkHandleChatTyping.Shutdown();
+        Basis.Scripts.BasisSdk.Interactions.BasisJiggleGrabDriver.Shutdown();
 #if !UNITY_SERVER
         BasisNetworkPIPCameraDriver.Shutdown();
 #endif

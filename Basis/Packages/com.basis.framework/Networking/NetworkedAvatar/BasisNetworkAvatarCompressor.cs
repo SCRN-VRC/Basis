@@ -53,6 +53,7 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
         static NativeArray<int> sSlotRemap;
         static NativeArray<quaternion> sCurrentLocalRotations;
         static NativeArray<quaternion> sTposeNative;
+        static NativeArray<quaternion> sInverseTposeNative;
         static NativeArray<byte> sBpcNative;
         static NativeArray<float> sMaxComponentNative;
         static bool sJobArraysReady;
@@ -488,7 +489,7 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
         /// Unanchored effector slots keep their stale scratch values on both sides of the compare,
         /// so they can never block suppression; a mask change always forces a send.
         /// </summary>
-        static void CaptureRawPose(Unity.Mathematics.float3 hipsWorldPos, quaternion hipsWorldRot,
+        static unsafe void CaptureRawPose(Unity.Mathematics.float3 hipsWorldPos, quaternion hipsWorldRot,
             Unity.Mathematics.float3 hipsDelta, quaternion hipsRotDelta, float scale, byte effectorMask)
         {
             if (!sCurrentLocalRotations.IsCreated)
@@ -498,11 +499,11 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
             }
             float[] raw = sRawCurrent;
             int boneCount = BasisBoneRotationCompression.SyncBoneCount;
-            for (int slot = 0; slot < boneCount; slot++)
+            // quaternion is float4 in x,y,z,w order, so the slot block is already the wire layout
+            // the per-component loop was rebuilding element by element.
+            fixed (float* pRaw = &raw[RawBoneOffset])
             {
-                float4 v = sCurrentLocalRotations[slot].value;
-                int o = RawBoneOffset + slot * 4;
-                raw[o] = v.x; raw[o + 1] = v.y; raw[o + 2] = v.z; raw[o + 3] = v.w;
+                UnsafeUtility.MemCpy(pRaw, sCurrentLocalRotations.GetUnsafeReadOnlyPtr(), (long)boneCount * 4 * sizeof(float));
             }
             raw[RawPosOffset] = hipsWorldPos.x; raw[RawPosOffset + 1] = hipsWorldPos.y; raw[RawPosOffset + 2] = hipsWorldPos.z;
             float4 br = hipsWorldRot.value;
@@ -554,21 +555,25 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
             int rotBytes = BasisBoneRotationCompression.RotationBytes(WireQuality);
 
             // Reuse persistent NativeArray to avoid per-frame TempJob allocation + deallocation.
-            if (!sJobOutputBuffer.IsCreated || sJobOutputBuffer.Length < dst.Length)
+            // Sized to the rotation block alone, not the whole packet: the job ORs into that
+            // region and reads nothing else, so staging the packet's other fields across the
+            // managed/native boundary and back was two full-buffer copies per send for bytes the
+            // job never touched. The block is rebased to offset 0 and copied back into place.
+            if (!sJobOutputBuffer.IsCreated || sJobOutputBuffer.Length < rotBytes)
             {
                 if (sJobOutputBuffer.IsCreated) sJobOutputBuffer.Dispose();
-                sJobOutputBuffer = new NativeArray<byte>(dst.Length, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+                sJobOutputBuffer = new NativeArray<byte>(rotBytes, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             }
-            NativeArray<byte>.Copy(dst, sJobOutputBuffer, dst.Length);
+            UnsafeUtility.MemClear(sJobOutputBuffer.GetUnsafePtr(), rotBytes);
 
             var job = new BasisBoneDeltaAndCompressJob
             {
                 CurrentLocalRotations = sCurrentLocalRotations,
-                TposeLocalRotations = sTposeNative,
+                InverseTposeLocalRotations = sInverseTposeNative,
                 BitsPerComponent = sBpcNative,
                 MaxComponent = sMaxComponentNative,
                 OutputBuffer = sJobOutputBuffer,
-                RotationByteOffset = byteOffset,
+                RotationByteOffset = 0,
                 BoneCount = boneCount,
                 BoneDeltas = sBoneDeltas,
             };
@@ -576,7 +581,7 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
             job.Run(); // Burst-compiled, runs immediately on this thread
 
             // Copy result back to managed array
-            NativeArray<byte>.Copy(sJobOutputBuffer, 0, dst, 0, dst.Length);
+            NativeArray<byte>.Copy(sJobOutputBuffer, 0, dst, byteOffset, rotBytes);
 
             byteOffset += rotBytes;
         }
@@ -588,7 +593,7 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
         /// </summary>
         static void ReadBoneTransforms()
         {
-            if (sJobArraysReady && sBoneTransformAccess.isCreated)
+            if (sJobArraysReady && sBoneTransformAccess.isCreated && sBoneTransformAccess.length > 0)
             {
                 // Batch-read bone local rotations. RunReadOnly executes the Burst job on this
                 // thread — the old Schedule().Complete() dispatched to a worker and blocked on
@@ -656,12 +661,15 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
 
             sCurrentLocalRotations = new NativeArray<quaternion>(boneCount, Allocator.Persistent);
 
-            // T-pose rotations in BONE_WRITE_ORDER slot order
+            // T-pose rotations in BONE_WRITE_ORDER slot order, plus their inverses so the
+            // encode job multiplies by a stored constant instead of inverting per send.
             sTposeNative = new NativeArray<quaternion>(boneCount, Allocator.Persistent);
+            sInverseTposeNative = new NativeArray<quaternion>(boneCount, Allocator.Persistent);
             for (int slot = 0; slot < boneCount; slot++)
             {
                 int boneEnum = BasisBoneRotationCompression.BONE_WRITE_ORDER[slot];
                 sTposeNative[slot] = sTposeLocalRotations[boneEnum];
+                sInverseTposeNative[slot] = sInverseTposeLocalRotations[boneEnum];
             }
 
             sBpcNative = new NativeArray<byte>(boneCount, Allocator.Persistent);
@@ -703,6 +711,7 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
             if (sSlotRemap.IsCreated) sSlotRemap.Dispose();
             if (sCurrentLocalRotations.IsCreated) sCurrentLocalRotations.Dispose();
             if (sTposeNative.IsCreated) sTposeNative.Dispose();
+            if (sInverseTposeNative.IsCreated) sInverseTposeNative.Dispose();
             if (sBpcNative.IsCreated) sBpcNative.Dispose();
             if (sMaxComponentNative.IsCreated) sMaxComponentNative.Dispose();
         }
@@ -736,6 +745,10 @@ namespace Basis.Scripts.Networking.NetworkedAvatar
             if (sBoneDeltas.IsCreated) sBoneDeltas.Dispose();
             if (sJobOutputBuffer.IsCreated) sJobOutputBuffer.Dispose();
             sTposeLocalRotations = null;
+            // Cleared alongside the forward table: ExtractBoneDeltas guards on this one being
+            // null, and leaving it populated after teardown sends that guard down a path that
+            // then indexes the forward table it just nulled.
+            sInverseTposeLocalRotations = null;
             sLastSentPayload = null;
             sHasLastSent = false;
             sRawLastSent = null;

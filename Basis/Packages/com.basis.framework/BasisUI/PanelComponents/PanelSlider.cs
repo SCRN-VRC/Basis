@@ -1,13 +1,9 @@
 using System;
 using System.Globalization;
 using Basis.BTween;
-using Basis.Scripts.Device_Management;
-using Basis.Scripts.Device_Management.Devices;
-using Basis.Scripts.TransformBinders.BoneControl;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Basis.BasisUI
@@ -30,7 +26,7 @@ namespace Basis.BasisUI
         Hz
     }
 
-    public class PanelSlider : PanelDataComponent<float>, IPointerDownHandler, IPointerUpHandler, IPointerEnterHandler, IPointerExitHandler
+    public class PanelSlider : PanelDataComponent<float>, IPointerDownHandler, IPointerUpHandler
     {
 
         [Serializable]
@@ -138,33 +134,9 @@ namespace Basis.BasisUI
         private TweenGraphicColor _fillColorTween;
         private TweenScale _labelPunchTween;
         private bool _isDragging;
+        private bool _fillPainted;
 
-        // ---- Reset to default ----------------------------------------------------------------
-        // While hovering a slider, a right-click (desktop) or a thumbstick click (VR) asks to reset
-        // it to its default. Both are polled here rather than handled as pointer buttons: the UI
-        // raycaster reports every click as Left, and a thumbstick click is not a pointer button at
-        // all. Bound sliders take the default from their settings binding; callback sliders take it
-        // from an explicit ResetDefault.
-
-        /// <summary>Explicit default for sliders with no settings binding. Null leaves reset disabled.</summary>
-        private float? _resetDefault;
-
-        /// <summary>True while a pointer is hovering this slider, so a reset input can target it.</summary>
-        private bool _hovered;
-
-        /// <summary>Previous frame's reset-input state, for rising-edge detection while hovered.</summary>
-        private bool _resetInputWasDown;
-
-        /// <summary>Sets the value a reset returns to, for sliders driven by callbacks rather than a binding.</summary>
-        public void SetResetDefault(float value) => _resetDefault = value;
-
-        /// <summary>True when a default is known (a binding, or an explicit ResetDefault) so reset is offered.</summary>
-        public bool HasResetDefault => SettingsBinding != null || _resetDefault.HasValue;
-
-        private float ResetDefaultValue => SettingsBinding != null
-            ? SettingsBinding.DefaultValue.GetDefault()
-            : (_resetDefault ?? Value);
-
+        protected override bool SupportsResetGesture => true;
 
         public static PanelSlider CreateNew(Component parent)
             => CreateNew<PanelSlider>(SliderStyles.Default, parent);
@@ -199,9 +171,6 @@ namespace Basis.BasisUI
         public override void OnCreateEvent()
         {
             base.OnCreateEvent();
-            ApplySliderSettings();
-            SliderComponent.onValueChanged.AddListener(OnSliderValueChanged);
-            SliderConfirmedListener.OnValueConfirmed += OnSliderConfirmed;
 
             // Cache handle rect for scale animations
             if (SliderComponent.handleRect != null)
@@ -224,14 +193,20 @@ namespace Basis.BasisUI
                     _roundedFrontGraphic = roundedFront.GetComponent<Graphic>();
                 }
             }
+
+            // After the graphics are cached — ApplySliderSettings paints the fill and value label,
+            // and can only do that once it knows what to paint.
+            ApplySliderSettings();
+            SliderComponent.onValueChanged.AddListener(OnSliderValueChanged);
+            SliderConfirmedListener.OnValueConfirmed += OnSliderConfirmed;
         }
 
         public void OnPointerDown(PointerEventData eventData)
         {
             if (!Application.isPlaying) return;
 
-            // Some input paths do report a real right button; honour it. The desktop UI raycaster
-            // does not (it reports Left), so the hovered poll in Update is the actual desktop path.
+            // Some input paths do report a real right button; honour it. BasisUIInput never fills
+            // its right-button state, so the hovered poll is the actual desktop path.
             if (eventData.button == PointerEventData.InputButton.Right)
             {
                 RequestReset();
@@ -245,100 +220,6 @@ namespace Basis.BasisUI
         {
             if (!Application.isPlaying) return;
             EndDragVisual();
-        }
-
-        public void OnPointerEnter(PointerEventData eventData)
-        {
-            if (!Application.isPlaying) return;
-            _hovered = true;
-            // Seed the edge state so a button already held on hover doesn't instantly fire;
-            // only a fresh press after pointing at the slider counts.
-            _resetInputWasDown = ResetInputDown();
-        }
-
-        public void OnPointerExit(PointerEventData eventData)
-        {
-            if (!Application.isPlaying) return;
-            _hovered = false;
-        }
-
-        private void Update()
-        {
-            // Reset input while pointing at the slider: right mouse (desktop) or a thumbstick click
-            // (VR). Polled and edge-detected against the hover, because the raycaster reports all
-            // clicks as Left and a thumbstick click is not a pointer button.
-            if (!_hovered || !HasResetDefault) return;
-
-            bool down = ResetInputDown();
-            if (down && !_resetInputWasDown) RequestReset();
-            _resetInputWasDown = down;
-        }
-
-        /// <summary>True this frame if a reset gesture is held: right mouse button, or a hand thumbstick/trackpad click.</summary>
-        private static bool ResetInputDown()
-        {
-            if (Mouse.current != null && Mouse.current.rightButton.isPressed) return true;
-            return AnyHandThumbstickClick();
-        }
-
-        /// <summary>True if either hand controller has its thumbstick (or trackpad) pressed in this frame.</summary>
-        private static bool AnyHandThumbstickClick()
-        {
-            BasisDeviceManagement device = BasisDeviceManagement.Instance;
-            if (device == null) return false;
-
-            BasisObservableList<BasisInput> inputs = device.AllInputDevices;
-            for (int Index = 0; Index < inputs.Count; Index++)
-            {
-                BasisInput input = inputs[Index];
-                if (input == null || !input.TryGetRole(out BasisBoneTrackedRole role)) continue;
-                if (role != BasisBoneTrackedRole.LeftHand && role != BasisBoneTrackedRole.RightHand) continue;
-                if (input.CurrentInputState.Primary2DAxisClick || input.CurrentInputState.Secondary2DAxisClick) return true;
-            }
-            return false;
-        }
-
-        /// <summary>
-        /// Asks, via a confirmation dialogue, whether to reset the slider to its default. Confirming
-        /// writes the default through the normal value path so bindings and callbacks both update.
-        /// </summary>
-        public void RequestReset()
-        {
-            if (!HasResetDefault) return;
-
-            float target = ResetDefaultValue;
-            string label = string.IsNullOrEmpty(Settings.Title) ? "this value" : Settings.Title;
-
-            BasisMenuBase<BasisMainMenu> menu = BasisMenuBase<BasisMainMenu>.Instance;
-            if (menu == null)
-            {
-                // No menu to host a dialogue — reset without asking rather than doing nothing.
-                ApplyReset(target);
-                return;
-            }
-
-            menu.OpenDialogue(
-                "Reset",
-                $"Reset {label} to its default?",
-                BasisLocalization.Get("ui.reset"),
-                BasisLocalization.Get("ui.cancel"),
-                confirmed =>
-                {
-                    if (confirmed) ApplyReset(target);
-                });
-        }
-
-        /// <summary>
-        /// Moves the handle to the value and applies it. SetValue alone leaves the handle where it
-        /// was — it never writes the underlying Slider — so the default would apply without the
-        /// slider visibly moving. SetValueWithoutNotify moves the handle without re-firing the
-        /// per-frame live-drag listener; the binding and callback are then invoked explicitly.
-        /// </summary>
-        private void ApplyReset(float target)
-        {
-            SetValueWithoutNotify(target);
-            SettingsBinding?.SetValue(target);
-            OnValueChanged?.Invoke(target);
         }
 
         // Scale up handle on grab
@@ -401,6 +282,36 @@ namespace Basis.BasisUI
             ApplySliderSettings();
         }
 
+        /// <summary>
+        /// Moves the slider's upper bound after creation, for ceilings that can change while the
+        /// panel is up (see <see cref="BasisAudioRangeSliderLimit"/>). Only the range and its
+        /// labels are touched — a full <see cref="SetSliderSettings"/> would also rewrite the title
+        /// and description, which callers commonly set after the settings.
+        /// <para>
+        /// A lowered bound clamps the handle but is deliberately never written back to the settings
+        /// binding: whoever consumes the value caps it themselves, so raising the ceiling again has
+        /// to restore the choice the user actually made.
+        /// </para>
+        /// </summary>
+        public void SetSliderMax(float max)
+        {
+            if (Settings.SliderMax == max) return;
+
+            SliderSettings settings = Settings;
+            settings.SliderMax = max;
+            Settings = settings;
+            ApplySliderRange();
+
+            // Re-seat on the stored preference. An earlier, lower bound may have clamped the handle
+            // below it, and the Slider has no way back up on its own — raising the bound would
+            // otherwise leave the handle on the old ceiling while the value actually in force is the
+            // higher stored one. Skipped mid-drag rather than yank the handle out from under the user.
+            if (SettingsBinding != null && !_isDragging)
+            {
+                SetValueWithoutNotify(SettingsBinding.RawValue);
+            }
+        }
+
         private string _cachedDecimalFormat;
         private int _cachedDecimalPlaces = -1;
         private string _lastCurrentValueText;
@@ -411,6 +322,32 @@ namespace Basis.BasisUI
         {
             Descriptor.SetTitle(Settings.Title);
             Descriptor.SetDescription(Settings.Description);
+
+            if (CurrentValueLabel)
+            {
+                CurrentValueLabel.richText = false;
+            }
+
+            // Prebuild the decimal format string once so ApplyValue doesn't allocate
+            // a fresh "0.##" string every time the slider moves.
+            if (_cachedDecimalPlaces != Settings.DecimalPlaces)
+            {
+                _cachedDecimalPlaces = Settings.DecimalPlaces;
+                _cachedDecimalFormat = "0." + new string('#', Mathf.Max(0, Settings.DecimalPlaces));
+            }
+
+            ApplySliderRange();
+        }
+
+        /// <summary>
+        /// Pushes <see cref="SliderSettings.SliderMin"/>/<see cref="SliderSettings.SliderMax"/> onto
+        /// the Slider and repaints everything that reads from them. Split out of
+        /// <see cref="ApplySliderSettings"/> so a live bound change can reuse it without touching
+        /// the title, description or number formatting.
+        /// </summary>
+        private void ApplySliderRange()
+        {
+            if (SliderComponent == null) return;
 
             SliderComponent.minValue = Settings.SliderMin;
             SliderComponent.maxValue = Settings.SliderMax;
@@ -427,33 +364,34 @@ namespace Basis.BasisUI
                 MaxValueLabel.richText = false;
                 MaxValueLabel.SetText(Settings.SliderMax.ToString(CultureInfo.InvariantCulture));
             }
-            if (CurrentValueLabel)
-            {
-                CurrentValueLabel.richText = false;
-            }
 
-            // Prebuild the decimal format string once so ApplyValue doesn't allocate
-            // a fresh "0.##" string every time the slider moves.
-            if (_cachedDecimalPlaces != Settings.DecimalPlaces)
-            {
-                _cachedDecimalPlaces = Settings.DecimalPlaces;
-                _cachedDecimalFormat = "0." + new string('#', Mathf.Max(0, Settings.DecimalPlaces));
-            }
             _lastCurrentValueText = null;
             _hasLastFormattedValue = false;
+
+            // Paint the fill and the value label now. Nothing else calls ApplyValue until the
+            // value changes, so a slider that is never pushed a value — or is pushed one only
+            // after a section is first expanded — would otherwise sit on the prefab's authored
+            // fill colour and placeholder label until the user dragged it. Reading back from the
+            // Slider rather than Value also picks up the clamp the new min/max just applied.
+            Value = SliderComponent.value;
+            ApplyValue();
         }
 
         public override void SetValueWithoutNotify(float value)
         {
-            base.SetValueWithoutNotify(value);
-            if (SliderComponent != null)
-            {
-                SliderComponent.SetValueWithoutNotify(value);
-            }
-            else
+            if (SliderComponent == null)
             {
                 BasisDebug.LogError("Missing Slider Component!");
+                base.SetValueWithoutNotify(value);
+                return;
             }
+
+            // Move the Slider first, then take its value back: it clamps to min/max and rounds for
+            // wholeNumbers, and base.SetValueWithoutNotify paints from Value. Applying in the other
+            // order left an out-of-range push colouring the fill and labelling the value for a
+            // position the handle was never at.
+            SliderComponent.SetValueWithoutNotify(value);
+            base.SetValueWithoutNotify(SliderComponent.value);
         }
 
         protected override void ApplyValue()
@@ -469,9 +407,11 @@ namespace Basis.BasisUI
                     ? FillColorGradient.Evaluate(t)
                     : Color.Lerp(FillColorMin, FillColorMax, t);
 
-                if (_isDragging)
+                // Instant color while dragging for responsiveness, and on the first paint —
+                // a panel opening should not show every slider fading up from its prefab colour.
+                if (_isDragging || !_fillPainted)
                 {
-                    // Instant color while dragging for responsiveness
+                    _fillPainted = true;
                     FillGraphic.color = targetFillColor;
                     if (_roundedFrontGraphic != null) _roundedFrontGraphic.color = targetFillColor;
                 }

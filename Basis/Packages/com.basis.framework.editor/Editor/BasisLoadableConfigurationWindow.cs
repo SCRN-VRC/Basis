@@ -8,6 +8,16 @@ using System.Xml.Linq;
 
 public class BasisLoadableConfigurationWindow : EditorWindow
 {
+    const string ModeTooltip =
+        "What the server tells clients to do with this entry.\n\n" +
+        "0 = Prop — loads the bee file as a GameObject and spawns it at the Position/Rotation below, checked against prop content limits. Scale only applies when the XML carries ModifyScale.\n" +
+        "1 = Scene — loads the bee file as a world/scene. The transform below is ignored.\n" +
+        "2 = Avatar — loads the bee file as a GameObject checked against avatar content limits. The transform below is not sent for this mode.\n\n" +
+        "Any other value is rejected by the client.";
+
+    const string ModeXmlComment =
+        " Mode: 0 = Prop (spawned at the transform below), 1 = Scene (transform ignored), 2 = Avatar (transform ignored) ";
+
     // Fields
     int mode = 0;
     string loadedNetID = "";
@@ -22,7 +32,7 @@ public class BasisLoadableConfigurationWindow : EditorWindow
     bool persist = true;
 
     // UI
-    [MenuItem("Basis/Settings/Loadable Config")]
+    [MenuItem("Basis/Settings/Loadable Config", false, 403)]
     public static void ShowWindow()
     {
         var win = GetWindow<BasisLoadableConfigurationWindow>("Basis Config");
@@ -31,12 +41,15 @@ public class BasisLoadableConfigurationWindow : EditorWindow
 
     void OnGUI()
     {
-        EditorGUILayout.LabelField("Basis Loadable Configuration", EditorStyles.boldLabel);
+        BasisEditorUI.Header("Loadable Config",
+            "The config file the client loads at boot — edit it here instead of by hand.");
+
         EditorGUILayout.Space();
 
         using (new EditorGUILayout.VerticalScope("box"))
         {
-            mode = EditorGUILayout.IntField(new GUIContent("Mode", "Mode of the configuration"), mode);
+            mode = EditorGUILayout.IntField(new GUIContent("Mode", ModeTooltip), mode);
+            EditorGUILayout.LabelField(" ", DescribeMode(mode), EditorStyles.wordWrappedMiniLabel);
             loadedNetID = EditorGUILayout.TextField(new GUIContent("LoadedNetID", "Network ID"), loadedNetID);
             unlockPassword = EditorGUILayout.TextField(new GUIContent("UnlockPassword", "Unlock password (hash)"), unlockPassword);
             combinedURL = EditorGUILayout.TextField(new GUIContent("CombinedURL", "Combined URL"), combinedURL);
@@ -46,7 +59,7 @@ public class BasisLoadableConfigurationWindow : EditorWindow
         EditorGUILayout.Space();
         using (new EditorGUILayout.VerticalScope("box"))
         {
-            EditorGUILayout.LabelField("Transform", EditorStyles.boldLabel);
+            BasisEditorUI.SectionTitle("Transform");
             Selectedposition = EditorGUILayout.Vector3Field("Position (X,Y,Z)", Selectedposition);
 
             // Quaternion fields (explicit)
@@ -77,7 +90,18 @@ public class BasisLoadableConfigurationWindow : EditorWindow
         }
 
         EditorGUILayout.Space();
-        EditorGUILayout.HelpBox("Tip: This window writes the XML with the same comments and element order as your example.", MessageType.Info);
+        BasisEditorUI.Help("Tip: This window writes the XML with the same comments and element order as your example.", MessageType.Info);
+    }
+
+    static string DescribeMode(int mode)
+    {
+        switch (mode)
+        {
+            case 0: return "Prop — spawned as a GameObject at the position and rotation below.";
+            case 1: return "Scene — loaded as a world. The transform below is ignored.";
+            case 2: return "Avatar — spawned as a GameObject under avatar content limits. The transform below is not sent.";
+            default: return "Unknown mode — clients reject this and load nothing.";
+        }
     }
 
     void SaveXML()
@@ -95,7 +119,7 @@ public class BasisLoadableConfigurationWindow : EditorWindow
                 new XDocument(
                     new XDeclaration("1.0", "utf-8", "yes"),
                     new XElement("BasisLoadableConfiguration",
-                        new XComment(" Mode of the configuration "),
+                        new XComment(ModeXmlComment),
                         new XElement("Mode", mode),
 
                         new XComment(" Network ID "),

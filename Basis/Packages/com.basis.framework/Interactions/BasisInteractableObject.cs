@@ -18,11 +18,14 @@ namespace Basis.Scripts.BasisSdk.Interactions
         /// <summary>
         /// Collider references used for range checks and interaction.
         /// If set to a non-empty array, these colliders will be used as the interactable's colliders.
-        /// If empty or null, and a collider exists on the same GameObject, that collider will be used.
-        /// If empty or null, and no collider exists on the same GameObject, all child colliders will be used.
+        /// If empty or null, and a non-trigger collider exists on the same GameObject, that GameObject's colliders will be used.
+        /// If empty or null, and the GameObject has only triggers or no collider at all, all child colliders will be used.
         /// </summary>
         [Tooltip("Optional, leave this empty to auto-detect colliders on self, or on children if none on self.")]
         [SerializeField] private Collider[] _colliderRefs;
+
+        private Collider[] _resolvedColliders;
+        private GameObject[] _resolvedColliderObjects;
 
         /// <summary>
         /// Collection of input sources bound to this interactable.
@@ -219,7 +222,7 @@ namespace Basis.Scripts.BasisSdk.Interactions
         /// </summary>
         public virtual void Awake()
         {
-            _colliderRefs = GetColliders();
+            RefreshColliders();
             if (BasisLocalPlayer.PlayerReady)
             {
                 SetupInputs();
@@ -314,17 +317,32 @@ namespace Basis.Scripts.BasisSdk.Interactions
                 // 0.5x avatar the reach bonus was roughly its entire body height.
                 extraReach = BasisHeightDriver.SelectedScaledAvatarHeight / 2;
             }
-            return Vector3.Distance(GetClosestPoint(source), source) <= interactRange + extraReach;
+            float limit = interactRange + extraReach;
+            return limit >= 0f && (GetClosestPoint(source) - source).sqrMagnitude <= limit * limit;
         }
 
         public Vector3 GetClosestPoint(Vector3 source)
         {
-            float closestDistanceSqr = float.MaxValue;
             Vector3 closestPoint = transform.position;
 
-            for (int i = 0; i < _colliderRefs.Length; i++)
+            if (_resolvedColliders == null)
             {
-                Collider col = _colliderRefs[i];
+                RefreshColliders();
+            }
+
+            Collider[] colliders = _resolvedColliders;
+            GameObject[] owners = _resolvedColliderObjects;
+            float closestDistanceSqr = float.MaxValue;
+
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                Collider col = colliders[i];
+
+                if (col == null || !col.enabled || !owners[i].activeInHierarchy)
+                {
+                    continue;
+                }
+
                 Vector3 point;
 
                 if (col is MeshCollider meshCol && !meshCol.convex)
@@ -350,19 +368,54 @@ namespace Basis.Scripts.BasisSdk.Interactions
 
         /// <summary>
         /// Gets the collider attached to this object if one exists.
-        /// Override with cached reference when possible.
+        /// Resolved once at <see cref="Awake"/> and cached; edit-time callers re-scan every call
+        /// so newly authored colliders are picked up without a domain reload.
         /// </summary>
         public Collider[] GetColliders()
+        {
+            return _resolvedColliders ?? ScanColliders();
+        }
+
+        private Collider[] ScanColliders()
         {
             if (_colliderRefs != null && _colliderRefs.Length > 0)
             {
                 return _colliderRefs;
             }
-            if (TryGetComponent(out Collider col))
+            // Only a solid collider on self short-circuits the search. A root carrying nothing but trigger
+            // volumes (a hover or proximity zone) has no surface to grab or seat a pickup against, and the
+            // real geometry is on the children the old early-out threw away.
+            Collider[] own = GetComponents<Collider>();
+            for (int i = 0; i < own.Length; i++)
             {
-                return new Collider[] { col };
+                if (own[i] != null && !own[i].isTrigger)
+                {
+                    return own;
+                }
             }
-            return GetComponentsInChildren<Collider>();
+            Collider[] children = GetComponentsInChildren<Collider>(true);
+            return children.Length > 0 ? children : own;
+        }
+
+        /// <summary>
+        /// Resolves the collider set and caches each collider's owning GameObject alongside it, so the
+        /// per-frame range and closest-point queries never allocate or walk back to the GameObject
+        /// through native interop. Runs at <see cref="Awake"/>; call again after adding or removing
+        /// colliders at runtime. Toggling a collider or its GameObject does not need a refresh —
+        /// that is checked live per query.
+        /// </summary>
+        public void RefreshColliders()
+        {
+            Collider[] colliders = ScanColliders();
+            GameObject[] owners = new GameObject[colliders.Length];
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                Collider col = colliders[i];
+                owners[i] = col == null ? gameObject : col.gameObject;
+            }
+
+            _resolvedColliderObjects = owners;
+            _resolvedColliders = colliders;
         }
 
         /// <summary>
@@ -480,6 +533,10 @@ namespace Basis.Scripts.BasisSdk.Interactions
         /// </summary>
         public virtual void OnInteractStart(BasisInput input)
         {
+            // Resizing the player while they are holding something would shift it in their hand, so
+            // the auto-refit waits this out. The gate prunes anything it finds released, so a subclass
+            // that overrides without calling base can only delay one refit, never block them all.
+            BasisCalibrationRefitGate.MarkInteracting(this);
             OnInteractStartEvent?.Invoke(input);
         }
 
@@ -488,6 +545,7 @@ namespace Basis.Scripts.BasisSdk.Interactions
         /// </summary>
         public virtual void OnInteractEnd(BasisInput input)
         {
+            BasisCalibrationRefitGate.MarkReleased(this);
             OnInteractEndEvent?.Invoke(input);
         }
 

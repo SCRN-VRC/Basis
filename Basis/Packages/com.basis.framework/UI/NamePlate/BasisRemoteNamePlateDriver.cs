@@ -139,6 +139,9 @@ namespace Basis.Scripts.UI.NamePlate
                 ? OpaqueNamePlateMaterial
                 : TransParentNamePlateMaterial;
 
+            BasisNetworkModeration.OnGlobalSafeDisplayNamesForcedChanged -= OnSafeDisplayNamesForcedChanged;
+            BasisNetworkModeration.OnGlobalSafeDisplayNamesForcedChanged += OnSafeDisplayNamesForcedChanged;
+
             NamePlateEnabled = BasisSettingsDefaults.NPEnabled.RawValue;
             NamePlateMenuOnly = BasisSettingsDefaults.NPMenuOnly.RawValue;
             NamePlateHoverMenuOnly = BasisSettingsDefaults.NPHoverMenuOnly.RawValue;
@@ -442,13 +445,14 @@ namespace Basis.Scripts.UI.NamePlate
 
         /// <summary>
         /// Returns whether a given plate should currently be active, considering
-        /// the enabled toggle, menu-only mode, and per-plate face visibility.
+        /// the enabled toggle, menu-only mode, distance, and per-plate face visibility.
         /// </summary>
         public static bool ShouldPlateBeActive(BasisRemoteNamePlate plate)
         {
             if (!NamePlateEnabled) return false;
             if (!plate.IsVisible) return false;
             if (plate.BasisRemotePlayer != null && plate.BasisRemotePlayer.IsEffectivelyBlocked) return false;
+            if (plate.BasisRemotePlayer != null && !plate.BasisRemotePlayer.InNamePlateRange) return false;
             if (NamePlateMenuOnly && BasisMainMenu.Instance == null) return false;
             return true;
         }
@@ -550,11 +554,32 @@ namespace Basis.Scripts.UI.NamePlate
             }
         }
 
+        private static void OnSafeDisplayNamesForcedChanged(bool forced) => RebakeAllNamePlates();
+
+        /// <summary>Re-bakes every active plate so a policy change applies without a rejoin.</summary>
+        public static void RebakeAllNamePlates()
+        {
+            var arr = plates;
+            int n = count;
+            for (int i = 0; i < n; i++)
+            {
+                BasisRemoteNamePlate plate = arr[i];
+                if (plate == null) continue;
+                QueueTextBake(plate.BasisRemotePlayer, plate);
+            }
+        }
+
         public static void GenerateTextFactory(BasisRemotePlayer remotePlayer, BasisRemoteNamePlate namePlate)
         {
+            // Both halves are required: stripping alone leaves TMP parsing what the strip missed,
+            // disabling alone renders the raw tags as visible text.
+            bool safeNames = BasisNetworkModeration.GlobalSafeDisplayNamesForced;
+            if (Text != null) Text.richText = !safeNames;
+            string displayName = safeNames ? remotePlayer.SafeDisplayName : remotePlayer.DisplayName;
+
             if (UseGlobalNamePlateMesh)
             {
-                BakeNameMeshGlobal(remotePlayer.DisplayName, namePlate);
+                BakeNameMeshGlobal(displayName, namePlate);
             }
             else
             {
@@ -851,6 +876,8 @@ namespace Basis.Scripts.UI.NamePlate
         {
             CompletePulseInFlight();
             pulseComputed = false;
+
+            BasisNetworkModeration.OnGlobalSafeDisplayNamesForcedChanged -= OnSafeDisplayNamesForcedChanged;
 
             for (int i = 0; i < count; i++)
             {
