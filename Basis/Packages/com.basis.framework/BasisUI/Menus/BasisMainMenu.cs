@@ -314,7 +314,6 @@ namespace Basis.BasisUI
 
         private void OnLoadingProgressChanged(string display, float percentage, bool active)
         {
-            BasisDebug.Log($"[LoadingBarRoute] menu received '{display}' {percentage} active:{active} area:{(_tooltipCanvasGroup != null ? _tooltipCanvasGroup.gameObject.activeInHierarchy.ToString() : "null")}");
             _progressDisplay = display;
             _progressPercentage = percentage;
             _progressActive = active;
@@ -344,7 +343,6 @@ namespace Basis.BasisUI
                 return;
             }
 
-            BasisDebug.Log($"[LoadingBarRoute] ApplyTooltip '{text}' fill:{progressPercentage} alpha:{_tooltipCanvasGroup.alpha}");
             KillTooltipTween();
             _tooltipCanvasGroup.gameObject.SetActive(true);
             if (_tooltipEdge != null) _tooltipEdge.color = _tooltipEdgeColor;
@@ -436,6 +434,10 @@ namespace Basis.BasisUI
         public static void OpenWithProvider(string ProviderTitle)
         {
             Open();
+            // Landing on a named provider is deliberate navigation, not a prompt displacing a
+            // page, so there is nothing to put back. Dropping the snapshot Open just took stops
+            // the next in-menu confirmation from being restored onto the page we came from.
+            BasisMenuPromptRestore.Clear();
             int count = BasisMainMenu.Providers.Count;
             for (int Index = 0; Index < count; Index++)
             {

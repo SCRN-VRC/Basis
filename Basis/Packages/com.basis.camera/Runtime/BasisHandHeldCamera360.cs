@@ -32,6 +32,11 @@ public partial class BasisHandHeldCamera
     {
         bool exr = captureFormat == "EXR";
 
+        // The same gate the flat capture applies, and before the shutter sound for the same reason:
+        // a panorama is still a frame off the roll, and a film body that could shoot unlimited ones
+        // through this entry would have a counter that meant nothing.
+        if (!TryTakeFrame()) return;
+
         if (BasisDeviceManagement.Instance.CameraShutterSound != null)
         {
             BasisUISounds.PlayAt(BasisUISoundEvent.CameraShutter, BasisDeviceManagement.Instance.CameraShutterSound, captureCamera.transform.position, SMModuleAudio.ActivePropVolume);
@@ -216,7 +221,20 @@ public partial class BasisHandHeldCamera
         string filename = $"Screenshot360_{layout}_{timestamp}_{width}x{height}.{extension}";
         string path = GetSavePath(filename);
 
-        await File.WriteAllBytesAsync(path, imageData);
+        // Same reasoning as the flat save path: this is async void, so a write that fails has to
+        // be captured here or it never reaches the user.
+        try
+        {
+            await File.WriteAllBytesAsync(path, imageData);
+        }
+        catch (Exception e)
+        {
+            RecordPhotoFailed(e);
+            return;
+        }
+
+        RecordPhotoSaved(path);
+        PrintPhotoIfEnabled(path);
     }
 
     private static byte[] TonemapEquirectToRgba32(byte[] linearFloatRgba, int width, int height, float exposure, float contrast, float saturation)

@@ -1,4 +1,5 @@
 using Basis.BasisUI;
+using Basis.Scripts.Audio;
 using Basis.Scripts.BasisSdk.Helpers;
 using Basis.Scripts.BasisSdk.Players;
 using Basis.Scripts.Device_Management;
@@ -65,6 +66,22 @@ namespace Basis.Scripts.Networking.Receivers
         // and a stale frame is harmless for an overlay, so no sync beyond volatile.
         public volatile float SourcePeak;
         private const float MeterReleaseFactor = 0.90f;
+
+        /// <summary>
+        /// Smoothed RMS of the decoded voice, tracked beside <see cref="SourcePeak"/> off the same
+        /// pre-attenuation signal. This is what <see cref="VoiceLevel01"/> reports, and RMS rather
+        /// than peak because a peak follower spikes on plosives and reads far hotter than the voice
+        /// sounds. Audio-thread writer, main-thread reader.
+        /// </summary>
+        public volatile float SourceRms;
+
+        /// <summary>
+        /// How loudly this player is talking, on <see cref="BasisVoiceLevel"/>'s shared 0..1 scale,
+        /// independent of everything attenuating them on the way to this listener. 0 whenever the
+        /// source is idle: a disabled AudioSource stops running OnAudioFilterRead, so the envelope
+        /// would otherwise freeze on whatever the last utterance ended at.
+        /// </summary>
+        public float VoiceLevel01 => IsAudioActive ? BasisVoiceLevel.RmsToUnit(SourceRms) : 0f;
 
         [System.NonSerialized] public BasisNetworkReceiver BasisNetworkReceiver;
 
@@ -974,6 +991,12 @@ namespace Basis.Scripts.Networking.Receivers
 
         public void StartAudio(float MaxDistance)
         {
+#if UNITY_SERVER
+            // Headless never decodes (OnDecode* all early-return) and never owns an AudioSource,
+            // so the resample scratch pair is 8 KB per remote player that nothing ever reads.
+            // The guard used to sit below these allocations.
+            return;
+#else
             const int BufferSize = 1024;
             if (_inputScratch == null || _inputScratch.Length != BufferSize)
                 _inputScratch = new float[BufferSize];
@@ -989,9 +1012,6 @@ namespace Basis.Scripts.Networking.Receivers
             _resampleRatio = (float)RemoteOpusSettings.NetworkSampleRate / _cachedOutputRate;
             WarmResampler();
             ResetAudioThreadState();
-#if UNITY_SERVER
-            return;
-#endif
             if (BasisNetworkReceiver == null)
             {
                 BasisDebug.LogError("Missing Network Receiver Audio Receiver!", BasisDebug.LogTag.Remote);
@@ -1008,6 +1028,7 @@ namespace Basis.Scripts.Networking.Receivers
                 return;
             }
             LoadAudioSource(MaxDistance);
+#endif
         }
 
         public async void LoadAudioSource(float MaxDistance)
@@ -1048,6 +1069,8 @@ namespace Basis.Scripts.Networking.Receivers
             _fadeEnvelope = 0f;
             _lastOutputSample = 0f;
             _toneShaper.Reset();
+            SourcePeak = 0f;
+            SourceRms = 0f;
         }
 
         /// <summary>
@@ -1103,6 +1126,7 @@ namespace Basis.Scripts.Networking.Receivers
             {
                 // No signal this callback — bleed the level meter toward silence.
                 SourcePeak *= MeterReleaseFactor;
+                SourceRms = BasisVoiceLevel.Follow(SourceRms, 0f, (float)(msThisCallback * 0.001));
 
                 if (_fadeEnvelope > 0f)
                 {
@@ -1425,6 +1449,7 @@ namespace Basis.Scripts.Networking.Receivers
             int idx = 0;
             float lastWritten = 0f;
             float blockPeak = 0f;
+            double sumSq = 0.0;
             for (int f = 0; f < frames; f++)
             {
                 if (env < 1f)
@@ -1435,6 +1460,7 @@ namespace Basis.Scripts.Networking.Receivers
                 float raw = source[f];
                 float absRaw = raw < 0f ? -raw : raw;
                 if (absRaw > blockPeak) blockPeak = absRaw;
+                sumSq += (double)raw * raw;
                 float sample = SoftLimit(raw * norm * gain * env);
                 for (int c = 0; c < channels; c++)
                     data[idx++] = sample;
@@ -1447,6 +1473,12 @@ namespace Basis.Scripts.Networking.Receivers
             // decay. Captures the raw signal level (pre-gain) so the gizmo shows how
             // loud the speaker is independent of the attenuation applied to them.
             SourcePeak = blockPeak > SourcePeak ? blockPeak : SourcePeak * MeterReleaseFactor;
+
+            if (frames > 0)
+            {
+                int meterRate = outputSampleRate > 0 ? outputSampleRate : RemoteOpusSettings.NetworkSampleRate;
+                SourceRms = BasisVoiceLevel.Follow(SourceRms, Mathf.Sqrt((float)(sumSq / frames)), frames / (float)meterRate);
+            }
 
             _lastGain = targetGain;
             _normalizerAmp = normEnd;

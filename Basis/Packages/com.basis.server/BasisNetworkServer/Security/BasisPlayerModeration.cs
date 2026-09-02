@@ -1,4 +1,5 @@
-using Basis.Network.Core;
+﻿using Basis.Network.Core;
+using Basis.Network.Core.Compression;
 using BasisNetworkCore;
 using BasisNetworkCore.Security;
 using BasisPermissions;
@@ -326,6 +327,26 @@ namespace BasisNetworkServer.Security
                         HandleFullQualityBroadcast(peer, reader));
                     break;
 
+                case AdminRequestMode.ForceAvatar:
+                    Require(peer, PermNodes.ModerationForceAvatar, () =>
+                        HandleForceAvatar(peer, reader));
+                    break;
+
+                case AdminRequestMode.ForceAvatarAll:
+                    Require(peer, PermNodes.ModerationForceAvatar, () =>
+                        HandleForceAvatarAll(peer, reader));
+                    break;
+
+                case AdminRequestMode.SetLocomotionOverride:
+                    Require(peer, PermNodes.ModerationLocomotion, () =>
+                        HandleSetLocomotionOverride(peer, reader));
+                    break;
+
+                case AdminRequestMode.SetLocomotionOverrideAll:
+                    Require(peer, PermNodes.ModerationLocomotion, () =>
+                        HandleSetLocomotionOverrideAll(peer, reader));
+                    break;
+
                 // ===== GLOBAL LOCK =====
                 case AdminRequestMode.GlobalToggleAvatars:
                     Require(peer, PermNodes.ModerationGlobalLock, () =>
@@ -455,6 +476,11 @@ namespace BasisNetworkServer.Security
                         HandleReductionSettingsSet(peer, reader));
                     break;
 
+                case AdminRequestMode.SetGlobalImageBandwidth:
+                    Require(peer, PermNodes.ModerationGlobalLock, () =>
+                        HandleImageBandwidthSet(peer, reader));
+                    break;
+
                 case AdminRequestMode.RequestAllLogs:
                     Require(peer, PermNodes.AdminLogs, () =>
                         BasisServerLogBundleService.SendAllLogsToPeer(peer));
@@ -515,6 +541,11 @@ namespace BasisNetworkServer.Security
                 case AdminRequestMode.SetAllowlistMode:
                     Require(peer, PermNodes.ConfigurationEditor, () =>
                         SendBackMessage(peer, ApplyAllowlistMode(reader.GetByte())));
+                    break;
+
+                case AdminRequestMode.SetGlobalPeerLimit:
+                    Require(peer, PermNodes.ConfigurationEditor, () =>
+                        HandlePeerLimitSet(peer, reader));
                     break;
 
                 case AdminRequestMode.AddAllowlist:
@@ -840,6 +871,185 @@ namespace BasisNetworkServer.Security
             SendBackMessage(peer, $"Full-quality broadcast {(enable ? "ENABLED" : "DISABLED")} for player {id}.");
         }
 
+        /// <summary>
+        /// Relays a moderator's avatar choice to the one peer it targets. The server never loads or
+        /// validates the bundle itself — it only decides who is allowed to be told to wear it. The
+        /// target's own avatar-change broadcast is what reaches everyone else, so
+        /// <see cref="BasisSavedState"/> stays correct for late joiners with nothing extra here.
+        /// </summary>
+        private static void HandleSetLocomotionOverrideAll(NetPeer peer, NetPacketReader reader)
+        {
+            byte fields = reader.GetByte();
+            float jumpHeight = reader.GetFloat();
+            float walkSpeed = reader.GetFloat();
+            float runSpeed = reader.GetFloat();
+            float gravity = reader.GetFloat();
+            byte movementMode = reader.GetByte();
+
+            var writer = NetworkServer.RentWriter();
+            new AdminRequest().Serialize(writer, AdminRequestMode.LocomotionOverrideApply);
+            writer.Put((ushort)peer.Id);
+            writer.Put(fields);
+            writer.Put(jumpHeight);
+            writer.Put(walkSpeed);
+            writer.Put(runSpeed);
+            writer.Put(gravity);
+            writer.Put(movementMode);
+
+            int sent = 0;
+            int protectedSkipped = 0;
+            foreach (NetPeer target in NetworkServer.PeerSnapshot)
+            {
+                if (target == null || target.Id == peer.Id)
+                {
+                    continue;
+                }
+
+                if (NetworkServer.AuthIdentity.NetIDToUUID(target, out string targetUUID) && IsProtected(targetUUID))
+                {
+                    protectedSkipped++;
+                    continue;
+                }
+
+                NetworkServer.TrySend(target, writer, BasisNetworkCommons.AdminChannel, DeliveryMethod.ReliableOrdered);
+                sent++;
+            }
+            NetworkServer.ReturnWriter(writer);
+
+            string verb = fields == 0 ? "cleared on" : "applied to";
+            SendBackMessage(peer, protectedSkipped > 0
+                ? $"Locomotion override {verb} {sent} player(s); {protectedSkipped} protected player(s) skipped."
+                : $"Locomotion override {verb} {sent} player(s).");
+        }
+
+        private static void HandleSetLocomotionOverride(NetPeer peer, NetPacketReader reader)
+        {
+            ushort targetId = reader.GetUShort();
+            byte fields = reader.GetByte();
+            float jumpHeight = reader.GetFloat();
+            float walkSpeed = reader.GetFloat();
+            float runSpeed = reader.GetFloat();
+            float gravity = reader.GetFloat();
+            byte movementMode = reader.GetByte();
+
+            if (!NetworkServer.AuthenticatedPeers.TryGetValue(targetId, out NetPeer targetPeer))
+            {
+                SendBackMessage(peer, "Player not found");
+                return;
+            }
+
+            if (NetworkServer.AuthIdentity.NetIDToUUID(targetPeer, out string targetUUID) && IsProtected(targetUUID))
+            {
+                SendBackMessage(peer, "Target is protected");
+                return;
+            }
+
+            var writer = NetworkServer.RentWriter();
+            new AdminRequest().Serialize(writer, AdminRequestMode.LocomotionOverrideApply);
+            writer.Put((ushort)peer.Id);
+            writer.Put(fields);
+            writer.Put(jumpHeight);
+            writer.Put(walkSpeed);
+            writer.Put(runSpeed);
+            writer.Put(gravity);
+            writer.Put(movementMode);
+            NetworkServer.TrySend(targetPeer, writer, BasisNetworkCommons.AdminChannel, DeliveryMethod.ReliableOrdered);
+            NetworkServer.ReturnWriter(writer);
+
+            SendBackMessage(peer, fields == 0
+                ? $"Locomotion override cleared on player {targetId}."
+                : $"Locomotion override applied to player {targetId}.");
+        }
+
+        private static void HandleForceAvatar(NetPeer peer, NetPacketReader reader)
+        {
+            ushort targetId = reader.GetUShort();
+            string url = reader.GetString();
+            string password = reader.GetString();
+            byte embeddedSource = reader.GetByte();
+
+            if (string.IsNullOrEmpty(url))
+            {
+                SendBackMessage(peer, "Avatar url invalid");
+                return;
+            }
+
+            if (!NetworkServer.AuthenticatedPeers.TryGetValue(targetId, out NetPeer targetPeer))
+            {
+                SendBackMessage(peer, "Player not found");
+                return;
+            }
+
+            // Same courtesy Kick/Ban extend: a protected user can't be dressed by another moderator.
+            if (NetworkServer.AuthIdentity.NetIDToUUID(targetPeer, out string targetUUID) && IsProtected(targetUUID))
+            {
+                SendBackMessage(peer, "Target is protected");
+                return;
+            }
+
+            var writer = NetworkServer.RentWriter();
+            new AdminRequest().Serialize(writer, AdminRequestMode.ForceAvatarApply);
+            writer.Put((ushort)peer.Id);
+            writer.Put(url);
+            writer.Put(password ?? string.Empty);
+            writer.Put(embeddedSource);
+            NetworkServer.TrySend(targetPeer, writer, BasisNetworkCommons.AdminChannel, DeliveryMethod.ReliableOrdered);
+            NetworkServer.ReturnWriter(writer);
+
+            SendBackMessage(peer, $"Avatar forced on player {targetId}.");
+        }
+
+        /// <summary>
+        /// The crowd version of <see cref="HandleForceAvatar"/> — one avatar, every peer. Sent peer by
+        /// peer rather than through BroadcastMessageToClients because a blanket broadcast has no way to
+        /// exempt <see cref="PermNodes.protection"/> holders, and force-dressing another moderator is
+        /// exactly what that node exists to prevent. The payload is a plain ForceAvatarApply, so the
+        /// client needs no separate receive path for this.
+        /// </summary>
+        private static void HandleForceAvatarAll(NetPeer peer, NetPacketReader reader)
+        {
+            string url = reader.GetString();
+            string password = reader.GetString();
+            byte embeddedSource = reader.GetByte();
+
+            if (string.IsNullOrEmpty(url))
+            {
+                SendBackMessage(peer, "Avatar url invalid");
+                return;
+            }
+
+            var writer = NetworkServer.RentWriter();
+            new AdminRequest().Serialize(writer, AdminRequestMode.ForceAvatarApply);
+            writer.Put((ushort)peer.Id);
+            writer.Put(url);
+            writer.Put(password ?? string.Empty);
+            writer.Put(embeddedSource);
+
+            int sent = 0;
+            int protectedSkipped = 0;
+            foreach (NetPeer target in NetworkServer.PeerSnapshot)
+            {
+                if (target == null || target.Id == peer.Id)
+                {
+                    continue;
+                }
+
+                if (NetworkServer.AuthIdentity.NetIDToUUID(target, out string targetUUID) && IsProtected(targetUUID))
+                {
+                    protectedSkipped++;
+                    continue;
+                }
+
+                NetworkServer.TrySend(target, writer, BasisNetworkCommons.AdminChannel, DeliveryMethod.ReliableOrdered);
+                sent++;
+            }
+            NetworkServer.ReturnWriter(writer);
+
+            SendBackMessage(peer, protectedSkipped > 0
+                ? $"Avatar forced on {sent} player(s); {protectedSkipped} protected player(s) skipped."
+                : $"Avatar forced on {sent} player(s).");
+        }
+
         private static void HandleCrashReportingSet(NetPeer peer, NetPacketReader reader)
         {
             bool enabled = reader.GetBool();
@@ -916,6 +1126,10 @@ namespace BasisNetworkServer.Security
             config.AvatarBundleMinMessages = reader.GetInt();
             config.AvatarBundleMinBytes = reader.GetInt();
             config.EnableBSRProfiling = reader.GetBool();
+            config.EnableAvatarBundleZstd = reader.GetBool();
+            config.AvatarBundleZstdDeltaBundles = reader.GetBool();
+            config.AvatarBundleZstdLevel = reader.GetInt();
+            config.AvatarBundleZstdMaxShedTier = reader.GetInt();
 
             if (config.BSRSMillisecondDefaultInterval < 1) config.BSRSMillisecondDefaultInterval = 1;
             if (config.BSRBaseMultiplier < 1) config.BSRBaseMultiplier = 1;
@@ -933,11 +1147,121 @@ namespace BasisNetworkServer.Security
             if (config.LowQualityDistance > MaxQualityDistanceMeters) config.LowQualityDistance = MaxQualityDistanceMeters;
             if (config.AvatarBundleMinMessages < 1) config.AvatarBundleMinMessages = 1;
             if (config.AvatarBundleMinBytes < 0) config.AvatarBundleMinBytes = 0;
+            // Clamp to the range zstd actually accepts — a level outside it throws inside the
+            // codec, and this value arrives from an admin client rather than from config.xml.
+            if (config.AvatarBundleZstdLevel < BasisAvatarBundleZstd.MinLevel) config.AvatarBundleZstdLevel = BasisAvatarBundleZstd.MinLevel;
+            if (config.AvatarBundleZstdLevel > BasisAvatarBundleZstd.MaxLevel) config.AvatarBundleZstdLevel = BasisAvatarBundleZstd.MaxLevel;
 
             NetworkServer.InitializePulseSettings();
             SaveConfig();
             BroadcastReductionSettings();
             SendBackMessage(peer, $"Reduction settings set: interval {config.BSRSMillisecondDefaultInterval}ms, base x{config.BSRBaseMultiplier}, rate {config.BSRSIncreaseRate}, slowest {config.BSRSlowestSendRate}, distances {config.HighQualityDistance}/{config.MediumQualityDistance}/{config.LowQualityDistance}m, bundle {config.EnableAvatarBundleCompression} (min {config.AvatarBundleMinMessages}msg/{config.AvatarBundleMinBytes}B), profiling {config.EnableBSRProfiling}. SlowestSendRate applies to new joins only.");
+        }
+
+        /// <summary>
+        /// Applies the image/gif bandwidth budgets from an admin.
+        ///
+        /// The upload figure lands live in two places at once: it is what the server enforces from
+        /// the next packet onward, and it is what new joiners are told to pace themselves to. It is
+        /// NOT re-advertised to players already connected — the number rides
+        /// <c>ServerMetaDataMessage</c>, which is only built at join and on a permission refresh —
+        /// so lowering it takes hold immediately as a limit and gradually as a request. That
+        /// asymmetry is safe in the direction that matters: the enforced value is the strict one.
+        /// </summary>
+        private static void HandleImageBandwidthSet(NetPeer peer, NetPacketReader reader)
+        {
+            var config = NetworkServer.Configuration;
+            config.ImageShareEgressMegabitsPerSecond = reader.GetInt();
+            config.ImageShareDownloadMegabitsPerSecond = reader.GetInt();
+            config.ImageShareEgressEnforcementPercent = reader.GetInt();
+
+            // 0 is meaningful on both rates — "unmetered" for download, "client keeps its own
+            // conservative default" for upload — so only negatives are corrected.
+            if (config.ImageShareEgressMegabitsPerSecond < 0) config.ImageShareEgressMegabitsPerSecond = 0;
+            if (config.ImageShareDownloadMegabitsPerSecond < 0) config.ImageShareDownloadMegabitsPerSecond = 0;
+
+            // Enforcing below what was advertised would drop honest clients doing exactly what they
+            // were told, which is the one outcome this feature must never produce.
+            if (config.ImageShareEgressEnforcementPercent < 100) config.ImageShareEgressEnforcementPercent = 100;
+            if (config.ImageShareEgressEnforcementPercent > 1000) config.ImageShareEgressEnforcementPercent = 1000;
+
+            SaveConfig();
+            BroadcastImageBandwidth();
+            SendBackMessage(peer,
+                $"Image bandwidth set: upload {config.ImageShareEgressMegabitsPerSecond} Mb/s per sharer " +
+                $"(enforced at {config.ImageShareEgressEnforcementPercent}%), " +
+                $"download {config.ImageShareDownloadMegabitsPerSecond} Mb/s per joining player. " +
+                "Upload applies live as a limit; the advertised figure reaches existing players on their next join or permission refresh.");
+        }
+
+        private static void WriteImageBandwidth(NetDataWriter writer)
+        {
+            var config = NetworkServer.Configuration;
+            new AdminRequest().Serialize(writer, AdminRequestMode.GlobalGetImageBandwidth);
+            writer.Put(config.ImageShareEgressMegabitsPerSecond);
+            writer.Put(config.ImageShareDownloadMegabitsPerSecond);
+            writer.Put(config.ImageShareEgressEnforcementPercent);
+        }
+
+        private static void BroadcastImageBandwidth()
+        {
+            var writer = NetworkServer.RentWriter();
+            WriteImageBandwidth(writer);
+            NetworkServer.BroadcastMessageToClients(writer, BasisNetworkCommons.AdminChannel, NetworkServer.PeerSnapshot, DeliveryMethod.ReliableOrdered);
+            NetworkServer.ReturnWriter(writer);
+        }
+
+        public static void SendImageBandwidthToPeer(NetPeer peer)
+        {
+            var writer = NetworkServer.RentWriter();
+            WriteImageBandwidth(writer);
+            NetworkServer.TrySend(peer, writer, BasisNetworkCommons.AdminChannel, DeliveryMethod.ReliableOrdered);
+            NetworkServer.ReturnWriter(writer);
+        }
+
+        /// <summary>
+        /// Applies the maximum player count from an admin.
+        ///
+        /// The gate that reads it runs per connection request, so the new cap binds from the next
+        /// join onward. Setting it below the current population is allowed and drops nobody — the
+        /// instance stops admitting players until it drains under the cap.
+        /// </summary>
+        private static void HandlePeerLimitSet(NetPeer peer, NetPacketReader reader)
+        {
+            var config = NetworkServer.Configuration;
+            config.PeerLimit = reader.GetInt();
+
+            // 0 or negative would seal the instance shut, and player ids are ushort on the wire, so
+            // a cap past ushort.MaxValue could never be reached anyway.
+            if (config.PeerLimit < 1) config.PeerLimit = 1;
+            if (config.PeerLimit > ushort.MaxValue) config.PeerLimit = ushort.MaxValue;
+
+            SaveConfig();
+            BroadcastPeerLimit();
+            SendBackMessage(peer,
+                $"Max players set to {config.PeerLimit}. Applies from the next join; nobody connected now is disconnected.");
+        }
+
+        private static void WritePeerLimit(NetDataWriter writer)
+        {
+            new AdminRequest().Serialize(writer, AdminRequestMode.GlobalGetPeerLimit);
+            writer.Put(NetworkServer.Configuration.PeerLimit);
+        }
+
+        private static void BroadcastPeerLimit()
+        {
+            var writer = NetworkServer.RentWriter();
+            WritePeerLimit(writer);
+            NetworkServer.BroadcastMessageToClients(writer, BasisNetworkCommons.AdminChannel, NetworkServer.PeerSnapshot, DeliveryMethod.ReliableOrdered);
+            NetworkServer.ReturnWriter(writer);
+        }
+
+        public static void SendPeerLimitToPeer(NetPeer peer)
+        {
+            var writer = NetworkServer.RentWriter();
+            WritePeerLimit(writer);
+            NetworkServer.TrySend(peer, writer, BasisNetworkCommons.AdminChannel, DeliveryMethod.ReliableOrdered);
+            NetworkServer.ReturnWriter(writer);
         }
 
         private static void WriteReductionSettings(NetDataWriter writer)
@@ -955,6 +1279,10 @@ namespace BasisNetworkServer.Security
             writer.Put(config.AvatarBundleMinMessages);
             writer.Put(config.AvatarBundleMinBytes);
             writer.Put(config.EnableBSRProfiling);
+            writer.Put(config.EnableAvatarBundleZstd);
+            writer.Put(config.AvatarBundleZstdDeltaBundles);
+            writer.Put(config.AvatarBundleZstdLevel);
+            writer.Put(config.AvatarBundleZstdMaxShedTier);
         }
 
         private static void BroadcastReductionSettings()

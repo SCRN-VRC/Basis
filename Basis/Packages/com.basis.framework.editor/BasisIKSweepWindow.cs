@@ -6,52 +6,27 @@ using UnityEngine;
 
 namespace Basis.IK.Debugging
 {
-    /// <summary>
-    /// One sweep's controls, hosted as a page inside <see cref="BasisIKSweepWindow"/>.
-    ///
-    /// Every sweep used to be its own EditorWindow with its own menu entry — three dozen entries under
-    /// Basis ▸ Debug ▸ IK that were the same window with different knobs. They are pages now: the host
-    /// owns the chrome (title, description, scrolling, output path) and each page only draws its own
-    /// configuration and results. Pages are discovered by <see cref="TypeCache"/>, so adding one is
-    /// still just adding a file.
-    /// </summary>
     public abstract class BasisIKSweepPage
     {
-        /// <summary>Sidebar section this page is filed under.</summary>
         public abstract string Group { get; }
 
-        /// <summary>Sidebar entry and page heading.</summary>
         public abstract string Title { get; }
 
-        /// <summary>One paragraph on what the sweep proves. Shown under the heading.</summary>
         public virtual string Description => null;
 
-        /// <summary>Where this page sits inside its group; ties break alphabetically.</summary>
         public virtual int Order => 100;
 
-        /// <summary>The window hosting this page — use it to request a repaint.</summary>
         public EditorWindow Host { get; internal set; }
 
-        /// <summary>Called once, the first time the page is shown.</summary>
         public virtual void OnEnable() { }
 
-        /// <summary>Called when the host window closes, for pages that hooked editor events.</summary>
         public virtual void OnDisable() { }
 
-        /// <summary>Called on the editor's slow tick while this page is the visible one.</summary>
         public virtual void OnInspectorUpdate() { }
 
-        /// <summary>Draws the page body. The host has already drawn the heading and opened a scroll view.</summary>
         public abstract void Draw();
     }
 
-    /// <summary>
-    /// The single home for every IK sweep, gate and recorder.
-    ///
-    /// Left is a searchable index grouped by body area; right is the selected sweep. Replaces the
-    /// ~40 individual Basis ▸ Debug ▸ IK menu entries with one, and gives every sweep the same
-    /// Basis chrome instead of each rolling its own.
-    /// </summary>
     public class BasisIKSweepWindow : EditorWindow
     {
         private const string SelectionKey = "Basis.IKSweeps.Selected";
@@ -77,15 +52,25 @@ namespace Basis.IK.Debugging
 
         private static GUIStyle _selectedRow;
         private static GUIStyle _idleRow;
+        private static bool _rowStylesAreLight;
+
+        private static void InvalidateRowStylesOnSkinChange()
+        {
+            if (_selectedRow != null && _rowStylesAreLight == BasisEditorUI.Light) return;
+            _rowStylesAreLight = BasisEditorUI.Light;
+            _selectedRow = null;
+            _idleRow = null;
+        }
 
         private static GUIStyle SelectedRow
         {
             get
             {
+                InvalidateRowStylesOnSkinChange();
                 if (_selectedRow == null)
                 {
                     _selectedRow = new GUIStyle(EditorStyles.label) { padding = new RectOffset(10, 4, 0, 0) };
-                    _selectedRow.normal.textColor = Color.white;
+                    _selectedRow.normal.textColor = BasisEditorUI.Light ? new Color(0.08f, 0.08f, 0.08f) : Color.white;
                 }
                 return _selectedRow;
             }
@@ -95,6 +80,7 @@ namespace Basis.IK.Debugging
         {
             get
             {
+                InvalidateRowStylesOnSkinChange();
                 if (_idleRow == null)
                 {
                     _idleRow = new GUIStyle(EditorStyles.label) { padding = new RectOffset(10, 4, 0, 0) };
@@ -191,7 +177,7 @@ namespace Basis.IK.Debugging
         {
             EditorGUILayout.BeginVertical(GUILayout.Width(SidebarWidth), GUILayout.ExpandHeight(true));
             Rect side = new Rect(0f, 0f, SidebarWidth, position.height);
-            BasisEditorUI.Fill(side, new Color(0f, 0f, 0f, 0.28f), 0f);
+            BasisEditorUI.Fill(side, BasisEditorUI.Light ? new Color(0f, 0f, 0f, 0.09f) : new Color(0f, 0f, 0f, 0.28f), 0f);
 
             GUILayout.Space(6f);
             _search = EditorGUILayout.TextField(_search, EditorStyles.toolbarSearchField);
@@ -214,7 +200,7 @@ namespace Basis.IK.Debugging
 
                 bool active = ReferenceEquals(page, _selected);
                 Rect r = GUILayoutUtility.GetRect(new GUIContent(page.Title), EditorStyles.label, GUILayout.Height(19f));
-                if (active) BasisEditorUI.Fill(r, new Color(1f, 1f, 1f, 0.07f), 3f);
+                if (active) BasisEditorUI.Fill(r, BasisEditorUI.Light ? new Color(0f, 0f, 0f, 0.09f) : new Color(1f, 1f, 1f, 0.07f), 3f);
                 if (active) BasisEditorUI.Fill(new Rect(r.x, r.y + 2f, 2f, r.height - 4f), BasisEditorUI.Accent, 1f);
 
                 if (GUI.Button(r, page.Title, active ? SelectedRow : IdleRow)) Activate(page);

@@ -36,7 +36,7 @@ namespace Basis.EventDriver
 #if UNITY_SERVER
         true;
 #else
-            false;
+        false;
 #endif
         private static readonly List<Camera> JiggleCullCameras = new List<Camera>(8);
         // Profiler section IDs live in BasisEventDriverProfileSections (pulled in via `using static`).
@@ -176,6 +176,7 @@ namespace Basis.EventDriver
                 RemoteBoneJobSystem.Dispose();
                 BasisAuthoredMotionSystem.Dispose();
                 BasisConstraintSystem.Dispose();
+                Basis.Scripts.Rendering.BasisVisibilitySystem.Dispose();
                 BasisAvatarBufferPool.Deinitialize();
             }
             finally
@@ -331,6 +332,13 @@ namespace Basis.EventDriver
                 using (Prof.DesktopFileDrop.Auto())
                 {
                     BasisDesktopFileDrop.Dispatch();
+                }
+                // Reads the paste chord and, when it fires, the clipboard itself. Unlike the drop
+                // above there is no window message to collect this on: Windows sends a game window
+                // no paste notification, so the chord is sampled here on the frame it happens.
+                using (Prof.DesktopClipboard.Auto())
+                {
+                    BasisDesktopClipboard.Dispatch();
                 }
             }
             using (Prof.OnUpdateCallbacks.Auto())
@@ -491,7 +499,7 @@ namespace Basis.EventDriver
 
             using (Prof.NetworkApply.Auto())
             {
-                RemoteBoneJobSystem.ScheduleGathers();
+                RemoteBoneJobSystem.BeginFrame();
                 ProfileBegin(PROF_NETWORK_APPLY);
                 ProfileBegin2();
                 using (Prof.NetFireBeforeApply.Auto())
@@ -969,10 +977,11 @@ namespace Basis.EventDriver
             }
 
             // ── JigglePhysics complete pose ──
-            // Deferred to a player-loop step just ahead of the particle update when possible, so the
-            // rest of the frame overlaps the pose jobs instead of the main thread waiting on them
-            // here. Nothing between this point and there reads a jiggled bone; rendering is the
-            // consumer. Falls back to completing inline when the loop step could not be installed.
+            // Deferred to a player-loop step just after the custom render texture update when
+            // possible, so the rest of the frame overlaps the pose jobs instead of the main thread
+            // waiting on them here. Nothing between this point and there reads a jiggled bone;
+            // UpdateAllRenderers, which runs right after, is the consumer. Falls back to completing
+            // inline when the loop step could not be installed.
             ProfileBegin(PROF_JIGGLE_COMPLETE_POSE);
             if (BasisLateJiggleCompletion.Enabled)
             {
@@ -1015,11 +1024,12 @@ namespace Basis.EventDriver
             // nearest-K label ranking). Sits at the very end of LateUpdate so every producer this
             // frame — the Update-tick consumers, IK/bone drivers, OnLateUpdate subscribers — is
             // captured before the draw; early-outs to nothing while no gizmos exist. The tracker
-            // marker balls tick immediately ahead of the submission so they carry this frame's
-            // latched device poses.
+            // marker balls and the play-space visualiser tick immediately ahead of the submission so
+            // they carry this frame's latched device poses.
             using (Prof.GizmoRender.Auto())
             {
                 BasisTrackerMarkerGizmos.Tick();
+                BasisPlayspaceGizmos.Tick();
                 BasisGizmoManager.Render(BasisLocalCameraDriver.Position);
             }
             // Join the avatar cull scheduled back at the frame-sync window and write the changed

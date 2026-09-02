@@ -5,6 +5,7 @@ using Basis.Scripts.Common;
 using Basis.Scripts.Device_Management;
 using Basis.Scripts.Device_Management.Devices;
 using Basis.Scripts.TransformBinders.BoneControl;
+using Basis.Scripts.BasisCharacterController;
 using UnityEngine;
 
 namespace Basis.Scripts.Drivers
@@ -32,8 +33,12 @@ namespace Basis.Scripts.Drivers
     {
         public const string InputGrip = "Grip";
         public const string InputTrigger = "Trigger";
+        public const string InputSecondaryTrigger = "SecondaryTrigger";
         public const string InputPrimary = "Primary";
         public const string InputSecondary = "Secondary";
+        public const string InputJoystick = "Joystick";
+        public const string InputTrackpad = "Trackpad";
+        public const string InputMenu = "Menu";
 
         public const string HandBoth = "Both";
         public const string HandLeft = "Left";
@@ -96,6 +101,7 @@ namespace Basis.Scripts.Drivers
         public static Quaternion FlipRotation = Quaternion.identity;
         /// <summary>True while <see cref="FlipRotation"/> is a non-identity rotation worth applying.</summary>
         public static bool HasFlip;
+        public static float FlipUpSign = 1f;
         // Local-space pivot height (eye height) the flip rotates about, so your view stays put as the world tips.
         private static float _flipPivotY;
 
@@ -104,6 +110,16 @@ namespace Basis.Scripts.Drivers
 
         /// <summary>Total horizontal play-space drag currently applied (world units).</summary>
         public static Vector3 CurrentOffset => _offsetPos;
+
+        /// <summary>Local-space height the active flip rotates about (the eye height it was captured at).</summary>
+        public static float FlipPivotY => _flipPivotY;
+
+        /// <summary>
+        /// This frame's hand state and the gate the mover stopped at, for <see cref="BasisPlayspaceGizmos"/>.
+        /// Written at every bail-out so the visualiser reports the mover's own reason instead of
+        /// re-deriving one that could drift away from it.
+        /// </summary>
+        public static BasisPlayspaceMoverSample GizmoSample;
 
         public static void Simulate(BasisLocalPlayer player, float deltaTime)
         {
@@ -125,9 +141,9 @@ namespace Basis.Scripts.Drivers
                 // Feature off / not VR / seated / not ready: drop any vertical offset + flip so re-enabling
                 // starts clean and you aren't left floating or tipped.
                 VerticalOffset = 0f;
-                HasFlip = false;
-                FlipRotation = Quaternion.identity;
+                ClearFlip();
                 Stop();
+                ReportInactive(player);
                 return;
             }
 
@@ -138,9 +154,9 @@ namespace Basis.Scripts.Drivers
                 && BasisNetworkModeration.LocalPlayerHasGlobalLockBypass() == false)
             {
                 VerticalOffset = 0f;
-                HasFlip = false;
-                FlipRotation = Quaternion.identity;
+                ClearFlip();
                 Stop();
+                SetGizmoState(BasisPlayspaceMoverState.AdminLocked);
                 return;
             }
 
@@ -159,6 +175,7 @@ namespace Basis.Scripts.Drivers
                 // Movement externally locked: stop dragging but keep the vertical offset (it's a static
                 // tracking shift, so you simply stay put — opening a menu mid-air won't drop you).
                 Stop();
+                SetGizmoState(BasisPlayspaceMoverState.MovementLocked);
                 return;
             }
 
@@ -169,6 +186,7 @@ namespace Basis.Scripts.Drivers
             if (AnyHandPointingAtUI())
             {
                 Stop();
+                SetGizmoState(BasisPlayspaceMoverState.PointingAtUI);
                 return;
             }
 
@@ -195,7 +213,7 @@ namespace Basis.Scripts.Drivers
                 drag.y = 0f;
                 if (drag.sqrMagnitude > 1e-10f)
                 {
-                    player.transform.GetPositionAndRotation(out Vector3 hpos, out Quaternion hrot);
+                    BasisLocalPose.GetPose(BasisPoseSlot.PlayerRoot, player.transform, out Vector3 hpos, out Quaternion hrot);
                     Apply(player, hpos, hpos + drag, hrot);
                 }
             }
@@ -210,6 +228,16 @@ namespace Basis.Scripts.Drivers
 
             GatherHand(BasisBoneTrackedRole.LeftHand, mainInput, rotateInput, deviceDriven, out bool leftPresent, out bool leftMain, out bool leftRotate, out Vector3 leftLocal, out Vector3 leftUnscaled);
             GatherHand(BasisBoneTrackedRole.RightHand, mainInput, rotateInput, deviceDriven, out bool rightPresent, out bool rightMain, out bool rightRotate, out Vector3 rightLocal, out Vector3 rightUnscaled);
+
+            SetGizmoState(BasisPlayspaceMoverState.Idle);
+            GizmoSample.LeftPresent = leftPresent;
+            GizmoSample.RightPresent = rightPresent;
+            GizmoSample.LeftHeld = leftMain;
+            GizmoSample.RightHeld = rightMain;
+            GizmoSample.LeftRotate = leftRotate;
+            GizmoSample.RightRotate = rightRotate;
+            GizmoSample.LeftLocal = leftLocal;
+            GizmoSample.RightLocal = rightLocal;
 
             // The rotate input is a two-handed-only gesture (yaw); translation (one hand) and scale (two
             // hands) are driven by the MAIN input. A single hand on the rotate input must not engage, or a
@@ -241,13 +269,14 @@ namespace Basis.Scripts.Drivers
                 _prevRightRawY = rightRawY;
             }
 
-            player.transform.GetPositionAndRotation(out Vector3 pcur, out Quaternion qcur);
+            BasisLocalPose.GetPose(BasisPoseSlot.PlayerRoot, player.transform, out Vector3 pcur, out Quaternion qcur);
 
             Vector3 newPos;
             Quaternion newRot;
 
             if (count == 1)
             {
+                GizmoSample.State = BasisPlayspaceMoverState.Dragging;
                 _scaling = false;
                 CommitScaleIfPending();
                 Vector3 handNow = left ? leftLocal : rightLocal;
@@ -259,6 +288,9 @@ namespace Basis.Scripts.Drivers
             {
                 bool doRotate = allowRotate && leftRotate && rightRotate;
                 bool doScale = allowScale && leftMain && rightMain && doRotate == false;
+                GizmoSample.State = doScale
+                    ? BasisPlayspaceMoverState.Scaling
+                    : doRotate ? BasisPlayspaceMoverState.Rotating : BasisPlayspaceMoverState.Dragging;
 
                 Vector3 lNow = pcur + (qcur * leftLocal);
                 Vector3 rNow = pcur + (qcur * rightLocal);
@@ -322,15 +354,21 @@ namespace Basis.Scripts.Drivers
             var player = BasisLocalPlayer.Instance;
             if (player != null && _offsetPos.sqrMagnitude > 1e-8f)
             {
-                player.transform.GetPositionAndRotation(out Vector3 p, out Quaternion r);
+                BasisLocalPose.GetPose(BasisPoseSlot.PlayerRoot, player.transform, out Vector3 p, out Quaternion r);
                 player.Teleport(p - _offsetPos, r);
             }
             _offsetPos = Vector3.zero;
             VerticalOffset = 0f;
             // Also clear any active flip and turn its toggle off so Reset fully returns you to normal.
             BasisSettingsDefaults.PlayspaceMoverFlip.SetValue(false);
+            ClearFlip();
+        }
+
+        private static void ClearFlip()
+        {
             HasFlip = false;
             FlipRotation = Quaternion.identity;
+            FlipUpSign = 1f;
         }
 
         /// <summary>
@@ -343,22 +381,39 @@ namespace Basis.Scripts.Drivers
         {
             if (BasisSettingsDefaults.PlayspaceMoverFlip.RawValue == false)
             {
-                HasFlip = false;
-                FlipRotation = Quaternion.identity;
+                ClearFlip();
                 return;
             }
 
             float angle = BasisSettingsDefaults.PlayspaceMoverFlipAngle.RawValue;
             // ~0 or ~360 is no rotation; skip the work and the per-device/matrix transforms.
-            HasFlip = Mathf.Abs(Mathf.DeltaAngle(angle, 0f)) > 0.05f;
-            if (HasFlip == false)
+            if (Mathf.Abs(Mathf.DeltaAngle(angle, 0f)) <= 0.05f)
             {
-                FlipRotation = Quaternion.identity;
+                ClearFlip();
                 return;
             }
 
+            HasFlip = true;
             FlipRotation = Quaternion.AngleAxis(angle, FlipAxisVector(BasisSettingsDefaults.PlayspaceMoverFlipAxis.RawValue));
-            _flipPivotY = BasisHeightDriver.SelectedScaledPlayerHeight;
+            FlipUpSign = (FlipRotation * Vector3.up).y < 0f ? -1f : 1f;
+            _flipPivotY = ResolveFlipPivotY();
+        }
+
+        private static float ResolveFlipPivotY()
+        {
+            BasisLocalBoneControl eye = BasisLocalBoneDriver.EyeControl;
+            if (eye != null && eye.TposeLocalScaled.position.y > 0.01f)
+            {
+                return eye.TposeLocalScaled.position.y;
+            }
+
+            BasisLocalBoneControl head = BasisLocalBoneDriver.HeadControl;
+            if (head != null && head.TposeLocalScaled.position.y > 0.01f)
+            {
+                return head.TposeLocalScaled.position.y;
+            }
+
+            return BasisHeightDriver.SelectedScaledPlayerHeight;
         }
 
         private static Vector3 FlipAxisVector(string axis)
@@ -394,6 +449,18 @@ namespace Basis.Scripts.Drivers
             Vector3 pivot = new Vector3(0f, _flipPivotY, 0f);
             localPosition = pivot + (FlipRotation * (localPosition - pivot));
             localRotation = FlipRotation * localRotation;
+        }
+
+        public static Vector3 ApplyFlipToLocalPoint(Vector3 localPosition)
+        {
+            if (HasFlip == false) return localPosition;
+            Vector3 pivot = new Vector3(0f, _flipPivotY, 0f);
+            return pivot + (FlipRotation * (localPosition - pivot));
+        }
+
+        public static Quaternion ApplyFlipToWorldRotation(Quaternion playspaceRotation)
+        {
+            return HasFlip ? playspaceRotation * FlipRotation : playspaceRotation;
         }
 
         /// <summary>
@@ -453,6 +520,9 @@ namespace Basis.Scripts.Drivers
             float curDist = (leftUnscaled - rightUnscaled).magnitude;
             if (grabDist < 1e-4f || curDist < 1e-4f) return;
 
+            GizmoSample.SpanBase = grabDist;
+            GizmoSample.SpanCurrent = curDist;
+
             float target = Mathf.Clamp(_grabBaseHeight * (curDist / grabDist), MinHeight, MaxHeight);
 
             // Drive the full height/scale recompute live (same path the avatar-scale slider uses) so
@@ -471,6 +541,30 @@ namespace Basis.Scripts.Drivers
             _scaleDirty = false;
             BasisSettingsDefaults.CustomScale.SetValue(true);
             BasisSettingsDefaults.SelectedScale.SetValue(_pendingScaleHeight);
+        }
+
+        /// <summary>
+        /// Publishes the gate that stopped the mover, clearing last frame's hand state with it so the
+        /// visualiser never draws a grab that is no longer happening.
+        /// </summary>
+        private static void SetGizmoState(BasisPlayspaceMoverState state)
+        {
+            GizmoSample = default;
+            GizmoSample.State = state;
+        }
+
+        private static void ReportInactive(BasisLocalPlayer player)
+        {
+            BasisPlayspaceMoverState state = BasisPlayspaceMoverState.Disabled;
+            if (player != null && BasisLocalPlayer.PlayerReady && player.LocalSeatDriver.IsSeated)
+            {
+                state = BasisPlayspaceMoverState.Seated;
+            }
+            else if (BasisSettingsDefaults.EnablePlayspaceMover.RawValue && BasisDeviceManagement.IsCurrentModeVR() == false)
+            {
+                state = BasisPlayspaceMoverState.NotVR;
+            }
+            SetGizmoState(state);
         }
 
         private static void Stop()
@@ -530,16 +624,21 @@ namespace Basis.Scripts.Drivers
                     delta.y = -Mathf.Max(driver.characterController.skinWidth * 4f, 0.02f);
                 }
 
-                driver.characterController.Move(delta);
-                t.rotation = newRot;
+                using (BasisLocalPlayerMarkers.MovePhysics.Auto())
+                {
+                    driver.characterController.Move(delta);
+                }
+                // PhysX writes the root transform directly; the pose cache cannot observe it.
+                BasisLocalPose.InvalidateAll();
+                t.SetRotation(newRot);
             }
             else
             {
-                t.SetPositionAndRotation(newPos, newRot);
+                t.SetPose(newPos, newRot);
             }
 
-            t.GetPositionAndRotation(out Vector3 finalPos, out Quaternion finalRot);
-            BasisLocalPlayer.localToWorldMatrix = Matrix4x4.TRS(finalPos, finalRot, t.lossyScale);
+            t.GetPose(out Vector3 finalPos, out Quaternion finalRot);
+            BasisLocalPlayer.localToWorldMatrix = Matrix4x4.TRS(finalPos, finalRot, BasisLocalPose.GetLossyScale(BasisPoseSlot.PlayerRoot, t));
             driver.CurrentPosition = finalPos;
             driver.CurrentRotation = finalRot;
 
@@ -599,6 +698,8 @@ namespace Basis.Scripts.Drivers
                     rotateHeld = scriptRotate;
                 }
             }
+
+            local = ApplyFlipToLocalPoint(local);
         }
 
         private static bool IsHandHoldingObject(BasisInput device)
@@ -652,8 +753,12 @@ namespace Basis.Scripts.Drivers
             switch (inputMode)
             {
                 case InputTrigger: return state.Trigger >= TriggerThreshold;
+                case InputSecondaryTrigger: return state.SecondaryTrigger >= TriggerThreshold;
                 case InputPrimary: return state.PrimaryButtonGetState;
                 case InputSecondary: return state.SecondaryButtonGetState;
+                case InputJoystick: return state.Primary2DAxisClick;
+                case InputTrackpad: return state.Secondary2DAxisClick;
+                case InputMenu: return state.SystemOrMenuButton;
                 default: return state.GripButton;
             }
         }

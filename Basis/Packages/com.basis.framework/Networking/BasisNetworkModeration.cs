@@ -1,12 +1,16 @@
-using Basis.BasisUI;
+﻿using Basis.BasisUI;
 using Basis.Network.Core;
+using Basis.Scripts.BasisCharacterController;
 using Basis.Scripts.BasisSdk.Players;
+using Basis.Scripts.Drivers;
 using Basis.Scripts.Networking;
 using Basis.Scripts.Networking.NetworkedAvatar;
 using Basis.Scripts.Networking.Receivers;
+using Basis.Scripts.UI.UI_Panels;
 using BasisNetworkCore.Security;
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 using static BasisNetworkCore.Serializable.SerializableBasis;
 
@@ -146,6 +150,113 @@ public static class BasisNetworkModeration
             w => w.Put(uuid));
     }
 
+    /// <summary>
+    /// Ask the server to put <paramref name="targetId"/> onto a specific avatar. Only the url,
+    /// password and embedded kind travel — the target loads the bundle itself through the same
+    /// path its library uses, so its own avatar-change broadcast is what shows the new avatar to
+    /// everyone else. See <see cref="EncodeEmbeddedSource"/> for the trailing byte.
+    /// </summary>
+    public static void ForceAvatar(ushort targetId, string url, string password, byte embeddedSource)
+    {
+        if (ValidateString(url, nameof(url)))
+        {
+            SendAdminRequest(AdminRequestMode.ForceAvatar,
+                w => w.Put(targetId),
+                w => w.Put(url),
+                w => w.Put(password ?? string.Empty),
+                w => w.Put(embeddedSource));
+        }
+    }
+
+    /// <summary>
+    /// Ask the server to override <paramref name="targetId"/>'s jump height, movement speeds, gravity
+    /// and character controller mode. Only the fields flagged in <see cref="BasisLocomotionValues.Fields"/>
+    /// travel; the target applies them under a reserved key that world content can neither clear nor
+    /// outrank. Session-only — nothing is persisted, and a reconnect starts clean.
+    /// </summary>
+    public static void SetLocomotionOverride(ushort targetId, BasisLocomotionValues values)
+    {
+        SendAdminRequest(AdminRequestMode.SetLocomotionOverride,
+            w => w.Put(targetId),
+            w => w.Put((byte)values.Fields),
+            w => w.Put(values.JumpHeight),
+            w => w.Put(values.WalkSpeed),
+            w => w.Put(values.RunSpeed),
+            w => w.Put(values.Gravity),
+            w => w.Put((byte)values.Mode));
+    }
+
+    /// <summary>
+    /// Drop the moderator override on <paramref name="targetId"/>, returning them to whatever the world
+    /// and their own settings ask for.
+    /// </summary>
+    public static void ClearLocomotionOverride(ushort targetId)
+    {
+        SetLocomotionOverride(targetId, default);
+    }
+
+    /// <summary>
+    /// <see cref="SetLocomotionOverride(ushort, BasisLocomotionValues)"/> aimed at the whole instance. The
+    /// server sends it to everyone but the caller and skips players holding basis.protection.
+    /// </summary>
+    public static void SetLocomotionOverrideAll(BasisLocomotionValues values)
+    {
+        SendAdminRequest(AdminRequestMode.SetLocomotionOverrideAll,
+            w => w.Put((byte)values.Fields),
+            w => w.Put(values.JumpHeight),
+            w => w.Put(values.WalkSpeed),
+            w => w.Put(values.RunSpeed),
+            w => w.Put(values.Gravity),
+            w => w.Put((byte)values.Mode));
+    }
+
+    /// <summary>Drop the moderator locomotion override on every player in the instance.</summary>
+    public static void ClearLocomotionOverrideAll()
+    {
+        SetLocomotionOverrideAll(default);
+    }
+
+    /// <summary>
+    /// Convenience overload taking the library entry a moderator picked.
+    /// </summary>
+    public static void ForceAvatar(ushort targetId, BasisDataStoreItemKeys.ItemKey item)
+    {
+        if (item == null)
+        {
+            BasisDebug.LogError("ForceAvatar was given no item.");
+            return;
+        }
+        ForceAvatar(targetId, item.Url, item.Pass, EncodeEmbeddedSource(item));
+    }
+
+    /// <summary>
+    /// <see cref="ForceAvatar(ushort, string, string, byte)"/> aimed at the whole instance. The server
+    /// sends it to everyone but the caller and skips players holding basis.protection.
+    /// </summary>
+    public static void ForceAvatarAll(string url, string password, byte embeddedSource)
+    {
+        if (ValidateString(url, nameof(url)))
+        {
+            SendAdminRequest(AdminRequestMode.ForceAvatarAll,
+                w => w.Put(url),
+                w => w.Put(password ?? string.Empty),
+                w => w.Put(embeddedSource));
+        }
+    }
+
+    /// <summary>
+    /// Convenience overload taking the library entry a moderator picked.
+    /// </summary>
+    public static void ForceAvatarAll(BasisDataStoreItemKeys.ItemKey item)
+    {
+        if (item == null)
+        {
+            BasisDebug.LogError("ForceAvatarAll was given no item.");
+            return;
+        }
+        ForceAvatarAll(item.Url, item.Pass, EncodeEmbeddedSource(item));
+    }
+
     // ── Server config / allowlist (admin) ────────────────────────────────────
     // Each of these triggers a server-side write to config/config.xml or
     // BasisAllowList.txt so the change is durable across restarts.
@@ -248,7 +359,7 @@ public static class BasisNetworkModeration
                 {
                     BasisMainMenu.Close();
                 }
-            });
+            }, category: BasisNotificationCategory.Player);
             BasisDebug.Log(message);
         }
     }
@@ -280,7 +391,7 @@ public static class BasisNetworkModeration
             {
                 BasisMainMenu.Close();
             }
-        });
+        }, category: BasisNotificationCategory.Player);
     }
 
     public static void AdminMessage(NetDataReader reader)
@@ -335,6 +446,14 @@ public static class BasisNetworkModeration
                 HandleUserOpusBitrateOverride(reader);
                 break;
 
+            case AdminRequestMode.ForceAvatarApply:
+                HandleForcedAvatar(reader);
+                break;
+
+            case AdminRequestMode.LocomotionOverrideApply:
+                HandleLocomotionOverride(reader);
+                break;
+
             case AdminRequestMode.GlobalGetOpusFrameDurationState:
                 HandleGlobalOpusFrameDurationState(reader);
                 break;
@@ -353,6 +472,14 @@ public static class BasisNetworkModeration
 
             case AdminRequestMode.GlobalGetResourceLimits:
                 HandleResourceLimits(reader);
+                break;
+
+            case AdminRequestMode.GlobalGetImageBandwidth:
+                HandleImageBandwidth(reader);
+                break;
+
+            case AdminRequestMode.GlobalGetPeerLimit:
+                HandlePeerLimit(reader);
                 break;
 
             case AdminRequestMode.GlobalGetReductionSettings:
@@ -1086,6 +1213,60 @@ public static class BasisNetworkModeration
     }
 
     /// <summary>
+    /// Drops every server-pushed global lock back to its default and notifies listeners. Called on
+    /// disconnect: these are process-wide statics, so without this a server's locks stay in force
+    /// offline and in whatever the client loads next — a locked camera or playspace mover would
+    /// stay locked in a local world until the player happened to join another server.
+    /// Each flag only fires its event when it actually changes, matching HandleGlobalLockState.
+    /// </summary>
+    public static void ResetGlobalLockState()
+    {
+        bool contentLocksChanged = GlobalAvatarsLocked || GlobalPropsLocked || GlobalWorldsLocked || GlobalServersLocked;
+        GlobalAvatarsLocked = false;
+        GlobalPropsLocked = false;
+        GlobalWorldsLocked = false;
+        GlobalServersLocked = false;
+
+        // Assign before firing so a listener reading the property back sees the cleared value.
+        if (GlobalThirdPersonDisabled) { GlobalThirdPersonDisabled = false; OnGlobalThirdPersonDisabledChanged?.Invoke(false); }
+        if (GlobalAdditionalAvatarDataLock) { GlobalAdditionalAvatarDataLock = false; OnGlobalAdditionalAvatarDataLockChanged?.Invoke(false); }
+        if (GlobalPlayspaceMoverLocked) { GlobalPlayspaceMoverLocked = false; OnGlobalPlayspaceMoverLockedChanged?.Invoke(false); }
+        if (GlobalDirectConnectLocked) { GlobalDirectConnectLocked = false; OnGlobalDirectConnectLockedChanged?.Invoke(false); }
+        if (GlobalCilboxLocked) { GlobalCilboxLocked = false; OnGlobalCilboxLockChanged?.Invoke(false); }
+        if (GlobalImagesLocked) { GlobalImagesLocked = false; OnGlobalImagesLockedChanged?.Invoke(false); }
+        if (GlobalTextChatLocked) { GlobalTextChatLocked = false; OnGlobalTextChatLockedChanged?.Invoke(false); }
+        if (GlobalVoiceChatLocked) { GlobalVoiceChatLocked = false; OnGlobalVoiceChatLockedChanged?.Invoke(false); }
+        if (GlobalMediaPlayerLocked) { GlobalMediaPlayerLocked = false; OnGlobalMediaPlayerLockedChanged?.Invoke(false); }
+        if (GlobalCameraCaptureLocked) { GlobalCameraCaptureLocked = false; OnGlobalCameraCaptureLockedChanged?.Invoke(false); }
+        if (GlobalPropGrabbingLocked) { GlobalPropGrabbingLocked = false; OnGlobalPropGrabbingLockedChanged?.Invoke(false); }
+        if (GlobalSafeDisplayNamesForced) { GlobalSafeDisplayNamesForced = false; OnGlobalSafeDisplayNamesForcedChanged?.Invoke(false); }
+
+        if (GlobalEndEffectorIKDisabled)
+        {
+            GlobalEndEffectorIKDisabled = false;
+            BasisNetworkReceiver.EndEffectorIKEnabled = true;
+            OnGlobalEndEffectorIKDisabledChanged?.Invoke(false);
+        }
+
+        if (GlobalCameraDisallowMask != 0)
+        {
+            GlobalCameraDisallowMask = 0;
+            OnGlobalCameraPolicyChanged?.Invoke(GlobalCameraDisallowMask);
+        }
+
+        if (GlobalUserRestrictionMode != BasisUserRestrictionMode.Normal)
+        {
+            GlobalUserRestrictionMode = BasisUserRestrictionMode.Normal;
+            OnGlobalRestrictionModeChanged?.Invoke(GlobalUserRestrictionMode);
+        }
+
+        if (contentLocksChanged)
+        {
+            OnGlobalLockStateChanged?.Invoke(false, false, false, false);
+        }
+    }
+
+    /// <summary>
     /// Admin: Toggle global avatar loading.
     /// </summary>
     public static void GlobalToggleAvatars()
@@ -1381,9 +1562,89 @@ public static class BasisNetworkModeration
     public static int ServerAvatarBundleMinMessages { get; private set; } = 4;
     public static int ServerAvatarBundleMinBytes { get; private set; } = 128;
     public static bool ServerEnableBSRProfiling { get; private set; } = false;
+    /// <summary>Hybrid avatar-bundle codec: keyframe/full bundles on dictionary Zstd, delta-only on LZ4.</summary>
+    public static bool ServerEnableAvatarBundleZstd { get; private set; } = true;
+    public static bool ServerAvatarBundleZstdDeltaBundles { get; private set; } = false;
+    public static int ServerAvatarBundleZstdLevel { get; private set; } = -2;
+    public static int ServerAvatarBundleZstdMaxShedTier { get; private set; } = 1;
 
     /// <summary>Fired when the server pushes new BSR reduction settings. The Server* values above hold the current set.</summary>
     public static event Action OnReductionSettingsChanged;
+
+    /// <summary>
+    /// Server-pushed image/gif bandwidth budgets, in megabits per second.
+    ///
+    /// Upload is per sharing player and is the same number the server advertises in
+    /// <c>ServerMetaDataMessage</c> for the image pickup system to pace itself against; it is
+    /// mirrored here so the admin panel can show and edit it. Download is the rate the server
+    /// replays cached images to one arriving player and has no client-side counterpart at all.
+    /// </summary>
+    public static int ServerImageUploadMegabitsPerSecond { get; private set; } = 200;
+    public static int ServerImageDownloadMegabitsPerSecond { get; private set; } = 200;
+
+    /// <summary>Headroom the server allows over the advertised upload budget before it drops, as a percentage.</summary>
+    public static int ServerImageEgressEnforcementPercent { get; private set; } = 150;
+
+    /// <summary>Fired when the server pushes new image bandwidth budgets.</summary>
+    public static event Action OnImageBandwidthChanged;
+
+    private static void HandleImageBandwidth(NetDataReader reader)
+    {
+        ServerImageUploadMegabitsPerSecond = reader.GetInt();
+        ServerImageDownloadMegabitsPerSecond = reader.GetInt();
+        ServerImageEgressEnforcementPercent = reader.GetInt();
+        OnImageBandwidthChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Admin: set the image/gif bandwidth budgets. Persisted to config.xml and applied live.
+    ///
+    /// Upload is what one sharer may spend of the server's egress — advertised to clients so they
+    /// pace themselves, and enforced server-side so a modified one cannot ignore it. Download is
+    /// the rate cached images are replayed to an arriving player. 0 means "unmetered" for download
+    /// and "leave the client on its own conservative default" for upload.
+    /// </summary>
+    public static void SetGlobalImageBandwidth(int uploadMegabits, int downloadMegabits, int enforcementPercent)
+    {
+        if (uploadMegabits < 0) uploadMegabits = 0;
+        if (downloadMegabits < 0) downloadMegabits = 0;
+        if (enforcementPercent < 100) enforcementPercent = 100;
+        if (enforcementPercent > 1000) enforcementPercent = 1000;
+        SendAdminRequest(
+            AdminRequestMode.SetGlobalImageBandwidth,
+            w => w.Put(uploadMegabits),
+            w => w.Put(downloadMegabits),
+            w => w.Put(enforcementPercent));
+    }
+
+    /// <summary>
+    /// Server-pushed maximum player count — the mirror of Configuration.PeerLimit. Pushed on connect
+    /// and on every admin change, so the admin panel edits the live cap rather than a stale one.
+    /// </summary>
+    public static int ServerPeerLimit { get; private set; } = ushort.MaxValue;
+
+    /// <summary>Fired when the server pushes a new maximum player count.</summary>
+    public static event Action<int> OnPeerLimitChanged;
+
+    private static void HandlePeerLimit(NetDataReader reader)
+    {
+        ServerPeerLimit = reader.GetInt();
+        OnPeerLimitChanged?.Invoke(ServerPeerLimit);
+    }
+
+    /// <summary>
+    /// Admin: set the maximum number of simultaneously connected players. Persisted to config.xml
+    /// and enforced from the next join onward — lowering it past the current population never
+    /// disconnects anyone, the server just stops admitting players until it drains under the cap.
+    /// </summary>
+    public static void SetGlobalPeerLimit(int peerLimit)
+    {
+        if (peerLimit < 1) peerLimit = 1;
+        if (peerLimit > ushort.MaxValue) peerLimit = ushort.MaxValue;
+        SendAdminRequest(
+            AdminRequestMode.SetGlobalPeerLimit,
+            w => w.Put(peerLimit));
+    }
 
     private static void HandleReductionSettings(NetDataReader reader)
     {
@@ -1398,6 +1659,10 @@ public static class BasisNetworkModeration
         ServerAvatarBundleMinMessages = reader.GetInt();
         ServerAvatarBundleMinBytes = reader.GetInt();
         ServerEnableBSRProfiling = reader.GetBool();
+        ServerEnableAvatarBundleZstd = reader.GetBool();
+        ServerAvatarBundleZstdDeltaBundles = reader.GetBool();
+        ServerAvatarBundleZstdLevel = reader.GetInt();
+        ServerAvatarBundleZstdMaxShedTier = reader.GetInt();
         OnReductionSettingsChanged?.Invoke();
     }
 
@@ -1405,7 +1670,14 @@ public static class BasisNetworkModeration
     /// Admin: set the server avatar-reduction (BSR) tuning. Persisted to config.xml, re-applied live,
     /// and broadcast to every admin panel. SlowestSendRate only affects clients that join afterwards.
     /// </summary>
-    public static void SetGlobalReductionSettings(int defaultIntervalMs, int baseMultiplier, float increaseRate, float slowestSendRate, float highDistance, float mediumDistance, float lowDistance, bool bundleCompression, int bundleMinMessages, int bundleMinBytes, bool profiling)
+    /// <remarks>
+    /// The four hybrid-codec arguments are optional and default to "leave as-is": null sends back
+    /// whatever the server last pushed. The admin panel has no controls for them yet, and a caller
+    /// that does not know about a setting must not be able to silently reset it — the wire message
+    /// carries the whole block, so omitting a field is not an option at this layer.
+    /// </remarks>
+    public static void SetGlobalReductionSettings(int defaultIntervalMs, int baseMultiplier, float increaseRate, float slowestSendRate, float highDistance, float mediumDistance, float lowDistance, bool bundleCompression, int bundleMinMessages, int bundleMinBytes, bool profiling,
+        bool? bundleZstd = null, bool? bundleZstdDeltas = null, int? bundleZstdLevel = null, int? bundleZstdMaxShedTier = null)
     {
         if (defaultIntervalMs < 1) defaultIntervalMs = 1;
         if (baseMultiplier < 1) baseMultiplier = 1;
@@ -1428,7 +1700,11 @@ public static class BasisNetworkModeration
             w => w.Put(bundleCompression),
             w => w.Put(bundleMinMessages),
             w => w.Put(bundleMinBytes),
-            w => w.Put(profiling));
+            w => w.Put(profiling),
+            w => w.Put(bundleZstd ?? ServerEnableAvatarBundleZstd),
+            w => w.Put(bundleZstdDeltas ?? ServerAvatarBundleZstdDeltaBundles),
+            w => w.Put(bundleZstdLevel ?? ServerAvatarBundleZstdLevel),
+            w => w.Put(bundleZstdMaxShedTier ?? ServerAvatarBundleZstdMaxShedTier));
     }
 
     private static void HandleGlobalHeadlessDisallowState(NetDataReader reader)
@@ -1510,6 +1786,52 @@ public static class BasisNetworkModeration
 
     /// <summary>Fired when the server pushes a per-user bitrate override to this client.</summary>
     public static event Action<int> OnLocalOpusBitrateOverrideChanged;
+
+    /// <summary>
+    /// Fired when a moderator's locomotion override lands on this client. A value with no fields set
+    /// means the override was cleared.
+    /// </summary>
+    public static event Action<BasisLocomotionValues> OnLocomotionOverrideChanged;
+
+    private static void HandleLocomotionOverride(NetDataReader reader)
+    {
+        ushort initiatorId = reader.GetUShort();
+        byte fields = reader.GetByte();
+        float jumpHeight = reader.GetFloat();
+        float walkSpeed = reader.GetFloat();
+        float runSpeed = reader.GetFloat();
+        float gravity = reader.GetFloat();
+        byte movementMode = reader.GetByte();
+
+        BasisLocomotionOverrides.Remove(BasisLocomotionOverrides.AdminKey);
+
+        BasisLocomotionField applied = (BasisLocomotionField)fields & BasisLocomotionField.All;
+        if (applied == BasisLocomotionField.None)
+        {
+            BasisDebug.Log($"Locomotion override cleared by player {initiatorId}", BasisDebug.LogTag.Networking);
+            OnLocomotionOverrideChanged?.Invoke(default);
+            return;
+        }
+
+        if (movementMode > (byte)BasisLocalCharacterDriver.Mode.NoClip)
+        {
+            movementMode = (byte)BasisLocalCharacterDriver.Mode.Walk;
+        }
+
+        BasisLocomotionValues values = new BasisLocomotionValues
+        {
+            Fields = applied,
+            JumpHeight = jumpHeight,
+            WalkSpeed = walkSpeed,
+            RunSpeed = runSpeed,
+            Gravity = gravity,
+            Mode = (BasisLocalCharacterDriver.Mode)movementMode,
+        };
+
+        BasisLocomotionOverrides.Set(BasisLocomotionOverrides.AdminKey, BasisLocomotionOverrides.AdminPriority, values);
+        BasisDebug.Log($"Locomotion override applied by player {initiatorId} ({applied})", BasisDebug.LogTag.Networking);
+        OnLocomotionOverrideChanged?.Invoke(values);
+    }
 
     private static void HandleUserOpusBitrateOverride(NetDataReader reader)
     {
@@ -1599,6 +1921,98 @@ public static class BasisNetworkModeration
         SendAdminRequest(
             AdminRequestMode.SetGlobalOpusFrameDuration,
             w => w.Put((byte)ms));
+    }
+
+    #endregion
+
+    #region Force Avatar
+
+    /// <summary>
+    /// Packs a library entry's embedded flags into the single byte the force-avatar payload
+    /// carries, so the entry rebuilds on the target the same kind it is here. 0 = plain bee url,
+    /// 1 = embedded bee url, 2 = embedded addressable.
+    /// </summary>
+    public static byte EncodeEmbeddedSource(BasisDataStoreItemKeys.ItemKey item)
+    {
+        if (item == null || !item.EmbeddedSettings.IsEmbedded)
+        {
+            return 0;
+        }
+        return item.EmbeddedSettings.SourceType == BasisDataStoreItemKeys.EmbeddedSource.Addressable ? (byte)2 : (byte)1;
+    }
+
+    private static void HandleForcedAvatar(NetDataReader reader)
+    {
+        ushort initiatorId = reader.GetUShort();
+        string url = reader.GetString();
+        string password = reader.GetString();
+        byte embeddedSource = reader.GetByte();
+
+        if (string.IsNullOrEmpty(url))
+        {
+            BasisDebug.LogError("Forced avatar arrived with no url.", BasisDebug.LogTag.Networking);
+            return;
+        }
+
+        BasisDataStoreItemKeys.ItemKey item = new BasisDataStoreItemKeys.ItemKey
+        {
+            Mode = BundledContentHolder.Mode.Avatar,
+            PlacementType = BundledContentHolder.PlacementType.SpawnAtRaycast,
+            Url = url,
+            Pass = password ?? string.Empty,
+            EmbeddedSettings = embeddedSource switch
+            {
+                1 => BasisDataStoreItemKeys.EmbeddedSettings.BEEUrl,
+                2 => BasisDataStoreItemKeys.EmbeddedSettings.Addressable,
+                _ => BasisDataStoreItemKeys.EmbeddedSettings.Default,
+            },
+            PinnedSettings = BasisDataStoreItemKeys.PinnedSettings.Default,
+        };
+
+        // Named in the popup the target gets, so the fallback has to read as prose rather than as
+        // a raw id — the moderator is a remote player here and should always resolve.
+        string initiator = BasisNetworkPlayers.Players.TryGetValue(initiatorId, out BasisNetworkPlayer moderator)
+            && moderator.Player != null
+            && !string.IsNullOrWhiteSpace(moderator.Player.SafeDisplayName)
+                ? moderator.Player.SafeDisplayName
+                : BasisLocalization.Get("settings.admin.forceAvatar.notice.unknownModerator");
+
+        _ = ApplyForcedAvatar(initiator, item);
+    }
+
+    private static async Task ApplyForcedAvatar(string initiator, BasisDataStoreItemKeys.ItemKey item)
+    {
+        try
+        {
+            // The moderator picked this out of their own library, so this client may never have
+            // seen it. CacheNewItem rather than PreloadMetaDataForItem: the preload path deletes
+            // the stored file and drops the key when a bundle fails to parse, and this entry is
+            // not in our library for it to be dropping.
+            if (!CachedMetaData.ContainsMetaData(item.Url))
+            {
+                CachedMetaData.CacheNewItemResult result = await CachedMetaData.CacheNewItem(item);
+                if (result.Cached == null)
+                {
+                    BasisDebug.LogError(
+                        $"Forced avatar '{item.Url}' could not be fetched{(result.IsTransient ? " (remote unreachable)" : string.Empty)}.",
+                        BasisDebug.LogTag.Networking);
+                    return;
+                }
+                CachedMetaData.SetMetaData(item.Url, result.Cached);
+            }
+
+            await ContentLoader.LoadAvatar(item);
+
+            // Popped after the load, not before: the message names an avatar the wearer is already
+            // wearing, so it can't announce a swap that then fails to happen. DisplayMessage is the
+            // same popup every other moderator action uses, and logs itself to the notification
+            // history on dismiss.
+            DisplayMessage(BasisLocalization.Get("settings.admin.forceAvatar.notice.body", initiator));
+        }
+        catch (Exception ex)
+        {
+            BasisDebug.LogError($"Forced avatar '{item.Url}' failed to load: {ex.Message}", BasisDebug.LogTag.Networking);
+        }
     }
 
     #endregion

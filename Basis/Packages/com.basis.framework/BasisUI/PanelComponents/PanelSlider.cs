@@ -8,23 +8,6 @@ using UnityEngine.UI;
 
 namespace Basis.BasisUI
 {
-    public enum ValueDisplayMode
-    {
-        Percentage,
-        Raw,
-        Meters,
-        Degrees,
-        percentageFromZero,
-        MemorySize,
-        /// <summary>
-        /// SI-style short form: 1k / 10k / 32.5k / 1.2M. Decimals are only shown
-        /// when the scaled value isn't a whole number, so clean round values stay
-        /// clean. Intended for large integer sliders like triangle / bone counts
-        /// where "2000000" is unreadable but "2M" is obvious at a glance.
-        /// </summary>
-        Compact,
-        Hz
-    }
 
     public class PanelSlider : PanelDataComponent<float>, IPointerDownHandler, IPointerUpHandler
     {
@@ -201,6 +184,22 @@ namespace Basis.BasisUI
             SliderConfirmedListener.OnValueConfirmed += OnSliderConfirmed;
         }
 
+        /// <summary>
+        /// A rebuilt page hands a fresh slider to a setting a thumbstick may already be driving —
+        /// offer it back, or the reopened menu shows a handle frozen where the old page left it.
+        /// </summary>
+        public override void AssignBinding(BasisSettingsBinding<float> binding)
+        {
+            base.AssignBinding(binding);
+            BasisPanelJoystickBind.NotifySliderCreated(this);
+        }
+
+        /// <summary>
+        /// A slider is the one control a thumbstick can drive, so its options window offers one.
+        /// </summary>
+        protected override void AddPanelOptions(BasisMenuDialoguePanel dialogue) =>
+            BasisPanelJoystickBind.AddDialogueOption(this, dialogue);
+
         public void OnPointerDown(PointerEventData eventData)
         {
             if (!Application.isPlaying) return;
@@ -219,6 +218,22 @@ namespace Basis.BasisUI
         public void OnPointerUp(PointerEventData eventData)
         {
             if (!Application.isPlaying) return;
+            EndDragVisual();
+        }
+
+        /// <summary>
+        /// Hands the slider to a driver other than the pointer — a bound thumbstick
+        /// (<see cref="BasisPanelJoystickBind"/>) — for as long as it is moving the value. The
+        /// handle lifts as it would under a finger, and the fill tracks instantly instead of
+        /// starting a fresh colour tween on every frame of the sweep.
+        /// </summary>
+        public void SetExternalDrive(bool driving)
+        {
+            if (driving)
+            {
+                BeginDragVisual();
+                return;
+            }
             EndDragVisual();
         }
 
@@ -432,38 +447,8 @@ namespace Basis.BasisUI
             _hasLastFormattedValue = true;
             _lastFormattedValue = Value;
 
-            string next;
-            switch (Settings.DisplayMode)
-            {
-                case ValueDisplayMode.Percentage:
-                    float range2 = SliderComponent.maxValue - SliderComponent.minValue;
-                    float normalized = (range2 > 0f) ? (Value - SliderComponent.minValue) / range2 : 0f;
-                    next = $"{Mathf.RoundToInt(normalized * 100f)}%";
-                    break;
-                case ValueDisplayMode.percentageFromZero:
-                    next = $"{Mathf.RoundToInt(Value * 100f)}%";
-                    break;
-                case ValueDisplayMode.Raw:
-                    next = Value.ToString(_cachedDecimalFormat);
-                    break;
-                case ValueDisplayMode.Meters:
-                    next = Value.ToString(_cachedDecimalFormat) + " m";
-                    break;
-                case ValueDisplayMode.Degrees:
-                    next = Value.ToString(_cachedDecimalFormat) + "°";
-                    break;
-                case ValueDisplayMode.MemorySize:
-                    next = FormatMemorySize(Value * 1024 * 1024, Settings.DecimalPlaces);
-                    break;
-                case ValueDisplayMode.Compact:
-                    next = FormatCompact(Value);
-                    break;
-                case ValueDisplayMode.Hz:
-                    next = Value.ToString(_cachedDecimalFormat) + " Hz";
-                    break;
-                default:
-                    return;
-            }
+            string next = FormatDisplayValue(Value);
+            if (next == null) return;
 
             // Dedup — dragging a slider fires ApplyValue many times per second, and the
             // rounded/formatted text is often identical between frames.
@@ -471,6 +456,40 @@ namespace Basis.BasisUI
             _lastCurrentValueText = next;
             CurrentValueLabel.SetText(next);
         }
+
+        /// <summary>
+        /// A value written the way this slider's value label writes it — same display mode, same
+        /// unit suffix — or null for a display mode with no text form.
+        /// </summary>
+        private string FormatDisplayValue(float value)
+        {
+            string decimalFormat = _cachedDecimalFormat ?? "0." + new string('#', Mathf.Max(0, Settings.DecimalPlaces));
+            switch (Settings.DisplayMode)
+            {
+                case ValueDisplayMode.Percentage:
+                    float range = Settings.SliderMax - Settings.SliderMin;
+                    float normalized = (range > 0f) ? (value - Settings.SliderMin) / range : 0f;
+                    return $"{Mathf.RoundToInt(normalized * 100f)}%";
+                case ValueDisplayMode.percentageFromZero:
+                    return $"{Mathf.RoundToInt(value * 100f)}%";
+                case ValueDisplayMode.Raw:
+                    return value.ToString(decimalFormat);
+                case ValueDisplayMode.Meters:
+                    return value.ToString(decimalFormat) + " m";
+                case ValueDisplayMode.Degrees:
+                    return value.ToString(decimalFormat) + "°";
+                case ValueDisplayMode.MemorySize:
+                    return FormatMemorySize(value * 1024 * 1024, Settings.DecimalPlaces);
+                case ValueDisplayMode.Compact:
+                    return FormatCompact(value);
+                case ValueDisplayMode.Hz:
+                    return value.ToString(decimalFormat) + " Hz";
+                default:
+                    return null;
+            }
+        }
+
+        protected override string FormatSettingValue(float value) => FormatDisplayValue(value) ?? base.FormatSettingValue(value);
         private static string FormatMemorySize(float bytes, int decimalPlaces = 2)
         {
             if (bytes < 0f)

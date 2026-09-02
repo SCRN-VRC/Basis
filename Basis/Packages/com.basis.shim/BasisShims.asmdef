@@ -12,7 +12,9 @@
         "Basis Framework",
         "BasisMediaPlayer",
         "BasisSDKEditor",
-        "HVR.Basis.Comms"
+        "BasisEditor",
+        "HVR.Basis.Comms",
+        "BasisExamples"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

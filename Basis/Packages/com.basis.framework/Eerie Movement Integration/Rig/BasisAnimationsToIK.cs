@@ -7,23 +7,17 @@ using Basis.Scripts.Device_Management.Devices.Desktop;
 public class BasisAnimationsToIK : MonoBehaviour
 {
     public Animator Animator;
-
-    // One binding per tracker
-    private readonly List<TrackerBinding> _bindings = new List<TrackerBinding>();
-
+    private readonly List<TrackerBinding> trackerBindings = new List<TrackerBinding>();
     private class TrackerBinding
     {
         public BasisInputXRSimulate Tracker;
         public Transform Bone;
-
-        // Tracker pose relative to the bone at startup
         public Vector3 LocalOffsetPosition;
         public Quaternion LocalOffsetRotation;
     }
-
     void OnEnable()
     {
-        _bindings.Clear();
+        trackerBindings.Clear();
 
         BasisSimulateXR simulated = FindAnyObjectByType<BasisSimulateXR>();
         if (simulated == null || Animator == null)
@@ -54,15 +48,13 @@ public class BasisAnimationsToIK : MonoBehaviour
 
                 followTransform.GetPositionAndRotation(out Vector3 trackerPos, out Quaternion trackerRot);
 
-                // Rotation offset: tracker is boneRot * localOffsetRot
                 Quaternion localOffsetRot = Quaternion.Inverse(boneRot) * trackerRot;
 
-                // Position offset in bone space: trackerPos = bonePos + boneRot * localOffsetPos
                 Vector3 localOffsetPos = Quaternion.Inverse(boneRot) * (trackerPos - bonePos);
 
                 if (humanoidBone == HumanBodyBones.LeftHand || humanoidBone == HumanBodyBones.RightHand)
                 {
-                    _bindings.Add(new TrackerBinding
+                    trackerBindings.Add(new TrackerBinding
                     {
                         Tracker = tracker,
                         Bone = bone,
@@ -72,7 +64,7 @@ public class BasisAnimationsToIK : MonoBehaviour
                 }
                 else
                 {
-                    _bindings.Add(new TrackerBinding
+                    trackerBindings.Add(new TrackerBinding
                     {
                         Tracker = tracker,
                         Bone = bone,
@@ -87,15 +79,14 @@ public class BasisAnimationsToIK : MonoBehaviour
     }
     void Update()
     {
-        for (int Index = 0; Index < _bindings.Count; Index++)
+        for (int Index = 0; Index < trackerBindings.Count; Index++)
         {
-            TrackerBinding b = _bindings[Index];
+            TrackerBinding b = trackerBindings[Index];
             if (b.Tracker == null || b.Bone == null)
             {
                 continue;
             }
 
-            // Rebuild the tracker’s world pose from bone pose + stored offset
             b.Bone.GetPositionAndRotation(out var bonePos, out var boneRot);
 
             Quaternion targetRot = boneRot * b.LocalOffsetRotation;

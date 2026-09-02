@@ -44,7 +44,37 @@ namespace Basis.Scripts.BasisSdk.Players
         public BasisProgressReport AvatarProgress { get; } = new BasisProgressReport();
         public Action AudioReceived { get; set; }
 
-        public bool FaceIsVisible { get; set; }
+        private bool _faceIsVisible;
+        /// <summary>Cached once the receiver is linked; -1 until then. Player IDs are stable for
+        /// the player's lifetime, so this never needs invalidating.</summary>
+        private int _faceVisibilityKey = -1;
+
+        /// <summary>
+        /// Mirrored into <see cref="RemoteBoneJobSystem.SetFaceVisible"/> on every write so Burst
+        /// selection passes (gaze) can filter on visibility themselves rather than the main thread
+        /// marshalling one managed bool per player. Flips are rare — a face mesh entering or
+        /// leaving view — so the extra store is free next to the reads it removes.
+        ///
+        /// A write that lands before the receiver is linked can't resolve a key and is dropped;
+        /// that is safe because the native default is 0 (hidden) and avatar setup unconditionally
+        /// writes <c>false</c> once the receiver exists, so the mirror re-seeds on every avatar
+        /// swap and can only ever fail closed (skip a player), never open.
+        /// </summary>
+        public bool FaceIsVisible
+        {
+            get => _faceIsVisible;
+            set
+            {
+                _faceIsVisible = value;
+                if (_faceVisibilityKey < 0)
+                {
+                    BasisNetworkReceiver receiver = NetworkReceiver;
+                    if (receiver == null) return;
+                    _faceVisibilityKey = receiver.playerId;
+                }
+                RemoteBoneJobSystem.SetFaceVisible(_faceVisibilityKey, value);
+            }
+        }
         public BasisMeshRendererCheck FaceRenderer { get; set; }
 
         public bool IsConsideredFallBackAvatar { get; set; } = true;
@@ -141,7 +171,19 @@ namespace Basis.Scripts.BasisSdk.Players
 
         public void SetSafeDisplayname()
         {
-            SafeDisplayName = System.Text.RegularExpressions.Regex.Replace(DisplayName, "<.*?>", string.Empty);
+            SafeDisplayName = BuildSafeDisplayName(DisplayName);
+        }
+
+        /// <summary>
+        /// Strips rich-text tags out of a display name. Static and Unity-free so the avatar load
+        /// thread can run it during join decode instead of the main thread — the regex is the most
+        /// allocating step of <see cref="RemoteInitialize"/>.
+        /// </summary>
+        public static string BuildSafeDisplayName(string displayName)
+        {
+            return displayName == null
+                ? null
+                : System.Text.RegularExpressions.Regex.Replace(displayName, "<.*?>", string.Empty);
         }
 
         public void UpdateFaceVisibility(bool State)
@@ -407,8 +449,23 @@ namespace Basis.Scripts.BasisSdk.Players
         /// <see cref="Basis.Scripts.Avatar.BasisAvatarPerformanceLimits.BypassAllLimits"/>
         /// toggle. Resets to false every launch, every reconnect, and every fresh
         /// player join, so there's no accidental "I forgot I disabled the filter for Alice".
+        /// Implies <see cref="AvatarAlwaysLoaded"/>: turning the filter off for one player
+        /// is a request to see that avatar, so it also exempts them from spatial culling.
         /// </summary>
-        public bool BypassPerformanceLimits;
+        public bool BypassPerformanceLimits
+        {
+            get => _bypassPerformanceLimits;
+            set
+            {
+                if (_bypassPerformanceLimits == value)
+                {
+                    return;
+                }
+                _bypassPerformanceLimits = value;
+                Basis.Scripts.Rendering.BasisAvatarVisibility.OnAvatarAlwaysLoadedChanged(this);
+            }
+        }
+        private bool _bypassPerformanceLimits;
 
         /// <summary>
         /// Per-player override mirrored from <see cref="BasisPlayerSettingsData.AlwaysShowAvatar"/>.
@@ -426,10 +483,19 @@ namespace Basis.Scripts.BasisSdk.Players
                     return;
                 }
                 _alwaysShowAvatar = value;
-                Basis.Scripts.Rendering.BasisAvatarVisibility.OnAlwaysShowAvatarChanged(this);
+                Basis.Scripts.Rendering.BasisAvatarVisibility.OnAvatarAlwaysLoadedChanged(this);
             }
         }
         private bool _alwaysShowAvatar;
+
+        /// <summary>
+        /// This player's real avatar is loaded no matter what the spatial optimizations say —
+        /// distance range, the max-visible-avatar cap, the view-cone filter and the shadow-LOD
+        /// cull all skip them, and nothing <see cref="Basis.Scripts.Avatar.BasisAvatarPerformanceLimits.Evaluate"/>
+        /// checks can push them to the fallback. Blocking, a failed load and an explicit Hide
+        /// still take precedence.
+        /// </summary>
+        public bool AvatarAlwaysLoaded => AlwaysShowAvatar || BypassPerformanceLimits;
 
         /// <summary>
         /// Per-player override mirrored from <see cref="BasisPlayerSettingsData.AvatarInteraction"/>.
@@ -487,12 +553,14 @@ namespace Basis.Scripts.BasisSdk.Players
         public void RemoteInitialize(
             ClientAvatarChangeMessage cACM,
             ClientMetaDataMessage PlayerMetaDataMessage,
-            string LoadableNamePlatename = "Assets/UI/Prefabs/NamePlate.prefab")
+            string LoadableNamePlatename = "Assets/UI/Prefabs/NamePlate.prefab",
+            string PreparedSafeDisplayName = null)
         {
             CACM = cACM;
             DisplayName = PlayerMetaDataMessage.playerDisplayName;
             PlayerPlatform = PlayerMetaDataMessage.playerPlatform;
-            SetSafeDisplayname();
+            // Non-null when the avatar load thread already stripped the tags off-thread.
+            SafeDisplayName = PreparedSafeDisplayName ?? BuildSafeDisplayName(DisplayName);
             UUID = PlayerMetaDataMessage.playerUUID;
             IsLocal = false;
 
@@ -528,12 +596,16 @@ namespace Basis.Scripts.BasisSdk.Players
         /// This is an async-void method intended to be fire-and-forget on the main thread.
         /// Prefer <see cref="CreateAvatar(byte, BasisLoadableBundle)"/> for awaited flows.
         /// </remarks>
-        public void LoadAvatarFromInitial(ClientAvatarChangeMessage CACM)
+        public void LoadAvatarFromInitial(ClientAvatarChangeMessage CACM, BasisLoadableBundle PreparedBundle = null)
         {
             if (BasisAvatar == null)
             {
                 this.CACM = CACM;
-                BasisLoadableBundle BasisLoadedBundle = BasisBundleConversionNetwork.ConvertNetworkBytesToBasisLoadableBundle(CACM.byteArray);
+                // The avatar load thread normally decodes this ahead of us — the blob is a
+                // DeflateStream + BinaryReader round trip per joiner, which is the single most
+                // allocating step left on the spawn path. Fall back for callers that have none.
+                BasisLoadableBundle BasisLoadedBundle = PreparedBundle
+                    ?? BasisBundleConversionNetwork.ConvertNetworkBytesToBasisLoadableBundle(CACM.byteArray);
 
                 InAvatarRange = false;
 
@@ -573,6 +645,15 @@ namespace Basis.Scripts.BasisSdk.Players
         }
         public bool IsLoadingAnAvatar = false;
         private bool _reloadQueuedDuringLoad = false;
+        private BasisAvatarPerformanceLimits.Result EvaluatePerformanceGate(BasisLoadableBundle Bundle)
+        {
+            if (BasisAvatarFactory.IsLoadingAvatar(Bundle))
+            {
+                return BasisAvatarPerformanceLimits.Result.Pass;
+            }
+            return BasisAvatarPerformanceLimits.EvaluateForPlayer(Bundle.BasisBundleConnector, AvatarAlwaysLoaded);
+        }
+
         /// <summary>
         /// Creates or replaces the current avatar using the provided load mode and bundle.
         /// Applies user visibility settings and distance gating before loading,
@@ -605,16 +686,23 @@ namespace Basis.Scripts.BasisSdk.Players
             bool farInstallPending = false;
             try
             {
-                // Fetch per-player visibility settings.
-                BasisPlayerSettingsData = await BasisPlayerSettingsManager.RequestPlayerSettings(UUID);
-
-                // The await above is file I/O — the player can disconnect and be destroyed
-                // mid-await. BasisAvatarFactory.CancelPlayerLoad can't help here because the
-                // per-player cancellation token is created inside LoadAvatarRemote, after
-                // this point. Bail before touching any owned members.
-                if (IsDestroyed)
+                // Fetch per-player visibility settings. The cached probe is synchronous and is the
+                // normal case — the join decode thread warms this UUID before the player exists,
+                // and three separate steps of the spawn ask for it. Awaiting anyway allocated a
+                // Task<BasisPlayerSettingsData> plus a state machine on every range commit, and
+                // this method is called once per player per range crossing.
+                if (!BasisPlayerSettingsManager.TryGetCached(UUID, out BasisPlayerSettingsData))
                 {
-                    return;
+                    BasisPlayerSettingsData = await BasisPlayerSettingsManager.RequestPlayerSettings(UUID);
+
+                    // The await above is file I/O — the player can disconnect and be destroyed
+                    // mid-await. BasisAvatarFactory.CancelPlayerLoad can't help here because the
+                    // per-player cancellation token is created inside LoadAvatarRemote, after
+                    // this point. Bail before touching any owned members.
+                    if (IsDestroyed)
+                    {
+                        return;
+                    }
                 }
 
                 IsBlocked = BasisPlayerSettingsData.IsBlocked;
@@ -628,12 +716,9 @@ namespace Basis.Scripts.BasisSdk.Players
                 // download/instantiate avatars that exceed any enabled limit. Skipped
                 // for the fallback/loading avatar itself — otherwise a silly MaxBones=0
                 // setting would block the fallback and leave the player headless.
-                // Also skipped when this player has the per-player session bypass
-                // enabled from the individual-player menu.
-                BasisAvatarPerformanceLimits.Result perfResult =
-                    (BasisAvatarFactory.IsLoadingAvatar(BasisLoadableBundle) || BypassPerformanceLimits)
-                        ? BasisAvatarPerformanceLimits.Result.Pass
-                        : BasisAvatarPerformanceLimits.Evaluate(BasisLoadableBundle.BasisBundleConnector);
+                // Also skipped when this player has the per-player session bypass or
+                // Always Show Avatar enabled from the individual-player menu.
+                BasisAvatarPerformanceLimits.Result perfResult = EvaluatePerformanceGate(BasisLoadableBundle);
                 IsBlockedByPerformance = perfResult.Blocked;
                 PerformanceBlockReason = perfResult.Blocked ? perfResult.Reason : null;
 
@@ -648,9 +733,27 @@ namespace Basis.Scripts.BasisSdk.Players
                     BlockReason = perfResult.Reason,
                 };
 
-                if (BasisPlayerSettingsData.AvatarVisible && !effectivelyBlocked && !IsBlockedByPerformance && (InAvatarRange || AlwaysShowAvatar) && !HasFailedAvatarLoadGlobally)
+                if (BasisPlayerSettingsData.AvatarVisible && !effectivelyBlocked && !IsBlockedByPerformance && (InAvatarRange || AvatarAlwaysLoaded) && !HasFailedAvatarLoadGlobally)
                 {
                     await BasisAvatarFactory.LoadAvatarRemote(this, Mode, BasisLoadableBundle, Vector3.zero, Quaternion.identity);
+
+                    if (!IsDestroyed && !HasFailedAvatarLoadGlobally)
+                    {
+                        BasisAvatarPerformanceLimits.Result postLoadResult = EvaluatePerformanceGate(BasisLoadableBundle);
+                        if (postLoadResult.Blocked)
+                        {
+                            IsBlockedByPerformance = true;
+                            PerformanceBlockReason = postLoadResult.Reason;
+                            LastPerformanceInfo.Blocked = true;
+                            LastPerformanceInfo.BlockReason = postLoadResult.Reason;
+                            if (BasisAvatarFarLOD.HasRealConnector(BasisLoadableBundle))
+                            {
+                                BasisAvatarFarLOD.CaptureFarLodFallback(this, BasisLoadableBundle);
+                            }
+                            BasisAvatarFactory.RemoveOldAvatarAndLoadFallback(this, Vector3.zero, Quaternion.identity);
+                            BasisDebug.LogWarning($"{DisplayName} avatar blocked once its metadata arrived: {postLoadResult.Reason}", BasisDebug.LogTag.Avatar);
+                        }
+                    }
                 }
                 else
                 {
@@ -756,7 +859,7 @@ namespace Basis.Scripts.BasisSdk.Players
             // Otherwise set cooldown to prevent oscillation. A pending far install keeps the
             // real avatar up on purpose — the transmit tick owns that swap; re-running here
             // would churn CreateAvatar every pass until the tick wins.
-            bool effectiveInRange = InAvatarRange || AlwaysShowAvatar;
+            bool effectiveInRange = InAvatarRange || AvatarAlwaysLoaded;
             bool stateMismatch = (effectiveInRange && IsConsideredFallBackAvatar) || (!effectiveInRange && !IsConsideredFallBackAvatar);
             if (stateMismatch && !farInstallPending)
             {
@@ -795,6 +898,12 @@ namespace Basis.Scripts.BasisSdk.Players
             {
                 RemoteFaceDriver.OnDestroy();
             }
+
+            // Nothing dropped this before, so every disconnect leaked whatever the grid held —
+            // a 207 KB Persistent NativeArray per player back when each one allocated its own.
+            // Owned-only: the usual case is a view of the per-model shared cells, which this must
+            // neither free nor null out while the parallel finger expansion may be sampling it.
+            RemoteAvatarDriver?.HandGrid.DisposeOwnedOnly();
 
             // The nameplate self-releases on this event; then drop the mouth marker.
             OnRemotePlayerDestroying?.Invoke();

@@ -85,10 +85,43 @@ namespace Basis.Scripts.Networking.Receivers
         }
 
         /// <summary>
-        /// T-pose local rotations for this receiver's avatar bones.
-        /// Set during calibration and passed to RemoteBoneJobSystem for the skeleton apply job.
+        /// Folded operators that turn the incoming RIG-NEUTRAL bone rotations into THIS avatar's
+        /// bone local rotations: <c>localRotation = BoneDecodePre[slot] * generic * BoneDecodePost[slot]</c>.
+        /// Slot order is BasisBoneRotationCompression.BONE_WRITE_ORDER.
+        ///
+        /// Built during calibration from this rig's own rest pose — see
+        /// <see cref="Basis.Network.Core.Compression.BasisGenericBoneRotation"/>. Because they are
+        /// derived purely from the LOCAL avatar's rest data, the sender's rig never enters into it,
+        /// which is what lets any incoming pose play back on whatever avatar is worn here.
+        /// Passed to RemoteBoneJobSystem for the skeleton compose job.
         /// </summary>
-        [System.NonSerialized] public NativeArray<quaternion> TposeLocalRotations;
+        [System.NonSerialized] public NativeArray<quaternion> BoneDecodePre;
+
+        /// <summary>Right factor of the pair above; see <see cref="BoneDecodePre"/>.</summary>
+        [System.NonSerialized] public NativeArray<quaternion> BoneDecodePost;
+
+        /// <summary>
+        /// The same operators as managed arrays, when they came from the per-model cache
+        /// (<c>BasisAvatarModelCache.BoneDecodeOperatorData</c>) — null otherwise.
+        /// <para>The bone job's deferred registration needs a snapshot it can hold until the add
+        /// commits, and it cannot hold the NativeArrays above because the receiver may dispose and
+        /// recreate them on a recalibration in between. A cache-owned immutable array has no such
+        /// lifetime, so handing these over replaces two <c>ToArray()</c> copies per install with
+        /// two reference assignments.</para>
+        /// </summary>
+        [System.NonSerialized] public quaternion[] CachedDecodePre;
+        [System.NonSerialized] public quaternion[] CachedDecodePost;
+
+        /// <summary>
+        /// Receiver-owned mirror of the operators, used only for a rig with no Avatar asset to key
+        /// a cache entry on. Separate fields rather than reusing the two above so a receiver that
+        /// previously pointed at a cache-owned array can never be written through — that array is
+        /// shared by every other player in the same avatar.
+        /// <para>Allocated once and reused (SyncBoneCount is constant), so it costs one allocation
+        /// per receiver rather than one per install.</para>
+        /// </summary>
+        [System.NonSerialized] public quaternion[] OwnedDecodePre;
+        [System.NonSerialized] public quaternion[] OwnedDecodePost;
 
         /// <summary>
         /// Bone transforms for this receiver's avatar.
@@ -590,6 +623,16 @@ namespace Basis.Scripts.Networking.Receivers
                     // Catmull-Rom tangents one-sided — the spline stays bounded, no branch needed.
                     var p0 = HasPreviousBuffer ? Previous : p1;
                     var p3 = _stagedRing.TryPeekOldest(out var peek) ? peek : p2;
+
+                    // Expand the finger channels through THIS avatar's grid before the window is
+                    // handed to the interpolator. It happens here, not in the decompressor, because
+                    // a P2P frame is decoded on the socket thread and the grid belongs to the
+                    // avatar — its lifetime is only ours to reason about on the frame path.
+                    ExpandFingerChannels(p0);
+                    ExpandFingerChannels(p1);
+                    ExpandFingerChannels(p2);
+                    ExpandFingerChannels(p3);
+
                     BasisRemoteNetworkDriver.SetFrameInputs(
                         playerId,
                         CachedHumanScale,
@@ -607,6 +650,24 @@ namespace Basis.Scripts.Networking.Receivers
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             UnityEngine.Profiling.Profiler.EndSample();
 #endif
+        }
+
+        /// <summary>
+        /// Fills this buffer's finger slots from its ten curl/splay channels, once per avatar
+        /// generation. Cheap to call repeatedly — the four window buffers overlap heavily frame to
+        /// frame, and re-sampling settled fingers would defeat the apply path's write mask.
+        /// </summary>
+        private void ExpandFingerChannels(BasisAvatarBuffer buffer)
+        {
+            if (buffer == null) return;
+
+            var driver = RemotePlayer != null ? RemotePlayer.RemoteAvatarDriver : null;
+            if (driver == null || !driver.HandGrid.IsCreated) return;
+            if (buffer.FingerExpansionGeneration == driver.HandGridGeneration) return;
+
+            driver.HandGrid.ExpandInto(buffer.FingerPercentages, buffer.BoneRotations,
+                Basis.Network.Core.Compression.BasisBoneRotationCompression.WireBoneSlotCount);
+            buffer.FingerExpansionGeneration = driver.HandGridGeneration;
         }
 
         /// <summary>
@@ -830,7 +891,8 @@ namespace Basis.Scripts.Networking.Receivers
 
             ClearAndRelease();
 
-            if (TposeLocalRotations.IsCreated) TposeLocalRotations.Dispose();
+            if (BoneDecodePre.IsCreated) BoneDecodePre.Dispose();
+            if (BoneDecodePost.IsCreated) BoneDecodePost.Dispose();
             BoneTransforms = null;
 
             if (hasEvents && RemotePlayer != null && RemotePlayer.RemoteAvatarDriver != null)

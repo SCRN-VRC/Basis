@@ -37,6 +37,10 @@ namespace Basis.Scripts.BasisCharacterController
             // amplitudes and step urgency at maximum and roughly doubled cadence at half size.
             ctx.CurrentSpeed = (math.lerp(ctx.MinimumMovementSpeed, ctx.MaximumMovementSpeed, ctx.MovementSpeedScale) + ctx.MinimumMovementSpeed * ctx.MovementSpeedBoost)
                 * BasisLocalCharacterDriver.LocomotionSpeedScale();
+            if (ctx.StanceSpeedProne)
+            {
+                ctx.CurrentSpeed = ctx.ProneMovementSpeed * BasisLocalCharacterDriver.LocomotionSpeedScale();
+            }
 
             Vector3 move = facing * inputDir * ctx.CurrentSpeed * dt;
 
@@ -60,7 +64,7 @@ namespace Basis.Scripts.BasisCharacterController
             ctx.currentVerticalSpeed = Mathf.Max(ctx.currentVerticalSpeed, -BasisLocalCharacterDriver.TerminalVelocity());
             ctx.HasJumpAction = false;
 
-            move.y = ctx.currentVerticalSpeed * dt;
+            move.y = ctx.currentVerticalSpeed * dt + ctx.ConsumeStanceLift();
 
             if (ctx.MovementLock)
             {
@@ -68,8 +72,13 @@ namespace Basis.Scripts.BasisCharacterController
                 move.z = 0;
             }
 
-            ctx.Flags = ctx.characterController.Move(move);
-            ctx.BasisLocalPlayerTransform.GetPositionAndRotation(out ctx.CurrentPosition, out ctx.CurrentRotation);
+            using (BasisLocalPlayerMarkers.MovePhysics.Auto())
+            {
+                ctx.Flags = ctx.characterController.Move(move);
+            }
+            // PhysX writes the root transform directly; the pose cache cannot observe it.
+            BasisLocalPose.InvalidateAll();
+            ctx.BasisLocalPlayerTransform.GetPose(out ctx.CurrentPosition, out ctx.CurrentRotation);
         }
     }
 }

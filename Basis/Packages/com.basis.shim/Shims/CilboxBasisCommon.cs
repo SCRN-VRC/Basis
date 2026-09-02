@@ -13,6 +13,9 @@ namespace Cilbox
 
 			// Basis types
 			"BasisNetworkContentBase",
+			// "did the local player spawn this" for a prop, world or avatar, as a bool.
+			// The creator UUID itself stays prop-box only, see CilboxPropBasis.
+			"BasisContent",
             "BasisNetworkContentBase+BasisContentInformation",
             "Basis.Scripts.BasisSdk.Interactions.BasisPickUpUseMode",
 			"Basis.Scripts.Device_Management.Devices.BasisInput", // Restrictive, only used as a type.
@@ -24,6 +27,11 @@ namespace Cilbox
 			"Basis.Shims.BasisOsc*",
 			"Basis.Network.Core.DeliveryMethod",
 			"Basis.SafeUtil",
+			// Wire compression helpers: quat <-> uint/ulong (smallest-three) and ranged
+			// float <-> ushort. Pure math over already-whitelisted primitives — no handles,
+			// no native memory — so default-allow methods are safe.
+			"Basis.Scripts.Networking.Compression.BasisCompression+QuaternionCompressor",
+			"BasisNetworkPrimitiveCompression+BasisRangedUshortFloatData",
 			// Roster access plus the pose reads IBasisPlayer withholds. Returns players as
 			// IBasisPlayer, and poses as copied Vector3/Quaternion — never a Transform.
 			"Basis.Shims.BasisPlayersShim",
@@ -351,6 +359,9 @@ namespace Cilbox
 			"Basis.BasisNetworkBehaviour.IsOwnedLocallyOnServer",
 			"Basis.BasisNetworkBehaviour.HasNetworkID",
 			"Basis.Scripts.Networking.NetworkedAvatar.BasisNetworkPlayer.playerId",
+			// Quantizer configuration (Precision/Min/Max/RequiredBits/Mask) on the script's
+			// own instance; Compress/Decompress clamp, so a mangled config can't corrupt.
+			"BasisNetworkPrimitiveCompression+BasisRangedUshortFloatData.*",
 
 			// Sync shim configuration. These are plain fields rather than { get; set; } pairs, so
 			// unlike a property they need naming here — field access is default-deny, methods are
@@ -414,6 +425,15 @@ namespace Cilbox
 				typeof(Basis.Scripts.Networking.NetworkedAvatar.BasisNetworkPlayer).GetProperty(nameof(Basis.Scripts.Networking.NetworkedAvatar.BasisNetworkPlayer.LocalPlayer)).GetGetMethod().Name,
 				typeof(Basis.Scripts.Networking.NetworkedAvatar.BasisNetworkPlayer).GetProperty(nameof(Basis.Scripts.Networking.NetworkedAvatar.BasisNetworkPlayer.displayName)).GetGetMethod().Name,
 				"get_playerId", nameof(Basis.Scripts.Networking.NetworkedAvatar.BasisNetworkPlayer.GetAllPlayers),
+				} },
+			{ typeof(BasisContent), new HashSet<string>{ "SpawnedByLocalPlayer" } },
+			// Read-only identity. AssignContentIdentifier and get_ContentInformation are held back:
+			// the first forges a spawn identity, the second hands over the whole struct.
+			{ typeof(BasisNetworkContentBase), new HashSet<string>{
+				"TryGetIdentifier",
+				"TryGetNetworkGUIDIdentifier",
+				"get_clientIdentifier",
+				"get_SpawnedByLocalPlayer",
 				} },
 			{ typeof(UnityEngine.GameObject),          new HashSet<string>{
 				nameof(UnityEngine.GameObject.SetActive),
@@ -540,7 +560,7 @@ namespace Cilbox
 			return false;
 		}
 
-		public override bool CheckMethodAllowed(out MethodInfo mi, Type declaringType, string name, Serializee[] parametersIn, Serializee[] genericArgumentsIn, string fullSignature)
+		public override bool CheckMethodAllowed(out MethodInfo mi, Type declaringType, string name, SerializedTypeDescriptor[] parametersIn, SerializedTypeDescriptor[] genericArgumentsIn, string fullSignature)
 		{
 			mi = null;
 

@@ -24,6 +24,8 @@ namespace Basis.Scripts.BasisCharacterController
 
         public void Tick(BasisLocalCharacterDriver ctx, float dt)
         {
+            ctx.SyncStanceSpeedSource();
+
             Quaternion facing = BasisLocalCharacterDriver.GetMovementFacing();
 
             // Planar
@@ -43,8 +45,13 @@ namespace Basis.Scripts.BasisCharacterController
 
             if (ctx.MovementLock) move = Vector3.zero;
 
-            ctx.Flags = ctx.characterController.Move(move);
-            ctx.BasisLocalPlayerTransform.GetPositionAndRotation(out ctx.CurrentPosition, out ctx.CurrentRotation);
+            using (BasisLocalPlayerMarkers.MovePhysics.Auto())
+            {
+                ctx.Flags = ctx.characterController.Move(move);
+            }
+            // PhysX writes the root transform directly; the pose cache cannot observe it.
+            BasisLocalPose.InvalidateAll();
+            ctx.BasisLocalPlayerTransform.GetPose(out ctx.CurrentPosition, out ctx.CurrentRotation);
 
             // Flight state
             ctx.groundedPlayer = false;

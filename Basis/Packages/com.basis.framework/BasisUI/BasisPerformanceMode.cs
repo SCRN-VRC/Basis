@@ -7,18 +7,6 @@ using UnityEngine;
 
 namespace Basis.BasisUI
 {
-    /// <summary>
-    /// How hard Performance Mode trades fidelity for frame rate. Higher levels are
-    /// supersets of lower ones — every setting a lower level touches is touched at
-    /// least as hard by a higher one.
-    /// </summary>
-    public enum BasisPerformanceLevel
-    {
-        Off = 0,
-        Light = 1,
-        Balanced = 2,
-        Aggressive = 3,
-    }
 
     /// <summary>
     /// Reversible, multi-level Performance Mode.
@@ -94,6 +82,7 @@ namespace Basis.BasisUI
         private static bool _initialized;
         private static bool _applying;
         private static bool _subscribed;
+        private static bool _baselineDirty;
         private static int _autoFrameGate;
 
         public static BasisPerformanceLevel ActiveLevel { get; private set; }
@@ -185,14 +174,19 @@ namespace Basis.BasisUI
         {
             EnsureInitialized();
 
-            string id = LevelToId(level);
-            if (string.Equals(BasisSettingsDefaults.PerformanceModeLevel.RawValue, id, StringComparison.OrdinalIgnoreCase))
+            // The batch takes in the level key's own write alongside the preset it triggers, so
+            // the whole switch is one save and one quality refresh. See ApplyLevel.
+            using (BasisSettingsSystem.Batch())
             {
-                ApplyLevel(level);
-                return;
-            }
+                string id = LevelToId(level);
+                if (string.Equals(BasisSettingsDefaults.PerformanceModeLevel.RawValue, id, StringComparison.OrdinalIgnoreCase))
+                {
+                    ApplyLevel(level);
+                    return;
+                }
 
-            BasisSettingsDefaults.PerformanceModeLevel.SetValue(id);
+                BasisSettingsDefaults.PerformanceModeLevel.SetValue(id);
+            }
         }
 
         /// <summary>
@@ -224,6 +218,11 @@ namespace Basis.BasisUI
                 }
                 EnsureInitialized();
             }
+
+            // Ahead of the auto gate: edits the player makes to a controlled setting while the mode
+            // is on are folded into the snapshot from a change event, and this is where that lands
+            // on disk. It has to run whether or not the level is following the population.
+            FlushBaseline();
 
             if (!BasisSettingsDefaults.PerformanceModeAuto.RawValue)
             {
@@ -307,28 +306,42 @@ namespace Basis.BasisUI
             ApplyLevel(IdToLevel(id));
         }
 
+        /// <summary>
+        /// A level change rewrites around fifty bindings in one go. Each write used to end in a
+        /// full settings-file save, a finished-changes broadcast and
+        /// <c>QualitySettings.SetQualityLevel(level, applyExpensiveChanges: true)</c> — the last of
+        /// which re-uploads every texture mip. Fifty of those back to back blocked the main thread
+        /// for seconds, long enough for the XR compositor to declare the app hung. The batch runs
+        /// that tail once, at the end; the per-setting notifications modules act on are unaffected.
+        /// The tint/UI subscribers on <see cref="OnLevelChanged"/> are inside the batch too, so
+        /// anything they write joins the same flush.
+        /// </summary>
         private static void ApplyLevel(BasisPerformanceLevel level)
         {
-            if (level == BasisPerformanceLevel.Off)
+            using (BasisSettingsSystem.Batch())
             {
-                if (ActiveLevel != BasisPerformanceLevel.Off)
+                if (level == BasisPerformanceLevel.Off)
                 {
-                    RestoreBaseline();
+                    if (ActiveLevel != BasisPerformanceLevel.Off)
+                    {
+                        RestoreBaseline();
+                    }
+                    ActiveLevel = BasisPerformanceLevel.Off;
+                    ClearBaseline();
+                    OnLevelChanged?.Invoke(ActiveLevel);
+                    return;
                 }
-                ActiveLevel = BasisPerformanceLevel.Off;
-                ClearBaseline();
+
+                if (ActiveLevel == BasisPerformanceLevel.Off || _baseline.Count == 0)
+                {
+                    CaptureBaseline();
+                }
+
+                ActiveLevel = level;
+                WritePreset(level);
+                FlushBaseline();
                 OnLevelChanged?.Invoke(ActiveLevel);
-                return;
             }
-
-            if (ActiveLevel == BasisPerformanceLevel.Off || _baseline.Count == 0)
-            {
-                CaptureBaseline();
-            }
-
-            ActiveLevel = level;
-            WritePreset(level);
-            OnLevelChanged?.Invoke(ActiveLevel);
         }
 
         private static BasisPerformanceLevel EvaluateAuto(int occupants, BasisPerformanceLevel current)
@@ -566,8 +579,26 @@ namespace Basis.BasisUI
             return binding.RawValue;
         }
 
+        /// <summary>
+        /// Marks the snapshot for persisting rather than writing it out here. The manual-capture
+        /// hooks below run from binding change events, and a slider fires one of those every frame
+        /// it is dragged — writing through would serialize the whole snapshot and rewrite the
+        /// settings file on each of those frames. <see cref="FlushBaseline"/> does the write at
+        /// most once a frame instead.
+        /// </summary>
         private static void SaveBaseline()
         {
+            _baselineDirty = true;
+        }
+
+        private static void FlushBaseline()
+        {
+            if (!_baselineDirty)
+            {
+                return;
+            }
+            _baselineDirty = false;
+
             BaselineStore store = new BaselineStore();
             foreach (KeyValuePair<string, string> pair in _baseline)
             {
@@ -614,6 +645,7 @@ namespace Basis.BasisUI
         private static void ClearBaseline()
         {
             _baseline.Clear();
+            _baselineDirty = false;
             if (!string.IsNullOrEmpty(BasisSettingsDefaults.PerformanceModeBaseline.RawValue))
             {
                 BasisSettingsDefaults.PerformanceModeBaseline.SetValue(string.Empty);
@@ -716,6 +748,12 @@ namespace Basis.BasisUI
                 Bools(BasisSettingsDefaults.UseAvatarShadowLod, true, true, true),
                 Bools(BasisSettingsDefaults.UseAvatarVisibilityCull, true, true, true),
                 Bools(BasisSettingsDefaults.UseAvatarFarLod, true, true, true),
+
+                // Plates already vanish with the avatar's distance downgrades, so Light — which
+                // pulls AvatarRange in to 25 — needs no rule of its own. Past that the survivors
+                // are the players close enough to matter, and reading them on demand from the
+                // menu is cheaper than carrying a plate each.
+                Bools(BasisSettingsDefaults.NPMenuOnly, null, true, true),
 
                 //Bools(BasisSettingsDefaults.UseRealtimeReflectionProbes, false, false, false), // commented out 2026-08-04 with the unimplemented probe-driver bindings
                 Bools(BasisSettingsDefaults.LimitHandHeldCameraRate, true, true, true),

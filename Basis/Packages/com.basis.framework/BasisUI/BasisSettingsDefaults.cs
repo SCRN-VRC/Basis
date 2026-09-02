@@ -1,4 +1,4 @@
-﻿using Basis.Scripts.Networking.Receivers;
+using Basis.Scripts.Networking.Receivers;
 using System;
 using Basis.Scripts.Drivers;
 using Basis.Scripts.TransformBinders.BoneControl;
@@ -26,6 +26,7 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<bool> SoundGrab = new("soundgrab", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> SoundChat = new("soundchat", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<bool> SoundMicrophone = new("soundmicrophone", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> SoundMicrophonePushToTalk = new("soundmicrophonepushtotalk", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> SoundCamera = new("soundcamera", new BasisPlatformDefault<bool>(true));
 
         public static BasisSettingsBinding<float> ControllerDeadZone = new("joystickdeadzone", new BasisPlatformDefault<float>(0.01f));
@@ -110,6 +111,16 @@ namespace Basis.BasisUI
         /// to turn on High Player Cap Performance Mode. Disable to never see those prompts.
         /// </summary>
         public static BasisSettingsBinding<bool> HighPlayerCapSuggestions = new("highplayercapsuggestions", new BasisPlatformDefault<bool>(true));
+
+        /// <summary>
+        /// Lets downloads proceed when the system resolver answers with an address in the RFC 2544
+        /// benchmarking range (198.18.0.0/15). Off by default. Fake-IP proxies (Clash, sing-box in
+        /// TUN mode) hand every domain a synthetic address out of that range and carry the
+        /// connection themselves, so the security gate that blocks non-routable addresses refuses
+        /// every file. Only that one range is affected — loopback, LAN and cloud-metadata
+        /// addresses stay blocked with this on.
+        /// </summary>
+        public static BasisSettingsBinding<bool> AllowProxyBenchmarkRange = new("allowproxybenchmarkrange", new BasisPlatformDefault<bool>(false));
 
         /// <summary>
         /// Active Performance Mode level: "Off", "Light", "Balanced" or "Aggressive".
@@ -197,6 +208,15 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<float> PlayspaceMoverFlipAngle = new("playspacemoverflipangle", new BasisPlatformDefault<float>(180f));
         public static BasisSettingsBinding<string> PlayspaceMoverFlipAxis = new("playspacemoverflipaxis", new BasisPlatformDefault<string>(BasisLocalPlayspaceMover.AxisRoll));
 
+        // Play-space visualiser (BasisPlayspaceGizmos). The master toggle is off by default; the layer
+        // toggles under it are on, so turning it on draws the whole picture rather than nothing.
+        public static BasisSettingsBinding<bool> PlayspaceGizmos = new("playspacegizmos", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> PlayspaceGizmoBoundary = new("playspacegizmoboundary", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> PlayspaceGizmoOrigin = new("playspacegizmoorigin", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> PlayspaceGizmoOffset = new("playspacegizmooffset", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> PlayspaceGizmoHands = new("playspacegizmohands", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> PlayspaceGizmoReadouts = new("playspacegizmoreadouts", new BasisPlatformDefault<bool>(true));
+
         // Lets the avatar you are wearing feed synthetic locomotion / play-space input through its
         // cilbox script. Only the locally worn avatar is ever accepted; turn off to ignore all of it.
         public static BasisSettingsBinding<bool> EnableScriptedPlayerInput = new("enablescriptedplayerinput", new BasisPlatformDefault<bool>(true));
@@ -264,6 +284,41 @@ namespace Basis.BasisUI
         /// produced on demand from the world's APV and used immediately.
         /// </summary>
         public static BasisSettingsBinding<bool> VolumetricFogBakedAPV = new("volumetricfogbakedapv", new BasisPlatformDefault<bool>(true));
+
+        /// <summary>
+        /// When enabled, motion blur is driven from a high-priority global Volume owned by
+        /// <c>SMModuleMotionBlurOverrideURP</c>, which outranks whatever the world authored.
+        /// </summary>
+        public static BasisSettingsBinding<bool> UseMotionBlurOverride = new("usemotionbluroverride", new BasisPlatformDefault<bool>(false));
+
+        /// <summary>
+        /// Motion blur strength — a multiplier on velocity. 0 turns motion blur off outright,
+        /// which is how a world's own motion blur gets suppressed.
+        /// Only applied when <see cref="UseMotionBlurOverride"/> is enabled.
+        /// </summary>
+        public static BasisSettingsBinding<float> MotionBlurIntensity = new("motionblurintensity", new BasisPlatformDefault<float>(0.5f));
+
+        /// <summary>
+        /// Longest a blur streak may get, as a fraction of the screen. This is what stops a fast
+        /// turn from smearing the whole view.
+        /// </summary>
+        public static BasisSettingsBinding<float> MotionBlurClamp = new("motionblurclamp", new BasisPlatformDefault<float>(0.05f));
+
+        /// <summary>Samples taken per streak: Low, Medium or High.</summary>
+        public static BasisSettingsBinding<string> MotionBlurQuality = new("motionblurquality", new BasisPlatformDefault<string>("Low"));
+
+        /// <summary>
+        /// Camera Only or Camera And Objects. Camera And Objects also blurs things moving in front
+        /// of a still view, and URP schedules a motion vector pass for it — see
+        /// <c>SMModuleMotionVectorsURP</c> for why that pass is otherwise kept off on Standalone.
+        /// </summary>
+        public static BasisSettingsBinding<string> MotionBlurMode = new("motionblurmode", new BasisPlatformDefault<string>("Camera Only"));
+
+        // URP's own ClampedFloatParameter ranges on MotionBlur.
+        public const float MOTION_BLUR_INTENSITY_MIN = 0f;
+        public const float MOTION_BLUR_INTENSITY_MAX = 1f;
+        public const float MOTION_BLUR_CLAMP_MIN = 0f;
+        public const float MOTION_BLUR_CLAMP_MAX = 0.2f;
 
         // Commented out 2026-08-04: the realtime-reflection-probe driver these described was
         // never implemented — no UI exposes them and nothing reads them (the Performance Mode
@@ -366,6 +421,12 @@ namespace Basis.BasisUI
         // tracker roles, linked-pair ids, IK collider names, and the audio gizmos
         // (speaker name + gain %, hearing distance, cone angle). One switch for all.
         public static BasisSettingsBinding<bool> GizmoLabels = new("gizmolabels", new BasisPlatformDefault<bool>(false));
+
+        // Depth behaviour shared by every gizmo — spheres, lines and labels alike. Off (the
+        // default) depth-tests them so the world occludes them, which is the only way to see
+        // whether a probe is actually in front of the geometry it describes; on draws them
+        // through the world so a marker buried inside an avatar stays readable.
+        public static BasisSettingsBinding<bool> GizmoDrawOnTop = new("gizmodrawontop", new BasisPlatformDefault<bool>(false));
 
         // Network value-sync debug gizmos (see BasisSyncGizmos): from→to interpolation
         // window, live-position sphere, extrapolation overshoot, jitter-buffer-health colour.
@@ -495,6 +556,9 @@ namespace Basis.BasisUI
 
         public static BasisSettingsBinding<float> MicrophoneIconOffsetX = new("microphoneiconoffsetx", new BasisPlatformDefault<float>(0f));
         public static BasisSettingsBinding<float> MicrophoneIconOffsetY = new("microphoneiconoffsety", new BasisPlatformDefault<float>(0f));
+
+        // Swaps the microphone glyph for a shader-drawn circle outline that grows with voice level.
+        public static BasisSettingsBinding<bool> MicrophoneIconLevelRing = new("microphoneiconlevelring", new BasisPlatformDefault<bool>(false));
 
         public static BasisSettingsBinding<bool> AvatarRangeIndicator = new("avatarrangeindicator", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> HearingRangeIndicator = new("hearingrangeindicator", new BasisPlatformDefault<bool>(false));
@@ -770,6 +834,8 @@ namespace Basis.BasisUI
 
         public static BasisSettingsBinding<string> MicMuteBehavior = new("micmutebehavior", new BasisPlatformDefault<string>(BasisLocalMicrophoneDriver.SettingMuteShutdown));
 
+        public static BasisSettingsBinding<bool> TalkToNoOne = new("talktonoone", new BasisPlatformDefault<bool>(false));
+
         public static BasisSettingsBinding<bool> UseAutomaticGain = new("automaticgainenabled", new BasisPlatformDefault<bool>
         {
             windows = true,
@@ -833,6 +899,10 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<bool> UIHaptics = new("uihaptics", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<float> UIClickPressThreshold = new("uiclickpressthreshold", new BasisPlatformDefault<float>(0.5f));
         public static BasisSettingsBinding<float> UIClickReleaseThreshold = new("uiclickreleasethreshold", new BasisPlatformDefault<float>(0.4f));
+
+        // Seconds a fully pushed thumbstick takes to cross a bound slider's whole range
+        // (BasisPanelJoystickBind). The response is squared, so a nudge is far slower than this.
+        public static BasisSettingsBinding<float> JoystickBindSweepSeconds = new("joystickbindsweepseconds", new BasisPlatformDefault<float>(4f));
 
         // ---------------- VR FINGER TOUCH ----------------
         // Direct fingertip presses on world-space UI in VR (BasisDirectTouch).
@@ -1352,7 +1422,7 @@ namespace Basis.BasisUI
         /// shadow, applied per remote voice on the audio thread. Costs two one-pole
         /// filters per audible speaker.
         /// </summary>
-        public static BasisSettingsBinding<bool> RAVoiceToneShaping = new("ra_voicetoneshaping", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> RAVoiceToneShaping = new("ra_voicetoneshaping_v2", new BasisPlatformDefault<bool>(false));
 
         // Steam Audio - Attenuation Input
         public static BasisSettingsBinding<string> RADistanceAttenuationInput = new("ra_distanceattenuationinput", new BasisPlatformDefault<string>("curve driven"));
@@ -1509,6 +1579,9 @@ namespace Basis.BasisUI
         // 0.35 carry, matching DesktopHeadSwingBackward -- the same physiology measured from the eye end. 0 = the
         // old rigid re-attachment (a true off switch). Look-down and pure yaw are untouched at any value.
         public static BasisSettingsBinding<float> FBIKNeckExtensionDamp = new("fbikneckextensiondamp", new BasisPlatformDefault<float>(0.65f));
+        // Flexion is the look-DOWN half of the same lever. It was undamped, which left the neck estimate --
+        // and through it the pelvis -- rising 5 cm on a steep look down with the feet planted.
+        public static BasisSettingsBinding<float> FBIKNeckFlexionDamp = new("fbikneckflexiondamp", new BasisPlatformDefault<float>(0.5f));
         // Spine relax: crouch counterweight (hips shift back as the head drops)
         public static BasisSettingsBinding<float> FBIKMoveBodyBackWhenCrouching = new("fbikmovebodybackwhencrouching", new BasisPlatformDefault<float>(1f));
         // Postural counterbalance: how far the pelvis travels BACK as the trunk folds forward, as a fraction
@@ -1679,14 +1752,24 @@ namespace Basis.BasisUI
         // was removed in favor of a hard-coded counterbalance/pendulum model in the virtual spine
         // driver — see BasisLocalVirtualSpineDriver.ComputeRealisticHipsXZ.)
         // How much of the gaze-induced eye swing is removed before the pelvis stance leash sees it. The leash
-        // estimates WHERE THE USER IS STANDING and tracks the eye, which is the only yaw-invariant point -- but
-        // the eye is not PITCH-invariant: a head pitches about the base of the neck, so a look-up carries the
-        // HMD ~8 cm backward and a look-down carries it forward, with the feet planted. The leash follows fast
-        // enough to adopt that in about a frame, so the pelvis rode the gaze and walked out from under the
-        // player. 1 = remove the whole modelled swing and leash only real travel; 0 = the old behaviour.
-        // Uses DesktopHeadSwingBackward for the look-up share, so the VR and desktop halves of the same model
-        // cannot drift apart. If a deep look-DOWN starts feeling different, this is the number to turn down.
+        // estimates WHERE THE USER IS STANDING and it tracks the HMD -- but the HMD is not a body-fixed point
+        // in EITHER axis, because the head swings about the base of the neck and the HMD sits a hand's width
+        // in front of that pivot. A look-up carries it ~8 cm backward and a look-down forward; a head TURN
+        // sweeps it sideways through a ~9 cm arc. The leash follows fast enough to adopt all of that in about
+        // a frame, with the feet planted, so the pelvis rode the gaze and walked out from under the player --
+        // sideways as "the hips jut out left and right", forward/back as a pelvis that wanders on a glance.
+        //
+        // This removes both halves, and it must remove both halves of each: the PITCH swing is modelled
+        // (DesktopHeadSwingBackward supplies the look-up share, so the VR and desktop halves of that model
+        // cannot drift apart), while the YAW arc is cancelled exactly -- the reference is carried back onto
+        // the neck, the pivot the head actually turns about, and the pelvis's own anchor arm is re-measured
+        // from that same pivot so the two cancel algebraically at any yaw. Both ends move together on this
+        // one number, which is why it is one number. 1 = leash only real travel; 0 = the old behaviour.
+        // If a deep look-DOWN starts feeling different, this is the number to turn down.
         public static BasisSettingsBinding<float> VSpineGazeSwingRemoval = new("vspinegazeswingremoval", new BasisPlatformDefault<float>(1f));
+        // Learn the arm the HMD really nods on instead of trusting the avatar's authored eye-to-head
+        // offset, which is a rendering offset and has no reason to match the wearer's neck.
+        public static BasisSettingsBinding<bool> VSpineNodPivotEstimate = new("vspinenodpivotestimate", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<float> VSpineHipsForwardBias = new("vspinehipsforwardbias_v2", new BasisPlatformDefault<float>(0f));
 
         // Spine compression: the synthesized hips Y is neck - rigid spine length, so lowering the head
@@ -1743,6 +1826,11 @@ namespace Basis.BasisUI
         // ("vive_tracker_waist", ...). Off by default: most people never set those roles (or
         // leave stale ones), and a wrong announced role is forced with no geometric check.
         public static BasisSettingsBinding<bool> TrustSteamVRRoles = new("trackerlinking_truststeamvrroles", new BasisPlatformDefault<bool>(false));
+        // Drop the trackers hand-tracking software publishes (HANDL, VRLINKQ_Hand_Left, ...) from
+        // full-body calibration — see BasisIgnoredCalibrationTrackers. Off by default: the match is
+        // on device name alone, so a real body tracker that happens to share one of those names
+        // would silently stop calibrating with no way to tell why.
+        public static BasisSettingsBinding<bool> IgnoreHandTrackingDevices = new("trackerlinking_ignorehandtracking", new BasisPlatformDefault<bool>(false));
         // Confidence falloff for a tracker that's spiking relative to its own
         // recent baseline. weight = 1 / (1 + max(surprise - 1, 0)^2 * penalty).
         // Higher = more aggressive shift to the steadier half on a glitch.
@@ -1896,6 +1984,7 @@ namespace Basis.BasisUI
             SoundGrab.LoadBindingValue();
             SoundChat.LoadBindingValue();
             SoundMicrophone.LoadBindingValue();
+            SoundMicrophonePushToTalk.LoadBindingValue();
             SoundCamera.LoadBindingValue();
 
             MicrophoneVolume.LoadBindingValue();
@@ -1909,6 +1998,7 @@ namespace Basis.BasisUI
             DisableDirectConnections.LoadBindingValue();
             MicStartBehavior.LoadBindingValue();
             MicMuteBehavior.LoadBindingValue();
+            TalkToNoOne.LoadBindingValue();
             UseAutomaticGain.LoadBindingValue();
             DenoiseMakeupDb.LoadBindingValue();
             DenoiseWet.LoadBindingValue();
@@ -1956,6 +2046,11 @@ namespace Basis.BasisUI
             UseMaxVisibleAvatars.LoadBindingValue();
             MaxVisibleAvatars.LoadBindingValue();
             HighPlayerCapSuggestions.LoadBindingValue();
+            AllowProxyBenchmarkRange.LoadBindingValue();
+            // Pushed here rather than only from BasisFakeIpCompatibilityPrompt's initialiser:
+            // LoadBindingValue deliberately does not raise OnChanged, so a player who turned this
+            // on last session would otherwise start the next one with the gate still closed.
+            Basis.Scripts.Common.BasisUrlSecurity.AllowBenchmarkRangeFromDns = AllowProxyBenchmarkRange.RawValue;
             PerformanceModeLevel.LoadBindingValue();
             PerformanceModeAuto.LoadBindingValue();
             PerformanceModeBaseline.LoadBindingValue();
@@ -1995,6 +2090,12 @@ namespace Basis.BasisUI
             PlayspaceMoverFlip.LoadBindingValue();
             PlayspaceMoverFlipAngle.LoadBindingValue();
             PlayspaceMoverFlipAxis.LoadBindingValue();
+            PlayspaceGizmos.LoadBindingValue();
+            PlayspaceGizmoBoundary.LoadBindingValue();
+            PlayspaceGizmoOrigin.LoadBindingValue();
+            PlayspaceGizmoOffset.LoadBindingValue();
+            PlayspaceGizmoHands.LoadBindingValue();
+            PlayspaceGizmoReadouts.LoadBindingValue();
             EnableScriptedPlayerInput.LoadBindingValue();
 
             // Rendering / Graphics
@@ -2011,6 +2112,11 @@ namespace Basis.BasisUI
             UseVolumetricFogOverride.LoadBindingValue();
             VolumetricFogDensity.LoadBindingValue();
             VolumetricFogBakedAPV.LoadBindingValue();
+            UseMotionBlurOverride.LoadBindingValue();
+            MotionBlurIntensity.LoadBindingValue();
+            MotionBlurClamp.LoadBindingValue();
+            MotionBlurQuality.LoadBindingValue();
+            MotionBlurMode.LoadBindingValue();
             //UseRealtimeReflectionProbes.LoadBindingValue();
             //RealtimeReflectionProbeRate.LoadBindingValue();
             ShowGizmos.LoadBindingValue();
@@ -2021,6 +2127,7 @@ namespace Basis.BasisUI
             LinkedTrackerLines.LoadBindingValue();
             GizmoEyeGaze.LoadBindingValue();
             GizmoIKColliders.LoadBindingValue();
+            Basis.Scripts.Debugging.BasisIKSolveGizmoStages.LoadAll();
             GizmoPointerRay.LoadBindingValue();
             GizmoHintOffsets.LoadBindingValue();
             GizmoFootPlacement.LoadBindingValue();
@@ -2039,6 +2146,7 @@ namespace Basis.BasisUI
             GizmoNetworkPlayersBandwidth.LoadBindingValue();
             GizmoNetworkAdditionalInfo.LoadBindingValue();
             GizmoLabels.LoadBindingValue();
+            GizmoDrawOnTop.LoadBindingValue();
             EnableStatistics.LoadBindingValue();
             ShowVoiceRange.LoadBindingValue();
             AvatarDataDebugEnabled.LoadBindingValue();
@@ -2204,6 +2312,7 @@ namespace Basis.BasisUI
             MicrophoneIcon.LoadBindingValue();
             MicrophoneIconOffsetX.LoadBindingValue();
             MicrophoneIconOffsetY.LoadBindingValue();
+            MicrophoneIconLevelRing.LoadBindingValue();
 
             // Photo metadata
             PhotoMetadataTagging.LoadBindingValue();
@@ -2237,6 +2346,7 @@ namespace Basis.BasisUI
             UIHaptics.LoadBindingValue();
             UIClickPressThreshold.LoadBindingValue();
             UIClickReleaseThreshold.LoadBindingValue();
+            JoystickBindSweepSeconds.LoadBindingValue();
             DisableVRFingerTouch.LoadBindingValue();
             FingerTouchFinger.LoadBindingValue();
             FingerTouchHands.LoadBindingValue();
@@ -2465,6 +2575,7 @@ namespace Basis.BasisUI
             FBIKSpineGazeFollow.LoadBindingValue();
             FBIKNeckGazeFollow.LoadBindingValue();
             FBIKNeckExtensionDamp.LoadBindingValue();
+            FBIKNeckFlexionDamp.LoadBindingValue();
             FBIKMoveBodyBackWhenCrouching.LoadBindingValue();
             FBIKTrunkCounterbalance.LoadBindingValue();
             FBIKSwingSmoothRate.LoadBindingValue();
@@ -2514,6 +2625,7 @@ namespace Basis.BasisUI
             VSpineHipsRotationSpeed.LoadBindingValue();
             VSpineHipsForwardBias.LoadBindingValue();
             VSpineGazeSwingRemoval.LoadBindingValue();
+            VSpineNodPivotEstimate.LoadBindingValue();
             VSpineHipsCompressionStrength.LoadBindingValue();
             VSpineHipsMaxDropMeters.LoadBindingValue();
             VSpinePostureModel.LoadBindingValue();
@@ -2525,6 +2637,7 @@ namespace Basis.BasisUI
             TrackerLinkingAdvancedVisible.LoadBindingValue();
             TrackerLinkingConnectorVisible.LoadBindingValue();
             TrustSteamVRRoles.LoadBindingValue();
+            IgnoreHandTrackingDevices.LoadBindingValue();
             PairingSurprisePenalty.LoadBindingValue();
             PairingSurpriseClamp.LoadBindingValue();
             PairingEmaFloor.LoadBindingValue();

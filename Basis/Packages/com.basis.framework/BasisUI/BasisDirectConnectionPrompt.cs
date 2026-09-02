@@ -29,7 +29,8 @@ namespace Basis.BasisUI
             {
                 BasisNotificationCenter.AddPending(title, body, AddressableAssets.Sprites.Network,
                     reopen: () => Show(displayName, uuid, respond, true),
-                    onDismiss: () => respond(false));
+                    onDismiss: () => respond(false),
+                    category: BasisNotificationCategory.Player);
                 return;
             }
 
@@ -82,7 +83,12 @@ namespace Basis.BasisUI
                     BasisLocalization.Get("menu.individualPlayer.directConnection.policy.accept"),
                     BasisLocalization.Get("menu.individualPlayer.directConnection.policy.decline"),
                 };
-                policy.AssignEntries(options);
+                policy.AssignEntries(options, null, new List<string>
+                {
+                    BasisLocalization.Get("menu.individualPlayer.directConnection.policy.ask.tooltip"),
+                    BasisLocalization.Get("menu.individualPlayer.directConnection.policy.accept.tooltip"),
+                    BasisLocalization.Get("menu.individualPlayer.directConnection.policy.decline.tooltip"),
+                });
                 policy.SetValueWithoutNotify(options[(int)BasisTrustedConnections.GetPolicy(uuid)]);
                 policy.OnValueChanged = selected =>
                 {
@@ -120,7 +126,8 @@ namespace Basis.BasisUI
                     answered = true;
                     BasisNotificationCenter.AddPending(title, body, AddressableAssets.Sprites.Network,
                         reopen: () => Show(displayName, uuid, respond, true),
-                        onDismiss: () => respond(false));
+                        onDismiss: () => respond(false),
+                        category: BasisNotificationCategory.Player);
                 }
 
                 // Opening the menu above tore down the page and virtual keyboard the user had

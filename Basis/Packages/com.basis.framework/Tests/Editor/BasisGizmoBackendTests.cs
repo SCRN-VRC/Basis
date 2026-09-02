@@ -238,6 +238,38 @@ namespace Basis.Tests.IK
             }
         }
 
+        // ── Per-gizmo layers ────────────────────────────────────────────────
+
+        [Test]
+        public void SetGizmoLayer_AcceptsBatchedGizmosAndRefusesUnknownIds()
+        {
+            // The layer is what hides a gizmo from one particular camera — the handheld
+            // camera's detached marker rides it to stay out of its own capture — so an id
+            // that silently fails to take one puts geometry back in the shot.
+            BasisGizmoManager.CreateSphereGizmo("s", out int sphereId, Vector3.zero, 0.1f, Color.white);
+            BasisGizmoManager.CreateLineGizmo("l", out int lineId, Vector3.zero, Vector3.one, 0.01f, Color.white);
+
+            Assert.IsTrue(BasisGizmoManager.SetGizmoLayer(sphereId, 9));
+            Assert.IsTrue(BasisGizmoManager.SetGizmoLayer(lineId, 9));
+
+            // -1 hands the gizmo back to the shared RenderLayer.
+            Assert.IsTrue(BasisGizmoManager.SetGizmoLayer(sphereId, -1));
+            Assert.IsTrue(BasisGizmoManager.SetGizmoLayer(lineId, -1));
+
+            LogAssert.ignoreFailingMessages = true;
+            try
+            {
+                Assert.IsFalse(BasisGizmoManager.SetGizmoLayer(123456, 9), "unknown id");
+                // Unity only has 32 layers; anything else would throw inside the draw call.
+                Assert.IsFalse(BasisGizmoManager.SetGizmoLayer(lineId, 32), "layer above the range");
+                Assert.IsFalse(BasisGizmoManager.SetGizmoLayer(lineId, -2), "layer below the sentinel");
+            }
+            finally
+            {
+                LogAssert.ignoreFailingMessages = false;
+            }
+        }
+
         [Test]
         public void SetGizmoActive_TogglesWithoutDestroying()
         {
@@ -280,6 +312,49 @@ namespace Basis.Tests.IK
             Assert.AreNotEqual(first, second);
             Assert.IsFalse(BasisGizmoManager.Exists(first));
             Assert.IsTrue(BasisGizmoManager.Exists(second));
+        }
+
+        // ── Draw-on-top / depth-test mode ───────────────────────────────────
+
+        [Test]
+        public void GizmoShaders_ExposeTheDepthTestProperty()
+        {
+            // ZTest is driven per-material off _ZTest — a shader that lost the property
+            // would silently pin every gizmo to whatever state it hardcoded instead.
+            foreach (string shaderName in new[] { "BasisGizmoSphereInstanced", "BasisGizmoLine" })
+            {
+                Shader shader = Resources.Load<Shader>(shaderName);
+                Assert.IsNotNull(shader, $"{shaderName} missing from Resources");
+                Material material = new Material(shader);
+                Assert.IsTrue(material.HasProperty("_ZTest"), $"{shaderName} has no _ZTest property");
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
+        public void DrawOnTop_DrivesMaterialDepthStateBothWays()
+        {
+            Shader shader = Resources.Load<Shader>("BasisGizmoSphereInstanced");
+            Assert.IsNotNull(shader);
+            Material material = new Material(shader);
+            bool original = BasisGizmoManager.DrawOnTop;
+            try
+            {
+                BasisGizmoManager.DrawOnTop = false;
+                BasisGizmoManager.ApplyMaterialDepthMode(material);
+                Assert.AreEqual((int)CompareFunction.LessEqual, (int)material.GetFloat("_ZTest"));
+                Assert.AreEqual((int)RenderQueue.Transparent, material.renderQueue);
+
+                BasisGizmoManager.DrawOnTop = true;
+                BasisGizmoManager.ApplyMaterialDepthMode(material);
+                Assert.AreEqual((int)CompareFunction.Always, (int)material.GetFloat("_ZTest"));
+                Assert.AreEqual((int)RenderQueue.Overlay, material.renderQueue);
+            }
+            finally
+            {
+                BasisGizmoManager.DrawOnTop = original;
+                Object.DestroyImmediate(material);
+            }
         }
 
         // ── Label color diffing ─────────────────────────────────────────────

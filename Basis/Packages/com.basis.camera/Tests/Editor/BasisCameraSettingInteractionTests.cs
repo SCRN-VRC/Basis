@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using Basis.Cinematics;
 using UnityEngine;
 using UnityEngine.Rendering.Universal;
 
@@ -112,6 +113,34 @@ namespace Basis.Tests.Camera
             }
         }
 
+        [Test]
+        public void TheDetachedMarkerLives_OnALayerNoBackgroundOrToggleCanPutBackInTheShot()
+        {
+            // Both detached markers — the puck and the wireframe gizmo — sit on the camera's own
+            // axis, the puck out in front of the lens, so the only thing keeping them out of a
+            // photo is that the capture culls their layer. The wireframe used to rely on being
+            // parked behind the near plane instead, which the batched gizmo draw (a frame behind
+            // its producer) and any 360 capture both defeat.
+            int marker = BasisHandHeldCamera.MarkerLayer;
+            Assert.That(marker, Is.GreaterThanOrEqualTo(0), "This project no longer defines the OverlayUI layer.");
+
+            Assert.That(BasisHandHeldCamera.IsCaptureLayerUserTogglable(marker), Is.False,
+                "A marker layer the Render Layers list exposes is one the operator can switch back into the shot.");
+
+            // The rig's camera is a bare Camera, so stand in for the prefab's mask: the shipped
+            // capture camera ships with this bit already clear. What is under test is that
+            // nothing afterwards puts it back.
+            _rig.CaptureCamera.cullingMask = ~(1 << marker);
+            foreach (BasisCameraBackgroundMode mode in System.Enum.GetValues(typeof(BasisCameraBackgroundMode)))
+            {
+                _rig.Camera.SetBackgroundMode(mode);
+                _rig.Camera.SetCaptureLayerEnabled(marker, true);
+
+                Assert.That(_rig.CaptureCamera.cullingMask & (1 << marker), Is.Zero,
+                    $"The marker layer came back into the culling mask under {mode}.");
+            }
+        }
+
         // ---------- Depth of field: style vs on/off vs focus mode ----------
 
         [Test]
@@ -197,7 +226,7 @@ namespace Basis.Tests.Camera
         {
             _rig.DepthOfField.active = true;
             _rig.Camera.autoFocusFollowSubject = true;
-            _rig.Camera.SetAutoFollowEnabled(true);
+            _rig.Camera.SetPositionModifier(BasisCameraPositionModifier.FollowSubject);
 
             _rig.UI.SetDepthMode(BasisHandHeldCameraUI.DepthMode.Auto);
 
@@ -286,13 +315,13 @@ namespace Basis.Tests.Camera
         [Test]
         public void CinematicRigAndAutoFollow_BothClaimWorldSpaceWithoutFightingOverIt()
         {
-            _rig.Camera.SetAutoFollowEnabled(true);
-            _rig.Camera.SetCinematicEnabled(true);
+            _rig.Camera.SetPositionModifier(BasisCameraPositionModifier.FollowSubject);
+            _rig.Camera.SetRotationModifier(BasisCameraRotationModifier.Compose);
 
             Assert.That(_rig.Camera.PinSpace, Is.EqualTo(BasisHandHeldCameraInteractable.CameraPinSpace.WorldSpace));
 
-            _rig.Camera.SetCinematicEnabled(false);
-            _rig.Camera.SetAutoFollowEnabled(false);
+            _rig.Camera.SetRotationModifier(BasisCameraRotationModifier.FreeLook);
+            _rig.Camera.SetPositionModifier(BasisCameraPositionModifier.FreeFly);
 
             Assert.That(_rig.Camera.PinSpace, Is.EqualTo(BasisHandHeldCameraInteractable.CameraPinSpace.HandHeld),
                 "Switching both off has to give the camera back to the hand, not strand it in the world.");
@@ -315,14 +344,14 @@ namespace Basis.Tests.Camera
         {
             // The offsets are edited with follow off as often as on — the panel is where a shot
             // gets set up before it is switched on.
-            _rig.Camera.autoFollowPositionOffset = new Vector3(1f, 2f, 3f);
-            _rig.Camera.autoFollowPlayspace = false;
+            _rig.Camera.Modifiers.follow.positionOffset = new Vector3(1f, 2f, 3f);
+            _rig.Camera.subjectSettings.anchorToBody = false;
 
-            _rig.Camera.SetAutoFollowEnabled(true);
-            _rig.Camera.SetAutoFollowEnabled(false);
+            _rig.Camera.SetPositionModifier(BasisCameraPositionModifier.FollowSubject);
+            _rig.Camera.SetPositionModifier(BasisCameraPositionModifier.FreeFly);
 
-            Assert.That(_rig.Camera.autoFollowPositionOffset, Is.EqualTo(new Vector3(1f, 2f, 3f)));
-            Assert.That(_rig.Camera.autoFollowPlayspace, Is.False);
+            Assert.That(_rig.Camera.Modifiers.follow.positionOffset, Is.EqualTo(new Vector3(1f, 2f, 3f)));
+            Assert.That(_rig.Camera.subjectSettings.anchorToBody, Is.False);
         }
 
         // ---------- Output ----------

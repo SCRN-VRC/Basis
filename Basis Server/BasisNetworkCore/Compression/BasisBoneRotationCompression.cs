@@ -28,12 +28,12 @@ namespace Basis.Network.Core.Compression
         public const float InvSqrt2 = 0.70710678118f;
 
         // Reuse position/scale/rotation sizes from BasisAvatarBitPacking
-        public const int WritePosition = BasisAvatarBitPacking.WritePosition;   // 12
+        public const int WritePosition = BasisAvatarBitPacking.WritePosition;   // 9
         public const int WriteScale    = BasisAvatarBitPacking.WriteScale;      // 2
         public const int WriteRotation = BasisAvatarBitPacking.WriteRotation;   // 7
-        public const int WriteHipsDelta = BasisAvatarBitPacking.WriteHipsDelta; // 6
+        public const int WriteHipsDelta = BasisAvatarBitPacking.WriteHipsDelta; // 5
         public const int WriteHipsRotation = BasisAvatarBitPacking.WriteHipsRotation; // 7
-        public const int TailBytes     = BasisAvatarBitPacking.TailBytes;       // 22
+        public const int TailBytes     = BasisAvatarBitPacking.TailBytes;       // 21
 
         // ────────────────────────────────────────────────────────────
         //  Bone write order: HumanBodyBones enum values (excluding Hips=0)
@@ -71,9 +71,15 @@ namespace Basis.Network.Core.Compression
         static BasisBoneRotationCompression()
         {
             BONE_TO_SLOT = new int[55];
-            for (int i = 0; i < 55; i++) BONE_TO_SLOT[i] = -1;
+            for (int i = 0; i < 55; i++)
+            {
+                BONE_TO_SLOT[i] = -1;
+            }
+
             for (int slot = 0; slot < SyncBoneCount; slot++)
+            {
                 BONE_TO_SLOT[BONE_WRITE_ORDER[slot]] = slot;
+            }
         }
 
         // ────────────────────────────────────────────────────────────
@@ -81,7 +87,9 @@ namespace Basis.Network.Core.Compression
         //  Total bits per bone = 2 (index) + 3 * BPC
         // ────────────────────────────────────────────────────────────
 
-        /// <summary>HIGH quality. 1182 bits = 148 rotation bytes. Packet = 169 bytes.
+        /// <summary>HIGH quality. Since v52 only 3-DOF slots read their BPC entry — restricted
+        /// slots (BONE_DOF &lt; 3) use the angle-bit tables instead. Bone slots 0..20 = 606 bits;
+        /// + 140-bit finger block = 746 bits = 94 rotation bytes.
         /// Per-finger priority: thumb/index get more bits (most expressive).
         /// Proximal gets more than intermediate/distal (carries spread motion).</summary>
         public static readonly byte[] BPC_HIGH = new byte[]
@@ -104,7 +112,7 @@ namespace Basis.Network.Core.Compression
             5,5,5,5,5,  5,5,5,5,5,
         };
 
-        /// <summary>MEDIUM quality. 972 bits = 122 rotation bytes. Packet = 143 bytes.</summary>
+        /// <summary>MEDIUM quality. 414 bone bits + 120-bit finger block = 534 bits = 67 rotation bytes.</summary>
         public static readonly byte[] BPC_MEDIUM = new byte[]
         {
             8,8,8,8,8,8,8,8,8,
@@ -116,7 +124,7 @@ namespace Basis.Network.Core.Compression
             4,4,4,4,4,  4,4,4,4,4,
         };
 
-        /// <summary>LOW quality. 774 bits = 97 rotation bytes. Packet = 118 bytes.</summary>
+        /// <summary>LOW quality. 318 bone bits + 100-bit finger block = 418 bits = 53 rotation bytes.</summary>
         public static readonly byte[] BPC_LOW = new byte[]
         {
             6,6,6,6,6,6,6,6,6,
@@ -128,7 +136,7 @@ namespace Basis.Network.Core.Compression
             3,3,3,3,3,  3,3,3,3,3,
         };
 
-        /// <summary>VERY LOW quality. 621 bits = 78 rotation bytes. Packet = 99 bytes.</summary>
+        /// <summary>VERY LOW quality. 271 bone bits + 80-bit finger block = 351 bits = 44 rotation bytes.</summary>
         public static readonly byte[] BPC_VERY_LOW = new byte[]
         {
             5,5,5,5,5,5,5,5,5,
@@ -211,6 +219,320 @@ namespace Basis.Network.Core.Compression
             0.65f, 0.65f, 0.65f, 0.65f, 0.65f,
         };
 
+        // ────────────────────────────────────────────────────────────
+        //  Per-bone degrees of freedom (v52)
+        //
+        //  Unity's humanoid muscle model gives several of the explicit wire bones fewer than
+        //  three muscles: LowerArm/LowerLeg are stretch+twist, Shoulder/Hand/Foot are two
+        //  swings, Toes are a single up-down curl. The axes a human cannot rotate those joints
+        //  about were still costing a full smallest-three component (plus the 2-bit index)
+        //  every frame. Restricted bones now ship one or two quantized ANGLES about fixed
+        //  anatomical axes instead of a quaternion.
+        //
+        //  Why fixed axes are valid on the wire at all: the generic rotation space
+        //  (BasisGenericBoneRotation) expresses every bone's rotation-from-rest in the
+        //  character's anatomical root frame (X=right, Y=up, Z=forward at T-pose), the same
+        //  frame on every rig. A knee hinge is therefore the X axis for every avatar, no
+        //  matter how its rig authored the bone's local axes.
+        //
+        //  Reconstruction is q = R_axisA(angleA) * R_axisB(angleB). Extraction is a
+        //  swing-twist factorization about axisB, which is exact for any rotation genuinely
+        //  of that two-axis form; off-axis content (the anatomically impossible motion) is
+        //  projected away — that is the point.
+        // ────────────────────────────────────────────────────────────
+
+        /// <summary>Degrees of freedom per wire bone slot (0..20). 3 = smallest-three
+        /// quaternion; 2 = hinge+twist angle pair; 1 = single hinge angle.</summary>
+        public static readonly byte[] BONE_DOF = new byte[]
+        {
+            // Spine, Chest, UpperChest, Neck, Head, UpperArms, UpperLegs — full ball joints
+            3, 3, 3, 3, 3, 3, 3, 3, 3,
+            // LowerArms (elbow flex + forearm pronation), LowerLegs (knee flex + tibial twist)
+            2, 2, 2, 2,
+            // Shoulders (clavicle up-down + front-back), Hands (wrist flex + deviation),
+            // Feet (dorsi/plantar + in-out)
+            2, 2, 2, 2, 2, 2,
+            // Toes (up-down curl only)
+            1, 1,
+        };
+
+        public const byte AxisX = 0;
+        public const byte AxisY = 1;
+        public const byte AxisZ = 2;
+
+        /// <summary>Primary (hinge) rotation axis per restricted slot, in the anatomical
+        /// generic frame. Entries for 3-DOF slots are unused.</summary>
+        public static readonly byte[] BONE_AXIS_A = new byte[]
+        {
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            AxisY, AxisY,   // LowerArms: elbow flexion swings the forearm forward
+            AxisX, AxisX,   // LowerLegs: knee flexion
+            AxisZ, AxisZ,   // Shoulders: clavicle up-down (shrug)
+            AxisZ, AxisZ,   // Hands: wrist flexion/extension
+            AxisX, AxisX,   // Feet: dorsi/plantar flexion
+            AxisX, AxisX,   // Toes: up-down curl
+        };
+
+        /// <summary>Secondary (twist / second swing) axis per 2-DOF slot. Unused for 1/3-DOF.</summary>
+        public static readonly byte[] BONE_AXIS_B = new byte[]
+        {
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            AxisX, AxisX,   // LowerArms: pronation/supination along the arm
+            AxisY, AxisY,   // LowerLegs: tibial twist along the shin
+            AxisY, AxisY,   // Shoulders: clavicle front-back
+            AxisY, AxisY,   // Hands: radial/ulnar deviation
+            AxisY, AxisY,   // Feet: in-out twist
+            0, 0,
+        };
+
+        /// <summary>Half-range in radians for the primary angle, per slot. Anatomical ROM
+        /// plus margin; symmetric so left/right sign conventions need no special casing.</summary>
+        public static readonly float[] BONE_RANGE_A = new float[]
+        {
+            0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
+            2.7925f, 2.7925f,   // elbows ±160°
+            2.7925f, 2.7925f,   // knees ±160°
+            1.0472f, 1.0472f,   // shoulders ±60°
+            1.7453f, 1.7453f,   // wrists ±100°
+            1.3963f, 1.3963f,   // ankles ±80°
+            1.0472f, 1.0472f,   // toes ±60°
+        };
+
+        /// <summary>Half-range in radians for the secondary angle, per 2-DOF slot.</summary>
+        public static readonly float[] BONE_RANGE_B = new float[]
+        {
+            0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
+            1.7453f, 1.7453f,   // forearm twist ±100°
+            1.0472f, 1.0472f,   // tibial twist ±60°
+            1.0472f, 1.0472f,   // shoulder front-back ±60°
+            1.0472f, 1.0472f,   // wrist deviation ±60°
+            1.0472f, 1.0472f,   // ankle in-out ±60°
+            0f, 0f,
+        };
+
+        // Angle bits per quality (VeryLow, Low, Medium, High). Sized so the High-quality
+        // angular step (range/2^bits) is at or below the ~0.05° step the 12-BPC
+        // smallest-three encoding delivered on these joints.
+        static readonly byte[] HINGE_BITS = { 6, 7, 9, 13 };
+        static readonly byte[] TWIST_BITS = { 5, 6, 8, 12 };
+        static readonly byte[] SINGLE_BITS = { 4, 4, 5, 7 };
+
+        public static int HingeBits(BasisAvatarBitPacking.BitQuality q) => HINGE_BITS[(int)q];
+        public static int TwistBits(BasisAvatarBitPacking.BitQuality q) => TWIST_BITS[(int)q];
+        public static int SingleAxisBits(BasisAvatarBitPacking.BitQuality q) => SINGLE_BITS[(int)q];
+
+        /// <summary>Wire width in bits of one explicit bone slot at the given quality.</summary>
+        public static int BoneFieldWidth(BasisAvatarBitPacking.BitQuality q, int slot)
+        {
+            return BONE_DOF[slot] switch
+            {
+                3 => 2 + 3 * GetBpcTable(q)[slot],
+                2 => HingeBits(q) + TwistBits(q),
+                _ => SingleAxisBits(q),
+            };
+        }
+
+        // ── Hinge/twist factorization (pure floats, mirrored by the Burst encode job) ──
+
+        static float GetComponent(float qx, float qy, float qz, int axis)
+            => axis == 0 ? qx : (axis == 1 ? qy : qz);
+
+        /// <summary>
+        /// Factorizes a unit quaternion as R_axisA(angleA) * R_axisB(angleB). Exact when the
+        /// rotation truly is such a two-axis product (|angles| &lt; 180°); any off-axis content
+        /// is projected away.
+        /// </summary>
+        public static void ExtractHingeTwist(float qx, float qy, float qz, float qw,
+            int axisA, int axisB, out float angleA, out float angleB)
+        {
+            if (qw < 0f) { qx = -qx; qy = -qy; qz = -qz; qw = -qw; }
+
+            // Twist about axisB: normalize the (q[axisB], w) projection.
+            float pb = GetComponent(qx, qy, qz, axisB);
+            float len = (float)Math.Sqrt(pb * pb + qw * qw);
+            float tb, tw;
+            if (len > 1e-6f)
+            {
+                angleB = 2f * (float)Math.Atan2(pb, qw);
+                float inv = 1f / len;
+                tb = pb * inv; tw = qw * inv;
+            }
+            else
+            {
+                // Pure 180° rotation about an axis orthogonal to axisB — outside every
+                // restricted joint's range. Treat as no twist.
+                angleB = 0f; tb = 0f; tw = 1f;
+            }
+
+            // swing = q * conj(twist). conj(twist) has -tb on axisB and w = tw.
+            float cx = axisB == 0 ? -tb : 0f;
+            float cy = axisB == 1 ? -tb : 0f;
+            float cz = axisB == 2 ? -tb : 0f;
+            float sw = qw * tw - qx * cx - qy * cy - qz * cz;
+            float sx = qw * cx + qx * tw + qy * cz - qz * cy;
+            float sy = qw * cy - qx * cz + qy * tw + qz * cx;
+            float sz = qw * cz + qx * cy - qy * cx + qz * tw;
+
+            if (sw < 0f) { sx = -sx; sy = -sy; sz = -sz; sw = -sw; }
+            angleA = 2f * (float)Math.Atan2(GetComponent(sx, sy, sz, axisA), sw);
+        }
+
+        /// <summary>Rebuilds q = R_axisA(angleA) * R_axisB(angleB).</summary>
+        public static void ComposeHingeTwist(int axisA, float angleA, int axisB, float angleB,
+            out float qx, out float qy, out float qz, out float qw)
+        {
+            float sa = (float)Math.Sin(angleA * 0.5f), ca = (float)Math.Cos(angleA * 0.5f);
+            float sb = (float)Math.Sin(angleB * 0.5f), cb = (float)Math.Cos(angleB * 0.5f);
+            float ax = axisA == 0 ? sa : 0f, ay = axisA == 1 ? sa : 0f, az = axisA == 2 ? sa : 0f;
+            float bx = axisB == 0 ? sb : 0f, by = axisB == 1 ? sb : 0f, bz = axisB == 2 ? sb : 0f;
+            qw = ca * cb - ax * bx - ay * by - az * bz;
+            qx = ca * bx + ax * cb + ay * bz - az * by;
+            qy = ca * by - ax * bz + ay * cb + az * bx;
+            qz = ca * bz + ax * by - ay * bx + az * cb;
+        }
+
+        /// <summary>Signed rotation angle about a single fixed axis (1-DOF joints).</summary>
+        public static float ExtractSingleAxis(float qx, float qy, float qz, float qw, int axisA)
+        {
+            if (qw < 0f) { qx = -qx; qy = -qy; qz = -qz; qw = -qw; }
+            return 2f * (float)Math.Atan2(GetComponent(qx, qy, qz, axisA), qw);
+        }
+
+        /// <summary>
+        /// Encodes a restricted (1/2-DOF) bone slot's rotation into its wire field.
+        /// Layout LSB-first: [angleA][angleB]. Use <see cref="BoneFieldWidth"/> for the width.
+        /// </summary>
+        public static ulong EncodeRestricted(float qx, float qy, float qz, float qw,
+            int slot, BasisAvatarBitPacking.BitQuality q)
+        {
+            if (BONE_DOF[slot] == 1)
+            {
+                float angle = ExtractSingleAxis(qx, qy, qz, qw, BONE_AXIS_A[slot]);
+                return EncodeSignedUnit(angle / BONE_RANGE_A[slot], SingleAxisBits(q));
+            }
+
+            ExtractHingeTwist(qx, qy, qz, qw, BONE_AXIS_A[slot], BONE_AXIS_B[slot],
+                out float angleA, out float angleB);
+            int bitsA = HingeBits(q);
+            ulong ea = EncodeSignedUnit(angleA / BONE_RANGE_A[slot], bitsA);
+            ulong eb = EncodeSignedUnit(angleB / BONE_RANGE_B[slot], TwistBits(q));
+            return ea | (eb << bitsA);
+        }
+
+        /// <summary>Decodes a restricted bone field back into a unit quaternion.</summary>
+        public static void DecodeRestricted(ulong packed, int slot, BasisAvatarBitPacking.BitQuality q,
+            out float qx, out float qy, out float qz, out float qw)
+        {
+            if (BONE_DOF[slot] == 1)
+            {
+                int bits = SingleAxisBits(q);
+                float angle = DecodeSignedUnit((uint)(packed & ((1UL << bits) - 1UL)), bits) * BONE_RANGE_A[slot];
+                float s = (float)Math.Sin(angle * 0.5f);
+                qw = (float)Math.Cos(angle * 0.5f);
+                int axis = BONE_AXIS_A[slot];
+                qx = axis == 0 ? s : 0f; qy = axis == 1 ? s : 0f; qz = axis == 2 ? s : 0f;
+                return;
+            }
+
+            int bitsA = HingeBits(q);
+            int bitsB = TwistBits(q);
+            float angleA = DecodeSignedUnit((uint)(packed & ((1UL << bitsA) - 1UL)), bitsA) * BONE_RANGE_A[slot];
+            float angleB = DecodeSignedUnit((uint)((packed >> bitsA) & ((1UL << bitsB) - 1UL)), bitsB) * BONE_RANGE_B[slot];
+            ComposeHingeTwist(BONE_AXIS_A[slot], angleA, BONE_AXIS_B[slot], angleB,
+                out qx, out qy, out qz, out qw);
+        }
+
+        // ────────────────────────────────────────────────────────────
+        //  Finger block (v47)
+        // ────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Bone slots that still carry an explicit smallest-three rotation. Slots 0..20 are the body,
+        /// limbs, extremities and toes; slots 21..50 are the thirty finger joints, which the wire no
+        /// longer carries as rotations at all.
+        ///
+        /// Every finger backend in Basis (OpenXR articulated hands and controllers, the SteamVR
+        /// skeleton, MediaPipe) reduces its input to BasisFingerPose — one curl and one splay per
+        /// finger — and BasisFingerSlerpJob expands those twenty scalars into all thirty joint
+        /// rotations through a per-avatar baked grid, unconditionally, downstream of the animator.
+        /// The thirty rotations were therefore a 17x expansion of their own input: the sender held
+        /// the twenty numbers that produced them, threw them away, measured the result and shipped
+        /// the measurement. v47 ships the twenty numbers, and the receiver expands them through the
+        /// grid baked from ITS OWN avatar — which is also what makes the result correctly scaled
+        /// without anything about finger geometry crossing the wire.
+        /// </summary>
+        public const int WireBoneSlotCount = 21;
+
+        /// <summary>One curl/splay pair per finger, ordered L thumb→little then R thumb→little.</summary>
+        public const int FingerChannelCount = 10;
+
+        /// <summary>Wire fields in the rotation region: explicit bone rotations, then finger channels.</summary>
+        public const int RotationFieldCount = WireBoneSlotCount + FingerChannelCount;
+
+        /// <summary>Curl bits per quality, indexed by BitQuality (VeryLow, Low, Medium, High).</summary>
+        static readonly byte[] CURL_BITS = { 5, 6, 7, 8 };
+
+        /// <summary>
+        /// Splay bits per quality. Splay covers a far narrower range than curl (roughly ±25° of
+        /// abduction against ~100° of flexion), so it buys the same angular resolution with two
+        /// fewer bits.
+        /// </summary>
+        static readonly byte[] SPLAY_BITS = { 3, 4, 5, 6 };
+
+        public static int CurlBits(BasisAvatarBitPacking.BitQuality q) => CURL_BITS[(int)q];
+        public static int SplayBits(BasisAvatarBitPacking.BitQuality q) => SPLAY_BITS[(int)q];
+        public static int FingerFieldWidth(BasisAvatarBitPacking.BitQuality q) => CurlBits(q) + SplayBits(q);
+
+        /// <summary>
+        /// Bit width of every wire field in the rotation region, in write order. Bone slots keep the
+        /// smallest-three width; finger channels are a curl/splay pair.
+        /// </summary>
+        public static int[] BuildRotationFieldWidths(BasisAvatarBitPacking.BitQuality q)
+        {
+            var widths = new int[RotationFieldCount];
+            for (int slot = 0; slot < WireBoneSlotCount; slot++) widths[slot] = BoneFieldWidth(q, slot);
+            int fingerWidth = FingerFieldWidth(q);
+            for (int f = 0; f < FingerChannelCount; f++) widths[WireBoneSlotCount + f] = fingerWidth;
+            return widths;
+        }
+
+        /// <summary>Start bit of every rotation field, relative to the rotation region. Returns total bits.</summary>
+        public static int BuildRotationFieldOffsets(BasisAvatarBitPacking.BitQuality q, int[] outOffsets)
+        {
+            int[] widths = BuildRotationFieldWidths(q);
+            int pos = 0;
+            for (int i = 0; i < widths.Length; i++)
+            {
+                outOffsets[i] = pos;
+                pos += widths[i];
+            }
+            return pos;
+        }
+
+        /// <summary>
+        /// Quantizes a signed unit scalar. Values outside [-1, 1] clamp rather than wrap — MediaPipe's
+        /// CurlGain and the controller remaps can both overshoot — and a non-finite input encodes as
+        /// the midpoint instead of producing an out-of-range cast.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static uint EncodeSignedUnit(float value, int bits)
+        {
+            uint maxQ = (uint)((1 << bits) - 1);
+            if (float.IsNaN(value)) return (maxQ + 1) >> 1;
+            float clamped = value < -1f ? -1f : (value > 1f ? 1f : value);
+            return Clamp((uint)Math.Round((clamped * 0.5f + 0.5f) * maxQ), 0, maxQ);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float DecodeSignedUnit(uint quantized, int bits)
+        {
+            uint maxQ = (uint)((1 << bits) - 1);
+            return quantized / (float)maxQ * 2f - 1f;
+        }
+
+        // Entries 21..50 of every BPC table and of MAX_COMPONENT are retained so slot indexing
+        // stays uniform across the codebase, but the wire no longer reads them: those slots are
+        // the finger joints, now carried by the finger block above.
         public static byte[] GetBpcTable(BasisAvatarBitPacking.BitQuality q) => q switch
         {
             BasisAvatarBitPacking.BitQuality.High     => BPC_HIGH,
@@ -224,14 +546,15 @@ namespace Basis.Network.Core.Compression
         //  Size calculations
         // ────────────────────────────────────────────────────────────
 
-        public static int RotationBytes(BasisAvatarBitPacking.BitQuality q)
+        public static int RotationBits(BasisAvatarBitPacking.BitQuality q)
         {
-            byte[] bpc = GetBpcTable(q);
+            int[] widths = BuildRotationFieldWidths(q);
             int totalBits = 0;
-            for (int i = 0; i < bpc.Length; i++)
-                totalBits += 2 + 3 * bpc[i];
-            return (totalBits + 7) >> 3;
+            for (int i = 0; i < widths.Length; i++) totalBits += widths[i];
+            return totalBits;
         }
+
+        public static int RotationBytes(BasisAvatarBitPacking.BitQuality q) => (RotationBits(q) + 7) >> 3;
 
         // End-effector anchoring block (hand/foot world targets), High quality only —
         // near players get precise planting; far players are repacked to lower quality without it.
@@ -244,16 +567,11 @@ namespace Basis.Network.Core.Compression
             return BasisAvatarBitPacking.PositionBytes(q) + RotationBytes(q) + TailBytes + EndEffectorBytes(q);
         }
 
-        public static int ComputeBitOffsets(byte[] bpc, int[] outBitOffsets)
-        {
-            int pos = 0;
-            for (int i = 0; i < bpc.Length; i++)
-            {
-                outBitOffsets[i] = pos;
-                pos += 2 + 3 * bpc[i];
-            }
-            return pos;
-        }
+        // ComputeBitOffsets lived here: it laid out all 51 bone slots as 2 + 3*bpc apiece, which was
+        // the wire format until v47 moved the thirty finger joints to ten curl/splay channels. It had
+        // no callers left but its own test, and that test failed because it compared its total
+        // against RotationBytes, which follows the real layout. BuildRotationFieldOffsets is the
+        // version that models the wire as it is; use that.
 
         // ────────────────────────────────────────────────────────────
         //  Smallest-Three Encode / Decode (pure floats, no Unity types)
@@ -353,52 +671,19 @@ namespace Basis.Network.Core.Compression
         //  Bitstream read/write (pure C#)
         // ────────────────────────────────────────────────────────────
 
+        /// <summary>Writes into a region assumed already zero; see <see cref="BasisBitCodec.Or"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteBits(byte[] dst, int bitPos, ulong value, int bitCount)
         {
-            int bytePos = bitPos >> 3;
-            int bitInByte = bitPos & 7;
-            ulong v = value;
-            int bitsLeft = bitCount;
-
-            while (bitsLeft > 0)
-            {
-                int room = 8 - bitInByte;
-                int take = bitsLeft < room ? bitsLeft : room;
-                ulong maskVal = (1UL << take) - 1UL;
-                byte chunk = (byte)(v & maskVal);
-                dst[bytePos] = (byte)(dst[bytePos] | (chunk << bitInByte));
-                v >>= take;
-                bitsLeft -= take;
-                bytePos++;
-                bitInByte = 0;
-            }
+            BasisBitCodec.Or(dst, bitPos, value, bitCount);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong ReadBits(byte[] src, ref int bitPos, int bitCount)
         {
-            int bytePos = bitPos >> 3;
-            int bitInByte = bitPos & 7;
-            ulong outV = 0;
-            int outShift = 0;
-            int bitsLeft = bitCount;
-
-            while (bitsLeft > 0)
-            {
-                int room = 8 - bitInByte;
-                int take = bitsLeft < room ? bitsLeft : room;
-                ulong maskVal = (1UL << take) - 1UL;
-                ulong chunk = ((ulong)src[bytePos] >> bitInByte) & maskVal;
-                outV |= chunk << outShift;
-                outShift += take;
-                bitsLeft -= take;
-                bytePos++;
-                bitInByte = 0;
-            }
-
+            ulong value = BasisBitCodec.Read(src, bitPos, bitCount);
             bitPos += bitCount;
-            return outV;
+            return value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

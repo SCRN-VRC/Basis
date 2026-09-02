@@ -2,17 +2,7 @@ using System;
 
 namespace Basis.BasisUI
 {
-    /// <summary>
-    /// Lifecycle state of a <see cref="BasisNotification"/>. Pending entries are still
-    /// awaiting a yes/no decision; every other value is a terminal history outcome.
-    /// </summary>
-    public enum BasisNotificationStatus
-    {
-        Pending,
-        Accepted,
-        Denied,
-        Dismissed,
-    }
+
 
     /// <summary>
     /// A single entry tracked by <see cref="BasisNotificationCenter"/>.
@@ -32,6 +22,8 @@ namespace Basis.BasisUI
         public string IconAddress;
 
         public BasisNotificationStatus Status = BasisNotificationStatus.Pending;
+
+        public BasisNotificationCategory Category = BasisNotificationCategory.System;
 
         public readonly DateTime CreatedUtc = DateTime.UtcNow;
         public DateTime? ResolvedUtc;

@@ -24,9 +24,10 @@ public enum BasisCameraGizmoLayers
 /// the auto-follow rig's solve, the depth-of-field slab, and which pin space / modes are live.
 /// <para>
 /// Drawn through <see cref="BasisGizmoManager"/>, so it costs a batched instanced draw rather
-/// than GameObjects. These are world geometry on <see cref="BasisGizmoManager.RenderLayer"/>
-/// (Default), so every camera that renders that layer sees them — including this camera's own
-/// capture. Turn the layers off before shooting.
+/// than GameObjects. Every one of them is put on the layer the capture camera culls, the same
+/// one the detached marker and the dolly track use, so the rig can be read while it is being shot
+/// without ever landing in the shot. They are debug drawing for whoever is operating the camera,
+/// and an operator should not have to remember to switch them off before pressing the button.
 /// </para>
 /// <para>
 /// Everything drawn is read back from the camera's own state on the frame it was computed; the
@@ -60,6 +61,9 @@ public sealed class BasisHandHeldCameraGizmos
 
     private static readonly Color HandHeldColor = new Color(0.6f, 0.9f, 0.6f, 1f);
     private static readonly Color PlaySpaceColor = new Color(1f, 0.85f, 0.4f, 1f);
+
+    /// <summary>An anchored camera, on a hue none of the other three uses.</summary>
+    private static readonly Color AttachedColor = new Color(0.45f, 1f, 0.72f, 1f);
     private static readonly Color WorldSpaceColor = new Color(0.9f, 0.5f, 1f, 1f);
 
     private static readonly Rect FullViewport = new Rect(0f, 0f, 1f, 1f);
@@ -453,7 +457,7 @@ public sealed class BasisHandHeldCameraGizmos
         _follow.Sphere(sample.TargetPosition, nodeSize, tint);
         _follow.Line(sample.TargetPosition, sample.LookPoint, tint, LineWidth);
 
-        BuildRing(sample.TargetPosition, camera.autoFollowTeleportDistance * sample.Scale);
+        BuildRing(sample.TargetPosition, TeleportDistanceOf(camera) * sample.Scale);
         _follow.Poly(_ring, sample.Snapped ? AxisXColor : GhostColor, true, ThinLineWidth);
 
         Vector3 live = camera.captureCamera.transform.position;
@@ -500,16 +504,19 @@ public sealed class BasisHandHeldCameraGizmos
         }
         _builder.Append("aim ").Append(aimDistance.ToString("0.00")).Append("m   lag ")
             .Append(lag.ToString("0.00")).Append("m\n");
-        _builder.Append("half-life ").Append(HalfLife(camera.autoFollowPositionSmoothing).ToString("0.00")).Append("s pos  ")
-            .Append(HalfLife(camera.autoFollowRotationSmoothing).ToString("0.00")).Append("s rot");
+        _builder.Append("damp ").Append(camera.Modifiers.follow.damping.z.ToString("0.00")).Append("s pos  ")
+            .Append(camera.Modifiers.lookAt.damping.y.ToString("0.00")).Append("s rot");
         if (sample.Snapped)
         {
-            _builder.Append("\nSNAP — past ").Append((camera.autoFollowTeleportDistance * sample.Scale).ToString("0.0")).Append('m');
+            _builder.Append("\nSNAP — past ").Append((TeleportDistanceOf(camera) * sample.Scale).ToString("0.0")).Append('m');
         }
         return _builder.ToString();
     }
 
-    private static float HalfLife(float rate) => rate > 1e-4f ? Mathf.Log(2f) / rate : 0f;
+    private static float TeleportDistanceOf(BasisHandHeldCamera camera) =>
+        camera.Modifiers.positionModifier == Basis.Cinematics.BasisCameraPositionModifier.FrameSubject
+            ? camera.Modifiers.framing.teleportDistance
+            : camera.Modifiers.follow.teleportDistance;
 
     private void DrawPinState(BasisHandHeldCamera camera, float scale, Vector3 viewer, bool readouts)
     {
@@ -547,11 +554,12 @@ public sealed class BasisHandHeldCameraGizmos
                 ? camPos.y - BasisLocalPlayer.Instance.transform.position.y
                 : camPos.y;
 
-            int key = (int)camera.PinSpace ^ (camera.IsFlying ? 1 << 4 : 0) ^ (camera.IsAutoFollowing ? 1 << 5 : 0) ^
+            int key = (int)camera.PinSpace ^ (camera.IsFlying ? 1 << 4 : 0) ^ (camera.IsModifierDriven ? 1 << 5 : 0) ^
                       (camera.HandHeld.IsSelfieMode ? 1 << 6 : 0) ^ (camera.enableRecordingView ? 1 << 7 : 0) ^
                       (camera.IsVideoOutputActive ? 1 << 8 : 0) ^ (camera.autoFocusFollowSubject ? 1 << 9 : 0) ^
                       (camera.useAutoLeveling ? 1 << 10 : 0) ^ (camera.useVRHandheldSmoothing ? 1 << 11 : 0) ^
-                      (Quantize(height, 20f) << 12);
+                      (camera.useSmoothDrag ? 1 << 12 : 0) ^
+                      (Quantize(height, 20f) << 13);
             if (_pinText == null || key != _pinKey)
             {
                 _pinKey = key;
@@ -566,7 +574,12 @@ public sealed class BasisHandHeldCameraGizmos
     private string BuildPinText(BasisHandHeldCamera camera, float height, Vector3 pinned)
     {
         _builder.Clear();
-        _builder.Append("Pin ").Append(camera.PinSpace).Append('\n');
+        _builder.Append("Anchor ").Append(camera.PinSpace);
+        if (camera.PinSpace == BasisHandHeldCameraInteractable.CameraPinSpace.Attached)
+        {
+            _builder.Append(" -> ").Append(camera.AnchorTargetLost ? "lost" : camera.AnchorLabel);
+        }
+        _builder.Append('\n');
         _builder.Append("height ").Append(height.ToString("0.00")).Append("m over floor\n");
         if (camera.PinSpace != BasisHandHeldCameraInteractable.CameraPinSpace.HandHeld)
         {
@@ -576,13 +589,15 @@ public sealed class BasisHandHeldCameraGizmos
 
         int written = 0;
         AppendMode(ref written, camera.IsFlying, "fly");
-        AppendMode(ref written, camera.IsAutoFollowing, "follow");
+        AppendMode(ref written, camera.Modifiers.DrivesPosition, "driven-pos");
+        AppendMode(ref written, camera.Modifiers.DrivesRotation, "driven-rot");
         AppendMode(ref written, camera.autoFocusFollowSubject, "autofocus");
         AppendMode(ref written, camera.HandHeld.IsSelfieMode, "selfie");
         AppendMode(ref written, camera.enableRecordingView, "recording");
         AppendMode(ref written, camera.IsVideoOutputActive, "streaming");
         AppendMode(ref written, camera.useAutoLeveling, "auto-level");
         AppendMode(ref written, camera.useVRHandheldSmoothing, "vr-stab");
+        AppendMode(ref written, camera.useSmoothDrag, "smooth-drag");
         if (written == 0)
         {
             _builder.Append("no modes active");
@@ -606,24 +621,13 @@ public sealed class BasisHandHeldCameraGizmos
 
     private static bool TryGetPinSource(BasisHandHeldCamera camera, out Vector3 position, out Quaternion rotation)
     {
-        switch (camera.PinSpace)
+        if (camera.PinSpace == BasisHandHeldCameraInteractable.CameraPinSpace.HandHeld)
         {
-            case BasisHandHeldCameraInteractable.CameraPinSpace.HandHeld:
-                camera.transform.GetPositionAndRotation(out position, out rotation);
-                return true;
-
-            case BasisHandHeldCameraInteractable.CameraPinSpace.PlaySpace:
-                if (BasisLocalPlayer.Instance == null)
-                {
-                    break;
-                }
-                BasisLocalPlayer.Instance.transform.GetPositionAndRotation(out position, out rotation);
-                return true;
+            camera.transform.GetPositionAndRotation(out position, out rotation);
+            return true;
         }
 
-        position = Vector3.zero;
-        rotation = Quaternion.identity;
-        return false;
+        return camera.TryResolveAnchorPose(out position, out rotation);
     }
 
     private static Color PinColor(BasisHandHeldCameraInteractable.CameraPinSpace space)
@@ -632,6 +636,7 @@ public sealed class BasisHandHeldCameraGizmos
         {
             case BasisHandHeldCameraInteractable.CameraPinSpace.PlaySpace: return PlaySpaceColor;
             case BasisHandHeldCameraInteractable.CameraPinSpace.WorldSpace: return WorldSpaceColor;
+            case BasisHandHeldCameraInteractable.CameraPinSpace.Attached: return AttachedColor;
             default: return HandHeldColor;
         }
     }
@@ -664,6 +669,14 @@ public sealed class BasisHandHeldCameraGizmos
     /// </summary>
     private sealed class GizmoSet
     {
+        /// <summary>
+        /// Every gizmo in the set is parked on the layer the capture camera culls, so the rig can
+        /// be read while it is being shot without appearing in the shot. Resolved per create — a
+        /// project without the layer hands back -1, which SetGizmoLayer reads as "stay where you
+        /// are", leaving a usable gizmo that the shot can see.
+        /// </summary>
+        private static int HiddenFromCaptureLayer => BasisHandHeldCamera.MarkerLayer;
+
         private readonly string _name;
         private readonly List<int> _spheres = new List<int>();
         private readonly List<int> _lines = new List<int>();
@@ -689,6 +702,7 @@ public sealed class BasisHandHeldCameraGizmos
             if (_sphereCursor == _spheres.Count)
             {
                 BasisGizmoManager.CreateSphereGizmo(_name, out int created, position, size, color);
+                BasisGizmoManager.SetGizmoLayer(created, HiddenFromCaptureLayer);
                 _spheres.Add(created);
                 _sphereCursor++;
                 return;
@@ -705,6 +719,7 @@ public sealed class BasisHandHeldCameraGizmos
             if (_lineCursor == _lines.Count)
             {
                 BasisGizmoManager.CreateLineGizmo(_name, out int created, start, end, width, color);
+                BasisGizmoManager.SetGizmoLayer(created, HiddenFromCaptureLayer);
                 _lines.Add(created);
                 _lineCursor++;
                 return;
@@ -721,6 +736,7 @@ public sealed class BasisHandHeldCameraGizmos
             if (_lineCursor == _lines.Count)
             {
                 BasisGizmoManager.CreateLineGizmo(_name, out int created, points, width, color, loop);
+                BasisGizmoManager.SetGizmoLayer(created, HiddenFromCaptureLayer);
                 _lines.Add(created);
                 _lineCursor++;
                 return;
@@ -738,6 +754,10 @@ public sealed class BasisHandHeldCameraGizmos
             if (_labelCursor == _labels.Count)
             {
                 BasisGizmoManager.CreateTextGizmo(_name, out id, position, text, color);
+
+                // After the create: a label rented back out of the pool starts on the container's
+                // layer, so this is the point at which the layer sticks.
+                BasisGizmoManager.SetGizmoLayer(id, HiddenFromCaptureLayer);
                 _labels.Add(id);
                 _labelCursor++;
             }

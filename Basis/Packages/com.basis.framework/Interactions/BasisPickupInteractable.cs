@@ -250,6 +250,22 @@ namespace Basis.Scripts.BasisSdk.Interactions
         /// Maximum percentage the object can be embiggened to.
         /// </summary>
         public float maxScalePercent = 200f;
+
+        /// <summary>
+        /// Uniform scale that <see cref="minScalePercent"/> and <see cref="maxScalePercent"/> are measured
+        /// against. Defaults to the scale captured in <see cref="Start"/>; objects whose scale is driven at
+        /// runtime override this so the range tracks their live size instead of an authored value.
+        /// </summary>
+        protected virtual float GestureScaleReference => _scaleAtStart.x;
+
+        /// <summary>
+        /// Applies a single gesture scale step. Objects that do not own their <see cref="Transform.localScale"/>
+        /// outright override this to route the step through their own sizing.
+        /// </summary>
+        protected virtual void ApplyGestureScaleStep(BasisTransform.Direction scaleDirection, float stepSize, float minScale, float maxScale)
+        {
+            BasisTransform.ScaleObjectBetween(transform, scaleDirection, stepSize, minScale, maxScale);
+        }
         #endregion
 
         #region Lock to Axis
@@ -330,6 +346,16 @@ namespace Basis.Scripts.BasisSdk.Interactions
         private float _lerpElapsed;
         private bool _lerping;
         private bool _weldedHold;
+        private bool _gripAlignedHold;
+
+        /// <summary>
+        /// True while this hold is actually driven by <see cref="GripPoint"/> — a welded hand hold whose
+        /// grip solve succeeded, and past the pick-up ease so the object has arrived on it. The networked
+        /// hold reads this before telling remotes to re-solve the grip from their own copy of the prefab:
+        /// an authored GripPoint that the local hold never aligned to (weld off, a desktop grab, still
+        /// easing in) would otherwise have every observer hold the object by a handle the owner is not.
+        /// </summary>
+        internal bool HoldIsGripAligned => _gripAlignedHold && !_lerping;
 
         private Vector3 magicNumberHandOffsetRight = new(0.26f, -0.14f, 0.24f); // right, down, forward
         private Quaternion magicNumberHandRotationRight = Quaternion.Euler(00, 010, -100);
@@ -620,12 +646,14 @@ namespace Basis.Scripts.BasisSdk.Interactions
 
                     if (_weldedHold && TryGetGripOffsets(ActivePosition, ActiveRotation, out offsetPos, out offsetRot))
                     {
+                        _gripAlignedHold = true;
                         InputConstraint.GlobalWeight = LerpToHandOnPickup ? 0f : 1f;
                         _lerpElapsed = 0f;
                         _lerping = LerpToHandOnPickup;
                     }
                     else
                     {
+                        _gripAlignedHold = false;
                         if (LerpToHandOnPickup)
                         {
                             Vector3 lerpTarget = inPos;
@@ -710,6 +738,7 @@ namespace Basis.Scripts.BasisSdk.Interactions
                     InputConstraint.Enabled = false;
                     _lerping = false;
                     _weldedHold = false;
+                    _gripAlignedHold = false;
                     InputConstraint.sources = new BasisConstraintSourceData[] { new() { weight = 1f } };
 
                     if (RigidRef != null)
@@ -995,16 +1024,11 @@ namespace Basis.Scripts.BasisSdk.Interactions
                             if (delta > 0.001f)
                             {
                                 var scaleDirection = distanceBetweenHands > _previousDistance ? BasisTransform.Direction.Embiggen : BasisTransform.Direction.Ensmallen;
-                                float minScale = (minScalePercent / 100) * _scaleAtStart.x;
-                                float maxScale = (maxScalePercent / 100) * _scaleAtStart.x;
+                                float referenceScale = GestureScaleReference;
+                                float minScale = (minScalePercent / 100) * referenceScale;
+                                float maxScale = (maxScalePercent / 100) * referenceScale;
                                 float stepSize = math.abs(minScale - maxScale) / 100f;
-                                BasisTransform.ScaleObjectBetween(
-                                    transform,
-                                    scaleDirection,
-                                    stepSize,
-                                    minScale,
-                                    maxScale
-                                    );
+                                ApplyGestureScaleStep(scaleDirection, stepSize, minScale, maxScale);
                             }
                             _previousDistance = distanceBetweenHands;
                         }
@@ -1220,6 +1244,14 @@ namespace Basis.Scripts.BasisSdk.Interactions
         }
 
         /// <summary>
+        /// Whether desktop middle click belongs to the derived interactable rather than to this
+        /// object's drag-rotate. Both read the same <c>Secondary2DAxisClick</c>, so a subclass that
+        /// binds it — the handheld camera's fly toggle — would otherwise spin the prop under the
+        /// mouse on the way in.
+        /// </summary>
+        protected virtual bool DesktopMiddleClickReserved => false;
+
+        /// <summary>
         /// Handles desktop-only controls: mouse wheel zoom ("zoop") and drag rotation.
         /// Temporarily pauses head/look rotation while rotating.
         /// </summary>
@@ -1255,7 +1287,7 @@ namespace Basis.Scripts.BasisSdk.Interactions
             var dampendOffset = Vector3.SmoothDamp(currentOffset, targetOffset, ref currentZoopVelocity, k_DesktopZoopSmoothing, k_DesktopZoopMaxVelocity);
             InputConstraint.sources[0].positionOffset = dampendOffset;
 
-            if (DesktopEye.CurrentInputState.Secondary2DAxisClick)
+            if (DesktopEye.CurrentInputState.Secondary2DAxisClick && !DesktopMiddleClickReserved)
             {
                 if (!pauseHead)
                 {

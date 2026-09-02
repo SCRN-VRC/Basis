@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using Basis.Cinematics;
 using UnityEngine;
 
 namespace Basis.Tests.Camera
@@ -91,6 +92,12 @@ namespace Basis.Tests.Camera
         }
 
         [Test]
+        public void CameraSettings_UsesWorldFogByDefault()
+        {
+            Assert.That(new BasisHandHeldCameraUI.CameraSettings().overrideVolumetricFog, Is.False);
+        }
+
+        [Test]
         public void CameraSettings_SurviveAJsonRoundTrip()
         {
             // Settings are persisted with JsonUtility, which zero-fills anything it cannot map —
@@ -110,6 +117,7 @@ namespace Basis.Tests.Camera
                 exposureIndex = 9,
                 depthIsActive = true,
                 useManualFocus = false,
+                overrideVolumetricFog = true,
                 VolumetricFogVolumedensity = 0.4f,
                 hueShift = 45f,
                 vignette = 0.3f,
@@ -119,14 +127,11 @@ namespace Basis.Tests.Camera
                 whiteBalanceTint = -10f,
                 lensDistortion = 0.25f,
                 autoFocusFollowSubject = true,
-                autoFollowPositionOffset = new Vector3(1f, 0.5f, 2f),
-                autoFollowRotationOffset = new Vector3(10f, -20f, 0f),
-                autoFollowPlayspace = false,
-                autoFollowLookAtPlayer = false,
-                autoFollowLookAtHeightOffset = -0.3f,
+                modifiers = StackWithFollowOffset(new Vector3(1f, 0.5f, 2f)),
                 capture360 = true,
                 useAutoLeveling = true,
                 useVRHandheldSmoothing = true,
+                printPhoto = true,
             };
 
             string json = JsonUtility.ToJson(original);
@@ -146,6 +151,7 @@ namespace Basis.Tests.Camera
             Assert.That(restored.exposureIndex, Is.EqualTo(original.exposureIndex));
             Assert.That(restored.depthIsActive, Is.True);
             Assert.That(restored.useManualFocus, Is.False);
+            Assert.That(restored.overrideVolumetricFog, Is.True);
             Assert.That(restored.VolumetricFogVolumedensity, Is.EqualTo(original.VolumetricFogVolumedensity).Within(1e-4f));
             Assert.That(restored.hueShift, Is.EqualTo(original.hueShift).Within(1e-4f));
             Assert.That(restored.vignette, Is.EqualTo(original.vignette).Within(1e-4f));
@@ -155,14 +161,17 @@ namespace Basis.Tests.Camera
             Assert.That(restored.whiteBalanceTint, Is.EqualTo(original.whiteBalanceTint).Within(1e-4f));
             Assert.That(restored.lensDistortion, Is.EqualTo(original.lensDistortion).Within(1e-4f));
             Assert.That(restored.autoFocusFollowSubject, Is.True);
-            Assert.That(restored.autoFollowPositionOffset, Is.EqualTo(original.autoFollowPositionOffset));
-            Assert.That(restored.autoFollowRotationOffset, Is.EqualTo(original.autoFollowRotationOffset));
-            Assert.That(restored.autoFollowPlayspace, Is.False);
-            Assert.That(restored.autoFollowLookAtPlayer, Is.False);
-            Assert.That(restored.autoFollowLookAtHeightOffset, Is.EqualTo(original.autoFollowLookAtHeightOffset).Within(1e-4f));
+            Assert.That(restored.modifiers.follow.positionOffset, Is.EqualTo(original.modifiers.follow.positionOffset));
+            Assert.That(restored.modifiers.subject.anchorToBody, Is.False);
+            Assert.That(restored.modifiers.subject.modifier, Is.EqualTo(original.modifiers.subject.modifier));
+            Assert.That(restored.modifiers.subject.framingRadius,
+                Is.EqualTo(original.modifiers.subject.framingRadius).Within(1e-4f));
+            Assert.That(restored.modifiers.positionModifier, Is.EqualTo(original.modifiers.positionModifier));
+            Assert.That(restored.modifiers.subject.aimHeightOffset, Is.EqualTo(original.modifiers.subject.aimHeightOffset).Within(1e-4f));
             Assert.That(restored.capture360, Is.True);
             Assert.That(restored.useAutoLeveling, Is.True);
             Assert.That(restored.useVRHandheldSmoothing, Is.True);
+            Assert.That(restored.printPhoto, Is.True);
         }
 
         [Test]
@@ -182,16 +191,15 @@ namespace Basis.Tests.Camera
             // below belt-and-braces for these particular fields — and it is the migrations that
             // correct a value the old file states outright, like the unusable f/1 aperture, that
             // are doing real work. See MissingFieldsLoadTheirConstructorDefault.
-            Assert.That(loaded.autoFollowPlayspace, Is.True, "sanity: the constructor default survives");
-            Assert.That(loaded.autoFollowPositionOffset, Is.Not.EqualTo(Vector3.zero),
+            Assert.That(loaded.modifiers.subject.anchorToBody, Is.True, "sanity: the constructor default survives");
+            Assert.That(loaded.modifiers.follow.positionOffset, Is.Not.EqualTo(Vector3.zero),
                 "sanity: the constructor default survives");
 
             BasisHandHeldCameraUI.MigrateSettingsForTest(loaded);
 
             var defaults = new BasisHandHeldCameraUI.CameraSettings();
-            Assert.That(loaded.autoFollowPlayspace, Is.True);
-            Assert.That(loaded.autoFollowLookAtPlayer, Is.True);
-            Assert.That(loaded.autoFollowPositionOffset, Is.EqualTo(defaults.autoFollowPositionOffset));
+            Assert.That(loaded.modifiers.subject.anchorToBody, Is.True);
+            Assert.That(loaded.modifiers.follow.positionOffset, Is.EqualTo(defaults.modifiers.follow.positionOffset));
             Assert.That(loaded.msaaSamples, Is.EqualTo(defaults.msaaSamples));
             Assert.That(loaded.settingsVersion, Is.EqualTo(BasisHandHeldCameraUI.CameraSettings.CurrentVersion));
         }
@@ -263,14 +271,14 @@ namespace Basis.Tests.Camera
         {
             var current = new BasisHandHeldCameraUI.CameraSettings
             {
-                autoFollowPlayspace = false,
-                autoFollowPositionOffset = new Vector3(5f, 5f, 5f),
+                modifiers = StackWithFollowOffset(new Vector3(5f, 5f, 5f)),
             };
+            current.settingsVersion = BasisHandHeldCameraUI.CameraSettings.CurrentVersion;
 
             BasisHandHeldCameraUI.MigrateSettingsForTest(current);
 
-            Assert.That(current.autoFollowPlayspace, Is.False, "A current-version file must not be re-defaulted.");
-            Assert.That(current.autoFollowPositionOffset, Is.EqualTo(new Vector3(5f, 5f, 5f)));
+            Assert.That(current.modifiers.subject.anchorToBody, Is.False, "A current-version file must not be re-defaulted.");
+            Assert.That(current.modifiers.follow.positionOffset, Is.EqualTo(new Vector3(5f, 5f, 5f)));
         }
 
         [Test]
@@ -287,6 +295,7 @@ namespace Basis.Tests.Camera
             Assert.That(settings.whiteBalanceTint, Is.Zero);
             Assert.That(settings.lensDistortion, Is.Zero);
             Assert.That(settings.hueShift, Is.Zero);
+            Assert.That(settings.overrideVolumetricFog, Is.False);
             Assert.That(settings.autoFocusFollowSubject, Is.False);
         }
 
@@ -312,6 +321,16 @@ namespace Basis.Tests.Camera
             Assert.That(metaData.apertures, Is.Not.Empty);
             Assert.That(metaData.shutterSpeeds, Is.Not.Empty);
             Assert.That(metaData.isoValues, Is.Not.Empty);
+        }
+
+        private static BasisCameraModifierStack StackWithFollowOffset(Vector3 offset)
+        {
+            BasisCameraModifierStack stack = new BasisCameraModifierStack();
+            stack.follow.positionOffset = offset;
+            stack.subject.anchorToBody = false;
+            stack.subject.aimHeightOffset = -0.3f;
+            stack.subject.framingRadius = 0.7f;
+            return stack;
         }
     }
 }

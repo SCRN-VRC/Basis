@@ -9,7 +9,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
@@ -27,12 +26,6 @@ namespace Basis.Scripts.Avatar
         // The main-thread half of every avatar swap — load, reload, far LOD, range re-entry. It
         // reported nothing at all before, so a load-in spike could only be attributed to whatever
         // outer marker happened to contain it (transmit tick, bundle continuation, join).
-        static readonly ProfilerMarker sMarkerInstall = new ProfilerMarker("BasisDriver.Avatar.Install");
-        static readonly ProfilerMarker sMarkerUnregister = new ProfilerMarker("BasisDriver.Avatar.Install.UnregisterOld");
-        static readonly ProfilerMarker sMarkerDeleteLast = new ProfilerMarker("BasisDriver.Avatar.Install.DeleteLast");
-        static readonly ProfilerMarker sMarkerHarvest = new ProfilerMarker("BasisDriver.Avatar.Install.Harvest");
-        static readonly ProfilerMarker sMarkerCalibrateRemote = new ProfilerMarker("BasisDriver.Avatar.Calibrate");
-        static readonly ProfilerMarker sMarkerTrim = new ProfilerMarker("BasisDriver.Avatar.Install.PerfTrim");
 
         /// <summary>
         /// Cached prefab for the loading/fallback avatar. Loaded once, instantiated many times.
@@ -258,6 +251,7 @@ namespace Basis.Scripts.Avatar
                 {
                     case 2:
                         Output = BasisLoadableBundle.LoadableGameobject.InSceneItem;
+                        ResolveRemoteSpawnPose(Player, ref Position, ref Rotation);
                         Output.transform.SetPositionAndRotation(Position, Rotation);
                         // In-scene path skips ContentPolice; strip BasisHeadChop so the
                         // authoring component never persists on a remote avatar. Pass null
@@ -281,6 +275,10 @@ namespace Basis.Scripts.Avatar
                             {
                                 throw new OperationCanceledException(token);
                             }
+
+                            // Re-read here rather than at the call site: the gate wait above can
+                            // be seconds long on a busy instance, and the player kept walking.
+                            ResolveRemoteSpawnPose(Player, ref Position, ref Rotation);
 
                             if (Mode == 0)
                             {
@@ -387,6 +385,33 @@ namespace Basis.Scripts.Avatar
         }
 
         /// <summary>
+        /// Overrides a remote install's spawn pose with that player's latest network pose.
+        ///
+        /// Every remote call site passes <see cref="Vector3.zero"/> because
+        /// <see cref="BasisRemoteAvatarDriver.RemoteCalibration"/> snaps root and hips onto the
+        /// network pose right after the install. That snap is too late for anything that seeds
+        /// itself from world position during Instantiate: Awake/OnEnable run INSIDE the
+        /// Instantiate call, so jiggle trees, colliders and constraints all come up believing the
+        /// avatar lives at the world origin, and only a teleport-by-delta afterwards rescues them.
+        /// Spawning at the right place removes the need for the rescue.
+        ///
+        /// Hips world is the closest pose available here — the root derivation calibration uses
+        /// needs References/TPose, which are not read until the avatar exists. The remaining
+        /// hips-vs-root offset is under a metre and calibration corrects it in the same frame.
+        /// No-ops for the local player (parented under the player root, already in place) and for
+        /// a remote with no receiver yet.
+        /// </summary>
+        private static void ResolveRemoteSpawnPose(IBasisPlayer Player, ref Vector3 Position, ref Quaternion Rotation)
+        {
+            if (Player is BasisRemotePlayer remotePlayer && remotePlayer.NetworkReceiver != null)
+            {
+                remotePlayer.NetworkReceiver.GetLatestNetworkPose(out var networkPosition, out var networkRotation, out _);
+                Position = networkPosition;
+                Rotation = networkRotation;
+            }
+        }
+
+        /// <summary>
         /// Loads a fallback avatar if the requested one fails or is invalid.
         /// </summary>
         /// <param name="Player">The player to assign the fallback avatar to.</param>
@@ -398,6 +423,7 @@ namespace Basis.Scripts.Avatar
                 BasisDebug.LogError("Cannot spawn fallback avatar: loading avatar prefab is null (factory not initialized, or de-initialized during teardown).");
                 return;
             }
+            ResolveRemoteSpawnPose(Player, ref Position, ref Rotation);
             var inSceneLoadingAvatar = GameObject.Instantiate(CachedLoadingAvatarPrefab, Position, Rotation, Player.AvatarParent);
 
             if (inSceneLoadingAvatar.TryGetComponent(out BasisAvatar avatar))
@@ -433,7 +459,7 @@ namespace Basis.Scripts.Avatar
                     // Leaving LastPerformanceInfo at its freshly-reset default lets
                     // the UI show a clean "no filter applied" state for this player.
                     BasisAvatarPerformanceLimits.PerformanceInfo trimInfo;
-                    using (sMarkerTrim.Auto())
+                    using (BasisAvatarMarkers.InstallPerfTrim.Auto())
                     {
                         trimInfo = remote.BypassPerformanceLimits
                             ? default
@@ -493,6 +519,23 @@ namespace Basis.Scripts.Avatar
                 avatar.GetComponentsInChildren(true, sJiggleRigScratch);
             }
 
+#if UNITY_SERVER
+            // Headless runs many clients per box and never renders, so jiggle is pure cost:
+            // every rig registers a tree segment that grows the shared JiggleMemoryBus transform
+            // capacity (ten persistent NativeArrays wide) and simulates every fixed step.
+            // DestroyImmediate fires OnDisable -> OnRemove, which un-registers the segment cleanly
+            // — the same teardown BasisAvatarPerformanceLimits.TrimComponents relies on.
+            for (int Index = 0; Index < sJiggleRigScratch.Count; Index++)
+            {
+                JiggleRig headlessRig = sJiggleRigScratch[Index];
+                if (headlessRig != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(headlessRig);
+                }
+            }
+            sJiggleRigScratch.Clear();
+#endif
+
             int rigCount = sJiggleRigScratch.Count;
             switch (Player)
             {
@@ -525,10 +568,10 @@ namespace Basis.Scripts.Avatar
             // and GameObject.Destroy only fires OnDisable at end-of-frame, which races with the
             // new avatar's JiggleRig registration below. Doing it here keeps tree state consistent.
             // The set was captured off the old avatar's harvest at its own load — no walk needed.
-            using var _installScope = sMarkerInstall.Auto();
+            using var _installScope = BasisAvatarMarkers.Install.Auto();
             if (Player.BasisAvatar != null)
             {
-                using var _unregisterScope = sMarkerUnregister.Auto();
+                using var _unregisterScope = BasisAvatarMarkers.InstallUnregisterOld.Auto();
                 Basis.Scripts.BasisSdk.Interactions.BasisJiggleGrabDriver.DropGrabsForPlayer(Player);
                 JiggleRig[] oldRigs = StoredJiggleRigsFor(Player);
                 for (int i = 0; i < oldRigs.Length; i++)
@@ -556,7 +599,7 @@ namespace Basis.Scripts.Avatar
                         break;
                 }
             }
-            using (sMarkerDeleteLast.Auto())
+            using (BasisAvatarMarkers.InstallDeleteLast.Auto())
             {
                 DeleteLastAvatar(Player);
             }
@@ -564,7 +607,7 @@ namespace Basis.Scripts.Avatar
             Player.BasisAvatar = avatar;
             Player.AvatarTransform = avatar.transform;
             Player.AvatarAnimatorTransform = avatar.Animator.transform;
-            using (sMarkerHarvest.Auto())
+            using (BasisAvatarMarkers.InstallHarvest.Auto())
             {
                 var loadHarvest = avatar.EnsureHarvest();
                 Player.BasisAvatar.Renders = loadHarvest.Renderers != null
@@ -575,6 +618,13 @@ namespace Basis.Scripts.Avatar
                     ? loadHarvest.AuthoredMotions.ToArray()
                     : avatar.GetComponentsInChildren<BasisAuthoredMotion>(true);
                 StoreJiggleRigs(Player, loadHarvest, avatar);
+#if UNITY_SERVER
+                // Every avatar in the room, not just the local one — a load test's resident set is
+                // dominated by remote avatar textures, and nothing rasterizes them here. Dropping
+                // the material references makes them collectable by the strict cleanup pass below.
+                BasisHeadlessManagement.StripTextureReferencesFromRenderers(Player.BasisAvatar.Renders);
+                BasisHeadlessManagement.RequestStrictMemoryCleanup("avatar install");
+#endif
                 avatar.Harvest = null;
                 loadHarvest.ReturnToPool();
             }
@@ -625,6 +675,7 @@ namespace Basis.Scripts.Avatar
 
             try
             {
+                ResolveRemoteSpawnPose(Player, ref Position, ref Rotation);
                 GameObject data = GameObject.Instantiate(CachedLoadingAvatarPrefab, Position, Rotation, Player.AvatarParent);
 
                 InitializePlayerAvatar(Player, data, null);
@@ -674,6 +725,12 @@ namespace Basis.Scripts.Avatar
                     if (Player.AvatarLoadMode == 1 || Player.AvatarLoadMode == 0)
                     {
                         await BasisLoadHandler.RequestDeIncrementOfBundle(Player.AvatarMetaData);
+                        // The de-increment can drop the last holder and Unload(true) the bundle,
+                        // which destroys the Avatar assets its model cache entries describe. This
+                        // is the only place in the client that knows a bundle may have just gone,
+                        // so it is where the dead entries — and the native memory the shared
+                        // hand-pose grid hangs off them — get released.
+                        BasisAvatarModelCache.SweepDestroyed();
                     }
                     else
                     {
@@ -714,7 +771,7 @@ namespace Basis.Scripts.Avatar
             }
             try
             {
-                using (sMarkerCalibrateRemote.Auto())
+                using (BasisAvatarMarkers.Calibrate.Auto())
                 {
                     Player.RemoteAvatarDriver.RemoteCalibration(Player);
                 }

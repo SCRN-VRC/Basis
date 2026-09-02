@@ -12,11 +12,21 @@ namespace Cilbox
 			"Basis.Shims.*",
 			"Basis.BasisImageDownloader",
 			"Basis.IBasisImageDownload",
+			"Basis.BasisStringDownloader",
+			"Basis.IBasisStringDownload",
             "Basis.Scripts.Networking.NetworkedAvatar.BasisNetworkPlayer",
             "Basis.Scripts.Networking.BasisNetworkPlayers", // Restrictive, see method whitelist (TryGetPlayerByUUID only).
             "Basis.Scripts.BasisSdk.BasisAvatar",           // Restrictive, see method whitelist (empty) + Animator field only.
             "Basis.Scripts.Drivers.BasisLocalAvatarDriver", // Restrictive, see method whitelist (empty) + HeadScale field only.
             "BasisPickupSyncNetworking",                    // Concrete runtime type of the pickup's BasisNetworkBehaviour field; held only, methods blocked (see below).
+			"Basis.Scripts.Drivers.BasisLocalCameraDriver", // read-only static CameraInstance (field below)
+			// Example-package button (com.basis.examples). Restrictive, see method whitelist below:
+			// only set_ButtonDown is reachable, so a prop can wire a handler but not read the current
+			// one, trigger ButtonUp, or call TriggerButtonDown()/TriggerButtonUp() directly.
+			"Basis.Scripts.BasisSdk.Interactions.BasisInteractableButton",
+			// ButtonDown/ButtonUp's delegate type. Needed to construct/assign a handler; the delegate's
+			// own Invoke is unreachable regardless (CheckMethodAllowed blanket-denies any "Invoke" method).
+			"Basis.Scripts.BasisSdk.Interactions.BasisInteractableButton+ClickEvent",
 
 			// System IO
 			"System.IO.BinaryReader",
@@ -43,6 +53,11 @@ namespace Cilbox
 			"UnityEngine.ShadowProjection",
 			"UnityEngine.ShadowmaskMode",
 
+			// Unity types - camera
+			"UnityEngine.Camera",
+			"UnityEngine.Camera+MonoOrStereoscopicEye",
+			"UnityEngine.Camera+StereoscopicEye",
+
 			// Unity types - physics
 			"UnityEngine.BoxCollider",
 			"UnityEngine.CapsuleCollider",
@@ -66,6 +81,7 @@ namespace Cilbox
 			"UnityEngine.MeshColliderCookingOptions",
 			"UnityEngine.PhysicMaterial",
 			"UnityEngine.PhysicMaterialCombine",
+			"UnityEngine.Physics",
 			"UnityEngine.QueryTriggerInteraction",
 			"UnityEngine.Rigidbody",
 			"UnityEngine.RigidbodyConstraints",
@@ -102,6 +118,7 @@ namespace Cilbox
 			"Basis.Scripts.BasisSdk.BasisAvatar.Animator",
 			// Read-only local head scale (Vector3) so cloned mirror heads match the local player.
 			"Basis.Scripts.Drivers.BasisLocalAvatarDriver.HeadScale",
+			"Basis.Scripts.Drivers.BasisLocalCameraDriver.CameraInstance",
 		};
 
 		static readonly Dictionary<Type, HashSet<string>> extraMethodWhitelist = new Dictionary<Type, HashSet<string>>()
@@ -135,6 +152,52 @@ namespace Cilbox
 				"ToByte", "ToSByte", "ToBoolean", "ToChar", "ToSingle", "ToDouble",
 				"ToString", "ToBase64String", "FromBase64String",
 				"ToDateTime", "ToDecimal" } },
+			{ typeof(UnityEngine.Camera), new HashSet<string>{
+				"GetStereoNonJitteredProjectionMatrix",
+				"GetStereoProjectionMatrix",
+				"GetStereoViewMatrix",
+				"ScreenPointToRay",
+				"ScreenToViewportPoint",
+				"ScreenToWorldPoint",
+				"ViewportPointToRay",
+				"ViewportToScreenPoint",
+				"ViewportToWorldPoint",
+				"WorldToScreenPoint",
+				"WorldToViewportPoint",
+				"get_aspect",
+				"get_cameraToWorldMatrix",
+				"get_farClipPlane",
+				"get_fieldOfView",
+				"get_main",
+				"get_nearClipPlane",
+				"get_orthographic",
+				"get_orthographicSize",
+				"get_pixelHeight",
+				"get_pixelWidth",
+				"get_projectionMatrix",
+				"get_stereoActiveEye",
+				"get_stereoConvergence",
+				"get_stereoEnabled",
+				"get_stereoSeparation",
+				"get_worldToCameraMatrix",
+				} },
+			{ typeof(UnityEngine.Physics), new HashSet<string>{
+				"BoxCast", "BoxCastAll", "BoxCastNonAlloc",
+				"CapsuleCast", "CapsuleCastAll", "CapsuleCastNonAlloc",
+				"CheckBox", "CheckCapsule", "CheckSphere",
+				"ClosestPoint",
+				"ComputePenetration",
+				"GetIgnoreLayerCollision",
+				"Linecast",
+				"OverlapBox", "OverlapBoxNonAlloc",
+				"OverlapCapsule", "OverlapCapsuleNonAlloc",
+				"OverlapSphere", "OverlapSphereNonAlloc",
+				"Raycast", "RaycastAll", "RaycastNonAlloc",
+				"SphereCast", "SphereCastAll", "SphereCastNonAlloc",
+				"get_autoSimulation", "get_autoSyncTransforms", "get_gravity",
+				"get_queriesHitBackfaces", "get_queriesHitTriggers",
+				"get_sleepThreshold", "get_defaultContactOffset",
+				} },
 			{
 				typeof(Basis.Scripts.Networking.BasisNetworkConnection),
 				new HashSet<string>
@@ -147,6 +210,16 @@ namespace Cilbox
 				new HashSet<string>
 				{
 					"TryGetIdentifier",
+					"get_CreatorUUID",
+				}
+			},
+			// The prop box can already correlate a UUID to a player through TryGetPlayerByUUID,
+			// so handing it the creator string directly grants nothing new.
+			{
+				typeof(BasisContent),
+				new HashSet<string>
+				{
+					"CreatorUUID",
 				}
 			},
             {
@@ -182,12 +255,31 @@ namespace Cilbox
 				typeof(Basis.Scripts.Drivers.BasisLocalAvatarDriver),
 				new HashSet<string>()
 			},
+			// BasisLocalCameraDriver: world-space stereo eye reads only (copied Vector3), plus the static CameraInstance field (whitelisted above); everything else blocked.
+			{
+				typeof(Basis.Scripts.Drivers.BasisLocalCameraDriver),
+				new HashSet<string>
+				{
+					nameof(Basis.Scripts.Drivers.BasisLocalCameraDriver.LeftEyeWorldPosition),
+					nameof(Basis.Scripts.Drivers.BasisLocalCameraDriver.RightEyeWorldPosition),
+				}
+			},
 			// BasisPickupSyncNetworking: type-whitelisted only so the pickupNet reference survives the
 			// contraband check; block every direct method. Legitimate calls (TryGetIdentifier) resolve
 			// through the base BasisNetworkContentBase / BasisNetworkBehaviour whitelist instead.
 			{
 				typeof(global::BasisPickupSyncNetworking),
 				new HashSet<string>()
+			},
+			// BasisInteractableButton: only the setter a prop needs to wire its own "pressed" handler.
+			// ButtonUp, both getters and TriggerButtonDown/Up are withheld until a script actually
+			// needs them - get_ButtonDown/Up would hand back another script's live delegate.
+			{
+				typeof(Basis.Scripts.BasisSdk.Interactions.BasisInteractableButton),
+				new HashSet<string>
+				{
+					"set_ButtonDown",
+				}
 			},
 		};
 

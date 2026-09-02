@@ -2,6 +2,7 @@
 using UnityEngine;
 using System;
 using System.Linq;
+using Basis.Scripts.Audio;
 using Basis.Scripts.Device_Management;
 using System.Threading;
 
@@ -36,6 +37,15 @@ public static class BasisLocalMicrophoneDriver
 
     private static bool IsSuppressMuteMode =>
         Basis.BasisUI.BasisSettingsDefaults.MicMuteBehavior?.RawValue == SettingMuteSuppress;
+
+    private static int captureHolds;
+    private static int muteBypasses;
+
+    public static bool HasCaptureHold => Volatile.Read(ref captureHolds) > 0;
+
+    public static bool MuteBypassed => Volatile.Read(ref muteBypasses) > 0;
+
+    private static bool KeepCaptureWhilePaused => IsSuppressMuteMode || HasCaptureHold;
 
     public static Action OnHasAudio;
     public static Action OnHasSilence;
@@ -92,6 +102,9 @@ public static class BasisLocalMicrophoneDriver
 
     public const int ProcessFrameSize = 960;  // 20ms at 48kHz
     public const int DenoiserFrameSize = 480; // 10ms at 48kHz
+
+    private static readonly BasisMicrophonePacer _pacer = new BasisMicrophonePacer();
+    private const int PaceMaxWaitMilliseconds = 20;
 
     private static readonly BasisMicrophoneAgc _agc = new BasisMicrophoneAgc();
     private static BasisMicrophoneAgc.Settings _agcSettings;
@@ -158,7 +171,7 @@ public static class BasisLocalMicrophoneDriver
             isPaused = value;
             PlayerPrefs.SetInt(MicrophoneState, isPaused ? 1 : 0);
 
-            bool suppress = IsSuppressMuteMode;
+            bool suppress = KeepCaptureWhilePaused;
 
             if (isPaused)
             {
@@ -247,6 +260,8 @@ public static class BasisLocalMicrophoneDriver
         rmsValues = null;
         _denoiseDry = null;
 
+        BasisVoiceLevel.LocalVoiceRms = 0f;
+
         channels = 1;
         IsInitialize = false;
         OnInitializedAction?.Invoke(false);
@@ -316,6 +331,43 @@ public static class BasisLocalMicrophoneDriver
     public static void ToggleIsPaused()
     {
         IsPaused = !IsPaused;
+    }
+
+    public static void AddCaptureHold()
+    {
+        Interlocked.Increment(ref captureHolds);
+        if (!IsInitialize || !isPaused || MicrophoneIsStarted) return;
+
+        string desired = SMDMicrophone.Current.Microphone;
+        if (string.IsNullOrEmpty(desired)) desired = _pendingDeviceWhenPaused;
+        if (string.IsNullOrEmpty(desired)) desired = MicrophoneDevice;
+
+        if (!string.IsNullOrEmpty(desired)) ResetMicrophones(desired);
+    }
+
+    public static void ReleaseCaptureHold()
+    {
+        int remaining = Interlocked.Decrement(ref captureHolds);
+        if (remaining < 0)
+        {
+            Interlocked.Exchange(ref captureHolds, 0);
+            return;
+        }
+
+        if (remaining > 0) return;
+        if (isPaused && !IsSuppressMuteMode) StopSelectedMicrophone();
+    }
+
+    public static void AddMuteBypass()
+    {
+        AddCaptureHold();
+        Interlocked.Increment(ref muteBypasses);
+    }
+
+    public static void ReleaseMuteBypass()
+    {
+        if (Interlocked.Decrement(ref muteBypasses) < 0) Interlocked.Exchange(ref muteBypasses, 0);
+        ReleaseCaptureHold();
     }
 
     public static bool ResetMicrophones(string newMicrophone)
@@ -493,6 +545,8 @@ public static class BasisLocalMicrophoneDriver
             if (microphoneBufferArray != null) Array.Clear(microphoneBufferArray, 0, microphoneBufferArray.Length);
         }
 
+        BasisMicrophoneWaveform.Clear();
+
         // Drop any raw chunks captured for the old device/config.
         lock (stagingLock)
         {
@@ -516,6 +570,8 @@ public static class BasisLocalMicrophoneDriver
             rmsIndex = 0;
             averageRms = 0f;
         }
+
+        BasisVoiceLevel.LocalVoiceRms = 0f;
 
         if (_denoiseDry != null) Array.Clear(_denoiseDry, 0, _denoiseDry.Length);
     }
@@ -554,7 +610,7 @@ public static class BasisLocalMicrophoneDriver
             _recoveryBackoffSeconds = 0f;
         }
 
-        bool micShouldRun = !IsPaused || IsSuppressMuteMode;
+        bool micShouldRun = !IsPaused || KeepCaptureWhilePaused;
         if (!micShouldRun) return;
 
         string preferred = SMDMicrophone.Current.Microphone;
@@ -742,17 +798,19 @@ public static class BasisLocalMicrophoneDriver
         processingTokenSource = new CancellationTokenSource();
         processingThread = new Thread(() =>
         {
+            int waitMilliseconds = Timeout.Infinite;
             while (!processingTokenSource.IsCancellationRequested)
             {
                 try
                 {
-                    processingEvent.WaitOne();
+                    processingEvent.WaitOne(waitMilliseconds);
                     if (processingTokenSource.IsCancellationRequested) break;
 
-                    ProcessPendingFrames();
+                    waitMilliseconds = ProcessPendingFrames();
                 }
                 catch (Exception ex)
                 {
+                    waitMilliseconds = Timeout.Infinite;
                     BasisDebug.LogErrorOnce($"Microphone processing thread: {ex}", BasisDebug.LogTag.Voice);
                 }
             }
@@ -775,7 +833,12 @@ public static class BasisLocalMicrophoneDriver
         processingTokenSource = null;
     }
 
-    public static void ProcessPendingFrames()
+    /// <summary>
+    /// Processes as many captured frames as the pacer will release, and returns how long
+    /// the caller should wait before calling again — <see cref="Timeout.Infinite"/> when
+    /// the ring is empty and the capture pump will be the next thing to wake it.
+    /// </summary>
+    public static int ProcessPendingFrames()
     {
         while (true)
         {
@@ -783,14 +846,64 @@ public static class BasisLocalMicrophoneDriver
             {
                 DrainStagingIntoRing();
 
+                long now = System.Diagnostics.Stopwatch.GetTimestamp();
+                if (!_pacer.TryRelease(now, PendingFrameCount(), PaceFramePeriodTicks(), out long waitTicks))
+                {
+                    return waitTicks > 0 ? PaceWaitMilliseconds(waitTicks) : Timeout.Infinite;
+                }
+
                 if (!TryDequeueCapturedFrame())
                 {
-                    return;
+                    _pacer.Resync(now);
+                    return Timeout.Infinite;
                 }
 
                 ProcessCurrentFrame();
             }
         }
+    }
+
+    private static int PendingFrameCount()
+    {
+        lock (ringLock)
+        {
+            if (!MicrophoneIsStarted || microphoneBufferArray == null || processBufferArray == null || bufferLength <= 0)
+            {
+                return 0;
+            }
+
+            int available = GetDataLength(bufferLength, head, written);
+            if (inWarmup)
+            {
+                available -= warmupSamples;
+            }
+            return available > 0 ? available / ProcessFrameSize : 0;
+        }
+    }
+
+    private static long PaceFramePeriodTicks()
+    {
+        int rate = LocalOpusSettings.MicrophoneSampleRate;
+        if (rate <= 0)
+        {
+            rate = 48000;
+        }
+        return System.Diagnostics.Stopwatch.Frequency * ProcessFrameSize / rate;
+    }
+
+    private static int PaceWaitMilliseconds(long ticks)
+    {
+        long frequency = System.Diagnostics.Stopwatch.Frequency;
+        long milliseconds = (ticks * 1000L + frequency - 1L) / frequency;
+        if (milliseconds < 1L)
+        {
+            milliseconds = 1L;
+        }
+        else if (milliseconds > PaceMaxWaitMilliseconds)
+        {
+            milliseconds = PaceMaxWaitMilliseconds;
+        }
+        return (int)milliseconds;
     }
 
     // Downmixes every staged raw chunk into the mono ring, advancing `written`. Runs on
@@ -828,6 +941,8 @@ public static class BasisLocalMicrophoneDriver
                 DownmixDeltaIntoRingMono(written, ProcessFrameSize, bufferLength, ch, _stagingScratch, microphoneBufferArray);
                 written = (written + ProcessFrameSize) % bufferLength;
             }
+
+            BasisMicrophoneWaveform.Push(_stagingScratch, ProcessFrameSize, ch, isPaused && !MuteBypassed);
         }
     }
 
@@ -903,6 +1018,8 @@ public static class BasisLocalMicrophoneDriver
         ApplyLimiter(s);
 
         RollingRMS();
+
+        BasisVoiceLevel.LocalVoiceRms = isPaused ? 0f : averageRms;
 
         if (!isPaused && IsTransmitWorthy())
         {

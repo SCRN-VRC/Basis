@@ -196,10 +196,10 @@ namespace Basis.Scripts.Drivers
         /// <summary>The desired near clipping plane from scene settings before avatar overriding.</summary>
         private float DesiredClipNear = 0.001f;
 
-        /// <summary>World-space position of the left eye (XR). In desktop mode this equals camera position.</summary>
+        /// <summary>Raw left-eye position from the active XR backend: tracking space on OpenXR, head-relative on OpenVR. Not world space; not written in desktop mode.</summary>
         public static Vector3 LeftEye;
 
-        /// <summary>World-space position of the right eye (XR). In desktop mode this equals camera position.</summary>
+        /// <summary>Raw right-eye position from the active XR backend: tracking space on OpenXR, head-relative on OpenVR. Not world space; not written in desktop mode.</summary>
         public static Vector3 RightEye;
 
         /// <summary>
@@ -314,9 +314,11 @@ namespace Basis.Scripts.Drivers
         }
 
         /// <summary>
-        /// Returns the left-eye position for XR, or the camera position for desktop mode.
+        /// Raw backend eye position: <see cref="LeftEye"/> in XR (tracking space on OpenXR, head-relative
+        /// on OpenVR — not world space), or the world-space camera position in desktop mode.
+        /// Use <see cref="LeftEyeWorldPosition"/> for the world-space render-camera eye.
         /// </summary>
-        public static Vector3 LeftEyePosition()
+        public static Vector3 LeftEyeRawPosition()
         {
             if (BasisDeviceManagement.IsUserInDesktop())
             {
@@ -329,9 +331,11 @@ namespace Basis.Scripts.Drivers
         }
 
         /// <summary>
-        /// Returns the right-eye position for XR, or the camera position for desktop mode.
+        /// Raw backend eye position: <see cref="RightEye"/> in XR (tracking space on OpenXR, head-relative
+        /// on OpenVR — not world space), or the world-space camera position in desktop mode.
+        /// Use <see cref="RightEyeWorldPosition"/> for the world-space render-camera eye.
         /// </summary>
-        public static Vector3 RightEyePosition()
+        public static Vector3 RightEyeRawPosition()
         {
             if (BasisDeviceManagement.IsUserInDesktop())
             {
@@ -341,6 +345,39 @@ namespace Basis.Scripts.Drivers
             {
                 return RightEye;
             }
+        }
+
+        /// <summary>
+        /// World-space position of the stereo render camera's left eye, recovered from the camera's
+        /// stereo view matrix. Falls back to the camera position when stereo rendering is inactive
+        /// (desktop mode), or zero when no camera instance exists.
+        /// </summary>
+        public static Vector3 LeftEyeWorldPosition()
+        {
+            return EyeWorldPosition(Camera.StereoscopicEye.Left);
+        }
+
+        /// <summary>
+        /// World-space position of the stereo render camera's right eye, recovered from the camera's
+        /// stereo view matrix. Falls back to the camera position when stereo rendering is inactive
+        /// (desktop mode), or zero when no camera instance exists.
+        /// </summary>
+        public static Vector3 RightEyeWorldPosition()
+        {
+            return EyeWorldPosition(Camera.StereoscopicEye.Right);
+        }
+
+        private static Vector3 EyeWorldPosition(Camera.StereoscopicEye eye)
+        {
+            if (!HasInstance || CameraInstance == null)
+            {
+                return Vector3.zero;
+            }
+            if (CameraInstance.stereoEnabled)
+            {
+                return CameraInstance.GetStereoViewMatrix(eye).inverse.MultiplyPoint(Vector3.zero);
+            }
+            return SelfTransform.position;
         }
 
         /// <summary>
@@ -436,6 +473,7 @@ namespace Basis.Scripts.Drivers
             BasisLocalMicrophoneDriver.OnInitializedAction -= OnMicrophoneDriverInitialized;
             BasisNetworkModeration.OnShoutModeChanged -= OnShoutModeChangedForIcon;
             Basis.Scripts.Networking.BasisTalkModeManager.OnLocalTalkModeChanged -= microphoneIconDriver.OnTalkModeChanged;
+            microphoneIconDriver.Dispose();
 #endif
             HasEvents = false;
             HasInstance = false;
@@ -448,7 +486,7 @@ namespace Basis.Scripts.Drivers
         {
             if (BasisLocalAvatarDriver.Mapping != null && BasisLocalAvatarDriver.Mapping.head != null)
             {
-                BasisLocalAvatarDriver.Mapping.head.localScale = BasisLocalAvatarDriver.HeadScale;
+                BasisLocalAvatarDriver.Mapping.head.SetLocalScale(BasisLocalAvatarDriver.HeadScale);
             }
             if (HasEvents)
             {
@@ -517,7 +555,7 @@ namespace Basis.Scripts.Drivers
         {
             if (HasInstance)
             {
-                SelfTransform.GetPositionAndRotation(out Position, out Rotation);
+                SelfTransform.GetPose(out Position, out Rotation);
             }
             else
             {
@@ -541,7 +579,7 @@ namespace Basis.Scripts.Drivers
         /// </summary>
         public void UpdateCameraScale(BasisHeightDriver.HeightModeChange HeightModeChange)
         {
-            SelfTransform.localScale = Vector3.one * BasisHeightDriver.DeviceScale;
+            SelfTransform.SetLocalScale(Vector3.one * BasisHeightDriver.DeviceScale);
             if (BasisSettingsDefaults.UseCameraClipOverride.RawValue)
             {
                 // User has explicitly opted into raw clip values; bypass the eye-height clamp.
@@ -661,7 +699,7 @@ namespace Basis.Scripts.Drivers
             BasisAutoScaleEstimator.Tick(DeltaTime);
             if (BasisLocalAvatarDriver.Mapping.Hashead)
             {
-                SelfTransform.GetPositionAndRotation(out Position, out Rotation);
+                SelfTransform.GetPose(out Position, out Rotation);
 
                 if (IsThirdPerson)
                 {
@@ -682,17 +720,17 @@ namespace Basis.Scripts.Drivers
                 (Vector3 position, Quaternion rotation)? listenerOverride = AudioListenerPoseOverride?.Invoke();
                 if (listenerOverride.HasValue)
                 {
-                    ListenerTransform.SetPositionAndRotation(listenerOverride.Value.position, listenerOverride.Value.rotation);
+                    ListenerTransform.SetPose(listenerOverride.Value.position, listenerOverride.Value.rotation);
                     _listenerDetachedFromCamera = true;
                 }
                 else if (IsThirdPerson && BasisSettingsDefaults.AudioListenerFollowsHead.RawValue)
                 {
-                    ListenerTransform.SetPositionAndRotation(HeadPosition, HeadRotation);
+                    ListenerTransform.SetPose(HeadPosition, HeadRotation);
                     _listenerDetachedFromCamera = true;
                 }
                 else if (_listenerDetachedFromCamera)
                 {
-                    ListenerTransform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+                    ListenerTransform.SetLocalPose(Vector3.zero, Quaternion.identity);
                     _listenerDetachedFromCamera = false;
                 }
                 if (CameraData.allowXRRendering)
@@ -700,7 +738,7 @@ namespace Basis.Scripts.Drivers
                     Vector3 offset = VRMicrophoneLocalOffset;
                     offset.x += microphoneIconDriver.IconPositionOffset.x;
                     offset.y += microphoneIconDriver.IconPositionOffset.y;
-                    ParentOfUI.localPosition = offset;
+                    ParentOfUI.SetLocalPosition(offset);
                     _micLayoutValid = false;
                 }
                 else
@@ -723,8 +761,8 @@ namespace Basis.Scripts.Drivers
                         viewportPos.y += offset.y;
                         Vector3 worldPoint = Camera.ViewportToWorldPoint(viewportPos);
                         // assume this transform is the camera parent
-                        Vector3 localPos = SelfTransform.InverseTransformPoint(worldPoint);
-                        ParentOfUI.localPosition = localPos.normalized * MicrophoneAnchorDistance;
+                        Vector3 localPos = SelfTransform.ToLocalPoint(worldPoint);
+                        ParentOfUI.SetLocalPosition(localPos.normalized * MicrophoneAnchorDistance);
 
                         _micLayoutValid = true;
                         _micLayoutFov = fov;
@@ -741,7 +779,7 @@ namespace Basis.Scripts.Drivers
             {
                 if (_wasThirdPerson)
                 {
-                    SelfTransform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+                    SelfTransform.SetLocalPose(Vector3.zero, Quaternion.identity);
                     CameraInstance.fieldOfView = DefaultCameraFov;
                     _wasThirdPerson = false;
                 }
@@ -754,7 +792,7 @@ namespace Basis.Scripts.Drivers
             Transform parentTransform = SelfTransform.parent;
 
             float scale = BasisHeightDriver.AvatarToDefaultRatioScaledWithAvatarScale;
-            parentTransform.GetPositionAndRotation(out Vector3 targetTrackingPos, out Quaternion targetTrackingRot);
+            parentTransform.GetPose(out Vector3 targetTrackingPos, out Quaternion targetTrackingRot);
 
             Vector3 euler = targetTrackingRot.eulerAngles;
             float targetPitch = euler.x;
@@ -808,7 +846,7 @@ namespace Basis.Scripts.Drivers
                 desiredWorldPos = hit.point + (hit.normal * scaledRadius);
             }
 
-            SelfTransform.SetPositionAndRotation(desiredWorldPos, desiredRotation);
+            SelfTransform.SetPose(desiredWorldPos, desiredRotation);
         }
         private void OnClipOverrideToggleChanged(bool _) => UpdateCameraScale();
         private void OnClipBindingChangedFloat(float _) => UpdateCameraScale();

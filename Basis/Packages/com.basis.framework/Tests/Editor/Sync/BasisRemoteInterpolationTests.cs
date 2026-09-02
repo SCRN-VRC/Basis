@@ -281,11 +281,12 @@ namespace Basis.Tests.Sync
         [Test]
         public void HighWireSize_Locked_AfterBitDepthBump()
         {
-            // Body/limb joints (slots 0..18) at 12 bits, toes 5, fingers 6/5.
-            // 19×(2+36) + 2×(2+15) + fingers = 1302 bits = 163 rotation bytes; +12 pos +22 tail +35 effector = 232.
-            Assert.That(BasisBoneRotationCompression.RotationBytes(BasisAvatarBitPacking.BitQuality.High), Is.EqualTo(163),
+            // v52: 3-DOF slots (0..8) at 12 BPC = 9×38, 2-DOF slots (9..18) as 13+12-bit angle
+            // pairs = 10×25, toes as 7-bit angles = 2×7 → 606 bone bits + 140 finger bits =
+            // 746 bits = 94 rotation bytes. Packet: 9 pos + 94 + 21 tail + 35 effector = 159.
+            Assert.That(BasisBoneRotationCompression.RotationBytes(BasisAvatarBitPacking.BitQuality.High), Is.EqualTo(94),
                 "High rotation-byte count changed — wire format + ServerVersion must move together");
-            Assert.That(BasisAvatarBitPacking.ConvertToSize(BasisAvatarBitPacking.BitQuality.High), Is.EqualTo(232));
+            Assert.That(BasisAvatarBitPacking.ConvertToSize(BasisAvatarBitPacking.BitQuality.High), Is.EqualTo(159));
         }
 
         [Test]

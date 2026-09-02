@@ -26,6 +26,81 @@
 		<ProjectReference Include="..\BasisNetworkCore\BasisNetworkCore.csproj" />
 		<ProjectReference Include="..\LiteNetLib\LiteNetLib.csproj" />
 	</ItemGroup>
+
+	<!--
+	  The benchmark ships beside the server but is NOT referenced by it.
+
+	  ReferenceOutputAssembly="false" is the whole point of these two lines: it buys build ordering
+	  so the copy below has something to copy, without putting the assemblies on this project's
+	  reference list. A real reference would let the CLR map the benchmark and its two compression
+	  dependencies into every server process the moment a method mentioning them was JITted — for a
+	  tool that runs once, on the first boot, out of a separate process. BasisFirstBootTuning launches
+	  it through Process.Start and names no type from it, so a normal boot costs one File.Exists.
+
+	  SkipGetTargetFrameworkProperties avoids the cross-targeting negotiation for a reference whose
+	  output we only ever copy as files.
+	-->
+	<!--
+	  The optional compute backend, copied beside the server binary because BasisComputeBackend
+	  resolves it by file name from AppContext.BaseDirectory. Referenced rather than copied by hand
+	  so its own dependency (ILGPU) comes with it, and named nowhere in code: the CLR maps an
+	  assembly when a method referencing its types is first JITted, so a server on a host with no
+	  GPU never loads either of them.
+	-->
+	<ItemGroup>
+		<ProjectReference Include="..\BasisNetworkCompute\BasisNetworkCompute.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\BasisServerBenchmark\BasisServerBenchmark.csproj"
+		                  ReferenceOutputAssembly="false"
+		                  Private="false"
+		                  SkipGetTargetFrameworkProperties="true" />
+		<ProjectReference Include="..\BasisNetworkClientConsole\BasisNetworkClientConsole\BasisNetworkClientConsole.csproj"
+		                  Condition="Exists('$(MSBuildThisFileDirectory)..\..\Basis\Packages\com.avionblock.opussharp\OpusSharp.Core')"
+		                  ReferenceOutputAssembly="false"
+		                  Private="false"
+		                  SkipGetTargetFrameworkProperties="true" />
+	</ItemGroup>
+
+	<!--
+	  Both tools land flat in the server's own folder, which is what the released artifact already
+	  looks like: CI publishes the solution into one directory, so a subfolder layout existed only
+	  in local builds and only ever cost duplication. The three apps share every dependency they
+	  have in common - one BouncyCastle instead of three - because each carries its own
+	  name-prefixed deps.json and runtimeconfig.json, so nothing collides but the assemblies that
+	  are byte-identical anyway.
+	-->
+	<Target Name="CopyBenchmarkTooling" AfterTargets="Build">
+		<PropertyGroup>
+			<BenchmarkBaseDir>$(MSBuildThisFileDirectory)..\BasisServerBenchmark\bin\$(Configuration)\$(TargetFramework)\</BenchmarkBaseDir>
+			<LoadClientBaseDir>$(MSBuildThisFileDirectory)..\BasisNetworkClientConsole\BasisNetworkClientConsole\bin\$(Configuration)\$(TargetFramework)\</LoadClientBaseDir>
+			<BenchmarkOutDir>$(BenchmarkBaseDir)</BenchmarkOutDir>
+			<LoadClientOutDir>$(LoadClientBaseDir)</LoadClientOutDir>
+			<BenchmarkOutDir Condition="'$(RuntimeIdentifier)' != '' And Exists('$(BenchmarkBaseDir)$(RuntimeIdentifier)')">$(BenchmarkBaseDir)$(RuntimeIdentifier)\</BenchmarkOutDir>
+			<LoadClientOutDir Condition="'$(RuntimeIdentifier)' != '' And Exists('$(LoadClientBaseDir)$(RuntimeIdentifier)')">$(LoadClientBaseDir)$(RuntimeIdentifier)\</LoadClientOutDir>
+		</PropertyGroup>
+		<!--
+		  Non-recursive on purpose. Both tools are a flat set of assemblies beside their host, and a
+		  '**' glob here also sweeps whatever else has collected in their bin folders: the RID
+		  subfolder a '-r linux-arm64' build leaves behind, saved benchmark runs, stray zips. Each of
+		  those then lands in the server's output and is swept again by the next RID build, which is
+		  how a 9 MB server grew an 87 MB folder holding six copies of BouncyCastle.
+		-->
+		<ItemGroup>
+			<BenchmarkFiles Include="$(BenchmarkOutDir)*" Exclude="$(BenchmarkOutDir)*.pdb" />
+			<LoadClientFiles Include="$(LoadClientOutDir)*" Exclude="$(LoadClientOutDir)*.pdb;$(LoadClientOutDir)ClientSimConfig.xml;$(LoadClientOutDir)*.bak;$(LoadClientOutDir)*.zip" />
+		</ItemGroup>
+		<Copy SourceFiles="@(BenchmarkFiles)"
+		      DestinationFolder="$(OutDir)"
+		      SkipUnchangedFiles="true"
+		      Condition="'@(BenchmarkFiles)' != ''" />
+		<Copy SourceFiles="@(LoadClientFiles)"
+		      DestinationFolder="$(OutDir)"
+		      SkipUnchangedFiles="true"
+		      Condition="'@(LoadClientFiles)' != ''" />
+	</Target>
+
 	<PropertyGroup>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	</PropertyGroup>

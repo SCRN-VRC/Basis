@@ -1,4 +1,5 @@
-using Basis.Network.Core;
+﻿using Basis.Network.Core;
+using Basis.Network.Core.Compression;
 using BasisNetworkCore;
 using BasisNetworkCore.Security;
 using BasisPermissions;
@@ -326,6 +327,26 @@ namespace BasisNetworkServer.Security
                         HandleFullQualityBroadcast(peer, reader));
                     break;
 
+                case AdminRequestMode.ForceAvatar:
+                    Require(peer, PermNodes.ModerationForceAvatar, () =>
+                        HandleForceAvatar(peer, reader));
+                    break;
+
+                case AdminRequestMode.ForceAvatarAll:
+                    Require(peer, PermNodes.ModerationForceAvatar, () =>
+                        HandleForceAvatarAll(peer, reader));
+                    break;
+
+                case AdminRequestMode.SetLocomotionOverride:
+                    Require(peer, PermNodes.ModerationLocomotion, () =>
+                        HandleSetLocomotionOverride(peer, reader));
+                    break;
+
+                case AdminRequestMode.SetLocomotionOverrideAll:
+                    Require(peer, PermNodes.ModerationLocomotion, () =>
+                        HandleSetLocomotionOverrideAll(peer, reader));
+                    break;
+
                 // ===== GLOBAL LOCK =====
                 case AdminRequestMode.GlobalToggleAvatars:
                     Require(peer, PermNodes.ModerationGlobalLock, () =>
@@ -349,7 +370,7 @@ namespace BasisNetworkServer.Security
 
                 case AdminRequestMode.GlobalToggleThirdPerson:
                     Require(peer, PermNodes.ModerationGlobalLock, () =>
-                        HandleGlobalToggle(peer, "Third-person camera", BasisGlobalLockManager.ToggleThirdPerson()));
+                        HandleGlobalFeatureToggle(peer, "The third-person camera", BasisGlobalLockManager.ToggleThirdPerson()));
                     break;
 
                 case AdminRequestMode.GlobalToggleAdditionalAvatarDataLock:
@@ -397,7 +418,7 @@ namespace BasisNetworkServer.Security
 
                 case AdminRequestMode.GlobalToggleCilbox:
                     Require(peer, PermNodes.ModerationGlobalLock, () =>
-                        HandleGlobalToggle(peer, "Avatar Cilbox code", BasisGlobalLockManager.ToggleCilbox()));
+                        HandleGlobalFeatureToggle(peer, "Avatar Cilbox code", BasisGlobalLockManager.ToggleCilbox()));
                     break;
 
                 case AdminRequestMode.GlobalToggleImages:
@@ -407,37 +428,37 @@ namespace BasisNetworkServer.Security
 
                 case AdminRequestMode.GlobalToggleEndEffectorIK:
                     Require(peer, PermNodes.ModerationGlobalLock, () =>
-                        HandleGlobalToggle(peer, "Remote end-effector IK", BasisGlobalLockManager.ToggleEndEffectorIK()));
+                        HandleGlobalFeatureToggle(peer, "Remote end-effector IK", BasisGlobalLockManager.ToggleEndEffectorIK()));
                     break;
 
                 case AdminRequestMode.GlobalToggleTextChat:
                     Require(peer, PermNodes.ModerationGlobalLock, () =>
-                        HandleGlobalToggle(peer, "Text chat", BasisGlobalLockManager.ToggleTextChat()));
+                        HandleGlobalFeatureToggle(peer, "Text chat", BasisGlobalLockManager.ToggleTextChat()));
                     break;
 
                 case AdminRequestMode.GlobalToggleVoiceChat:
                     Require(peer, PermNodes.ModerationGlobalLock, () =>
-                        HandleGlobalToggle(peer, "Voice chat", BasisGlobalLockManager.ToggleVoiceChat()));
+                        HandleGlobalFeatureToggle(peer, "Voice chat", BasisGlobalLockManager.ToggleVoiceChat()));
                     break;
 
                 case AdminRequestMode.GlobalToggleMediaPlayer:
                     Require(peer, PermNodes.ModerationGlobalLock, () =>
-                        HandleGlobalToggle(peer, "Media player", BasisGlobalLockManager.ToggleMediaPlayer()));
+                        HandleGlobalFeatureToggle(peer, "Media players", BasisGlobalLockManager.ToggleMediaPlayer()));
                     break;
 
                 case AdminRequestMode.GlobalToggleCameraCapture:
                     Require(peer, PermNodes.ModerationGlobalLock, () =>
-                        HandleGlobalToggle(peer, "Camera capture", BasisGlobalLockManager.ToggleCameraCapture()));
+                        HandleGlobalFeatureToggle(peer, "Camera capture", BasisGlobalLockManager.ToggleCameraCapture()));
                     break;
 
                 case AdminRequestMode.GlobalTogglePropGrabbing:
                     Require(peer, PermNodes.ModerationGlobalLock, () =>
-                        HandleGlobalToggle(peer, "Prop grabbing", BasisGlobalLockManager.TogglePropGrabbing()));
+                        HandleGlobalFeatureToggle(peer, "Prop grabbing", BasisGlobalLockManager.TogglePropGrabbing()));
                     break;
 
                 case AdminRequestMode.GlobalToggleSafeDisplayNames:
                     Require(peer, PermNodes.ModerationGlobalLock, () =>
-                        HandleGlobalToggle(peer, "Safe display names", BasisGlobalLockManager.ToggleSafeDisplayNames()));
+                        HandleGlobalProtectionToggle(peer, "Safe display names", BasisGlobalLockManager.ToggleSafeDisplayNames()));
                     break;
 
                 case AdminRequestMode.SetGlobalAvatarScaleLimits:
@@ -453,6 +474,11 @@ namespace BasisNetworkServer.Security
                 case AdminRequestMode.SetGlobalReductionSettings:
                     Require(peer, PermNodes.ModerationGlobalLock, () =>
                         HandleReductionSettingsSet(peer, reader));
+                    break;
+
+                case AdminRequestMode.SetGlobalImageBandwidth:
+                    Require(peer, PermNodes.ModerationGlobalLock, () =>
+                        HandleImageBandwidthSet(peer, reader));
                     break;
 
                 case AdminRequestMode.RequestAllLogs:
@@ -515,6 +541,11 @@ namespace BasisNetworkServer.Security
                 case AdminRequestMode.SetAllowlistMode:
                     Require(peer, PermNodes.ConfigurationEditor, () =>
                         SendBackMessage(peer, ApplyAllowlistMode(reader.GetByte())));
+                    break;
+
+                case AdminRequestMode.SetGlobalPeerLimit:
+                    Require(peer, PermNodes.ConfigurationEditor, () =>
+                        HandlePeerLimitSet(peer, reader));
                     break;
 
                 case AdminRequestMode.AddAllowlist:
@@ -706,34 +737,78 @@ namespace BasisNetworkServer.Security
 
         private static void HandlePermissionEdit(AdminRequestMode mode, NetPeer peer, NetPacketReader reader)
         {
+            // SetUserGroup/SetUserNode/SetGroupNode/SetGroupParent all carry a trailing `add` bool.
+            // It used to be left unread, so every "remove" button on the client added instead.
+            string result;
             switch (mode)
             {
                 case AdminRequestMode.SetUserGroup:
-                    PermissionIntegration.Manager.AddUserToGroup(reader.GetString(), reader.GetString());
+                {
+                    string uuid = reader.GetString();
+                    string group = reader.GetString();
+                    bool add = reader.GetBool();
+                    if (add) PermissionIntegration.Manager.AddUserToGroup(uuid, group);
+                    else PermissionIntegration.Manager.RemoveUserFromGroup(uuid, group);
+                    result = $"{(add ? "Added" : "Removed")} {uuid} {(add ? "to" : "from")} group '{group}'.";
                     break;
+                }
 
                 case AdminRequestMode.SetUserNode:
-                    PermissionIntegration.Manager.AddUserNode(reader.GetString(), reader.GetString());
+                {
+                    string uuid = reader.GetString();
+                    string node = reader.GetString();
+                    bool add = reader.GetBool();
+                    if (add) PermissionIntegration.Manager.AddUserNode(uuid, node);
+                    else PermissionIntegration.Manager.RemoveUserNode(uuid, node);
+                    result = $"{(add ? "Added" : "Removed")} node '{node}' {(add ? "to" : "from")} user {uuid}.";
                     break;
+                }
 
                 case AdminRequestMode.SetGroupNode:
-                    PermissionIntegration.Manager.AddGroupNode(reader.GetString(), reader.GetString());
+                {
+                    string group = reader.GetString();
+                    string node = reader.GetString();
+                    bool add = reader.GetBool();
+                    if (add) PermissionIntegration.Manager.AddGroupNode(group, node);
+                    else PermissionIntegration.Manager.RemoveGroupNode(group, node);
+                    result = $"{(add ? "Added" : "Removed")} node '{node}' {(add ? "to" : "from")} group '{group}'.";
                     break;
+                }
 
                 case AdminRequestMode.CreateGroup:
-                    PermissionIntegration.Manager.GetOrCreateGroup(reader.GetString());
+                {
+                    string group = reader.GetString();
+                    PermissionIntegration.Manager.GetOrCreateGroup(group);
+                    result = $"Group '{group}' created.";
                     break;
+                }
 
                 case AdminRequestMode.DeleteGroup:
-                    PermissionIntegration.Manager.DeleteGroup(reader.GetString());
+                {
+                    string group = reader.GetString();
+                    result = PermissionIntegration.Manager.DeleteGroup(group)
+                        ? $"Group '{group}' deleted."
+                        : $"No group named '{group}'.";
                     break;
+                }
 
                 case AdminRequestMode.SetGroupParent:
-                    PermissionIntegration.Manager.AddGroupParent(reader.GetString(), reader.GetString());
+                {
+                    string group = reader.GetString();
+                    string parent = reader.GetString();
+                    bool add = reader.GetBool();
+                    if (add) PermissionIntegration.Manager.AddGroupParent(group, parent);
+                    else PermissionIntegration.Manager.RemoveGroupParent(group, parent);
+                    result = $"Group '{group}' {(add ? "now inherits" : "no longer inherits")} '{parent}'.";
+                    break;
+                }
+
+                default:
+                    result = "Permission updated";
                     break;
             }
 
-            SendBackMessage(peer, "Permission updated");
+            SendBackMessage(peer, result);
         }
 
         private static void HandleGetPermissions(NetPeer peer)
@@ -794,6 +869,185 @@ namespace BasisNetworkServer.Security
             bool enable = reader.GetBool();
             BasisNetworkServer.BasisNetworkingReductionSystem.BasisServerReductionSystemEvents.SetBypassReduction(id, enable);
             SendBackMessage(peer, $"Full-quality broadcast {(enable ? "ENABLED" : "DISABLED")} for player {id}.");
+        }
+
+        /// <summary>
+        /// Relays a moderator's avatar choice to the one peer it targets. The server never loads or
+        /// validates the bundle itself — it only decides who is allowed to be told to wear it. The
+        /// target's own avatar-change broadcast is what reaches everyone else, so
+        /// <see cref="BasisSavedState"/> stays correct for late joiners with nothing extra here.
+        /// </summary>
+        private static void HandleSetLocomotionOverrideAll(NetPeer peer, NetPacketReader reader)
+        {
+            byte fields = reader.GetByte();
+            float jumpHeight = reader.GetFloat();
+            float walkSpeed = reader.GetFloat();
+            float runSpeed = reader.GetFloat();
+            float gravity = reader.GetFloat();
+            byte movementMode = reader.GetByte();
+
+            var writer = NetworkServer.RentWriter();
+            new AdminRequest().Serialize(writer, AdminRequestMode.LocomotionOverrideApply);
+            writer.Put((ushort)peer.Id);
+            writer.Put(fields);
+            writer.Put(jumpHeight);
+            writer.Put(walkSpeed);
+            writer.Put(runSpeed);
+            writer.Put(gravity);
+            writer.Put(movementMode);
+
+            int sent = 0;
+            int protectedSkipped = 0;
+            foreach (NetPeer target in NetworkServer.PeerSnapshot)
+            {
+                if (target == null || target.Id == peer.Id)
+                {
+                    continue;
+                }
+
+                if (NetworkServer.AuthIdentity.NetIDToUUID(target, out string targetUUID) && IsProtected(targetUUID))
+                {
+                    protectedSkipped++;
+                    continue;
+                }
+
+                NetworkServer.TrySend(target, writer, BasisNetworkCommons.AdminChannel, DeliveryMethod.ReliableOrdered);
+                sent++;
+            }
+            NetworkServer.ReturnWriter(writer);
+
+            string verb = fields == 0 ? "cleared on" : "applied to";
+            SendBackMessage(peer, protectedSkipped > 0
+                ? $"Locomotion override {verb} {sent} player(s); {protectedSkipped} protected player(s) skipped."
+                : $"Locomotion override {verb} {sent} player(s).");
+        }
+
+        private static void HandleSetLocomotionOverride(NetPeer peer, NetPacketReader reader)
+        {
+            ushort targetId = reader.GetUShort();
+            byte fields = reader.GetByte();
+            float jumpHeight = reader.GetFloat();
+            float walkSpeed = reader.GetFloat();
+            float runSpeed = reader.GetFloat();
+            float gravity = reader.GetFloat();
+            byte movementMode = reader.GetByte();
+
+            if (!NetworkServer.AuthenticatedPeers.TryGetValue(targetId, out NetPeer targetPeer))
+            {
+                SendBackMessage(peer, "Player not found");
+                return;
+            }
+
+            if (NetworkServer.AuthIdentity.NetIDToUUID(targetPeer, out string targetUUID) && IsProtected(targetUUID))
+            {
+                SendBackMessage(peer, "Target is protected");
+                return;
+            }
+
+            var writer = NetworkServer.RentWriter();
+            new AdminRequest().Serialize(writer, AdminRequestMode.LocomotionOverrideApply);
+            writer.Put((ushort)peer.Id);
+            writer.Put(fields);
+            writer.Put(jumpHeight);
+            writer.Put(walkSpeed);
+            writer.Put(runSpeed);
+            writer.Put(gravity);
+            writer.Put(movementMode);
+            NetworkServer.TrySend(targetPeer, writer, BasisNetworkCommons.AdminChannel, DeliveryMethod.ReliableOrdered);
+            NetworkServer.ReturnWriter(writer);
+
+            SendBackMessage(peer, fields == 0
+                ? $"Locomotion override cleared on player {targetId}."
+                : $"Locomotion override applied to player {targetId}.");
+        }
+
+        private static void HandleForceAvatar(NetPeer peer, NetPacketReader reader)
+        {
+            ushort targetId = reader.GetUShort();
+            string url = reader.GetString();
+            string password = reader.GetString();
+            byte embeddedSource = reader.GetByte();
+
+            if (string.IsNullOrEmpty(url))
+            {
+                SendBackMessage(peer, "Avatar url invalid");
+                return;
+            }
+
+            if (!NetworkServer.AuthenticatedPeers.TryGetValue(targetId, out NetPeer targetPeer))
+            {
+                SendBackMessage(peer, "Player not found");
+                return;
+            }
+
+            // Same courtesy Kick/Ban extend: a protected user can't be dressed by another moderator.
+            if (NetworkServer.AuthIdentity.NetIDToUUID(targetPeer, out string targetUUID) && IsProtected(targetUUID))
+            {
+                SendBackMessage(peer, "Target is protected");
+                return;
+            }
+
+            var writer = NetworkServer.RentWriter();
+            new AdminRequest().Serialize(writer, AdminRequestMode.ForceAvatarApply);
+            writer.Put((ushort)peer.Id);
+            writer.Put(url);
+            writer.Put(password ?? string.Empty);
+            writer.Put(embeddedSource);
+            NetworkServer.TrySend(targetPeer, writer, BasisNetworkCommons.AdminChannel, DeliveryMethod.ReliableOrdered);
+            NetworkServer.ReturnWriter(writer);
+
+            SendBackMessage(peer, $"Avatar forced on player {targetId}.");
+        }
+
+        /// <summary>
+        /// The crowd version of <see cref="HandleForceAvatar"/> — one avatar, every peer. Sent peer by
+        /// peer rather than through BroadcastMessageToClients because a blanket broadcast has no way to
+        /// exempt <see cref="PermNodes.protection"/> holders, and force-dressing another moderator is
+        /// exactly what that node exists to prevent. The payload is a plain ForceAvatarApply, so the
+        /// client needs no separate receive path for this.
+        /// </summary>
+        private static void HandleForceAvatarAll(NetPeer peer, NetPacketReader reader)
+        {
+            string url = reader.GetString();
+            string password = reader.GetString();
+            byte embeddedSource = reader.GetByte();
+
+            if (string.IsNullOrEmpty(url))
+            {
+                SendBackMessage(peer, "Avatar url invalid");
+                return;
+            }
+
+            var writer = NetworkServer.RentWriter();
+            new AdminRequest().Serialize(writer, AdminRequestMode.ForceAvatarApply);
+            writer.Put((ushort)peer.Id);
+            writer.Put(url);
+            writer.Put(password ?? string.Empty);
+            writer.Put(embeddedSource);
+
+            int sent = 0;
+            int protectedSkipped = 0;
+            foreach (NetPeer target in NetworkServer.PeerSnapshot)
+            {
+                if (target == null || target.Id == peer.Id)
+                {
+                    continue;
+                }
+
+                if (NetworkServer.AuthIdentity.NetIDToUUID(target, out string targetUUID) && IsProtected(targetUUID))
+                {
+                    protectedSkipped++;
+                    continue;
+                }
+
+                NetworkServer.TrySend(target, writer, BasisNetworkCommons.AdminChannel, DeliveryMethod.ReliableOrdered);
+                sent++;
+            }
+            NetworkServer.ReturnWriter(writer);
+
+            SendBackMessage(peer, protectedSkipped > 0
+                ? $"Avatar forced on {sent} player(s); {protectedSkipped} protected player(s) skipped."
+                : $"Avatar forced on {sent} player(s).");
         }
 
         private static void HandleCrashReportingSet(NetPeer peer, NetPacketReader reader)
@@ -872,6 +1126,10 @@ namespace BasisNetworkServer.Security
             config.AvatarBundleMinMessages = reader.GetInt();
             config.AvatarBundleMinBytes = reader.GetInt();
             config.EnableBSRProfiling = reader.GetBool();
+            config.EnableAvatarBundleZstd = reader.GetBool();
+            config.AvatarBundleZstdDeltaBundles = reader.GetBool();
+            config.AvatarBundleZstdLevel = reader.GetInt();
+            config.AvatarBundleZstdMaxShedTier = reader.GetInt();
 
             if (config.BSRSMillisecondDefaultInterval < 1) config.BSRSMillisecondDefaultInterval = 1;
             if (config.BSRBaseMultiplier < 1) config.BSRBaseMultiplier = 1;
@@ -889,11 +1147,121 @@ namespace BasisNetworkServer.Security
             if (config.LowQualityDistance > MaxQualityDistanceMeters) config.LowQualityDistance = MaxQualityDistanceMeters;
             if (config.AvatarBundleMinMessages < 1) config.AvatarBundleMinMessages = 1;
             if (config.AvatarBundleMinBytes < 0) config.AvatarBundleMinBytes = 0;
+            // Clamp to the range zstd actually accepts — a level outside it throws inside the
+            // codec, and this value arrives from an admin client rather than from config.xml.
+            if (config.AvatarBundleZstdLevel < BasisAvatarBundleZstd.MinLevel) config.AvatarBundleZstdLevel = BasisAvatarBundleZstd.MinLevel;
+            if (config.AvatarBundleZstdLevel > BasisAvatarBundleZstd.MaxLevel) config.AvatarBundleZstdLevel = BasisAvatarBundleZstd.MaxLevel;
 
             NetworkServer.InitializePulseSettings();
             SaveConfig();
             BroadcastReductionSettings();
             SendBackMessage(peer, $"Reduction settings set: interval {config.BSRSMillisecondDefaultInterval}ms, base x{config.BSRBaseMultiplier}, rate {config.BSRSIncreaseRate}, slowest {config.BSRSlowestSendRate}, distances {config.HighQualityDistance}/{config.MediumQualityDistance}/{config.LowQualityDistance}m, bundle {config.EnableAvatarBundleCompression} (min {config.AvatarBundleMinMessages}msg/{config.AvatarBundleMinBytes}B), profiling {config.EnableBSRProfiling}. SlowestSendRate applies to new joins only.");
+        }
+
+        /// <summary>
+        /// Applies the image/gif bandwidth budgets from an admin.
+        ///
+        /// The upload figure lands live in two places at once: it is what the server enforces from
+        /// the next packet onward, and it is what new joiners are told to pace themselves to. It is
+        /// NOT re-advertised to players already connected — the number rides
+        /// <c>ServerMetaDataMessage</c>, which is only built at join and on a permission refresh —
+        /// so lowering it takes hold immediately as a limit and gradually as a request. That
+        /// asymmetry is safe in the direction that matters: the enforced value is the strict one.
+        /// </summary>
+        private static void HandleImageBandwidthSet(NetPeer peer, NetPacketReader reader)
+        {
+            var config = NetworkServer.Configuration;
+            config.ImageShareEgressMegabitsPerSecond = reader.GetInt();
+            config.ImageShareDownloadMegabitsPerSecond = reader.GetInt();
+            config.ImageShareEgressEnforcementPercent = reader.GetInt();
+
+            // 0 is meaningful on both rates — "unmetered" for download, "client keeps its own
+            // conservative default" for upload — so only negatives are corrected.
+            if (config.ImageShareEgressMegabitsPerSecond < 0) config.ImageShareEgressMegabitsPerSecond = 0;
+            if (config.ImageShareDownloadMegabitsPerSecond < 0) config.ImageShareDownloadMegabitsPerSecond = 0;
+
+            // Enforcing below what was advertised would drop honest clients doing exactly what they
+            // were told, which is the one outcome this feature must never produce.
+            if (config.ImageShareEgressEnforcementPercent < 100) config.ImageShareEgressEnforcementPercent = 100;
+            if (config.ImageShareEgressEnforcementPercent > 1000) config.ImageShareEgressEnforcementPercent = 1000;
+
+            SaveConfig();
+            BroadcastImageBandwidth();
+            SendBackMessage(peer,
+                $"Image bandwidth set: upload {config.ImageShareEgressMegabitsPerSecond} Mb/s per sharer " +
+                $"(enforced at {config.ImageShareEgressEnforcementPercent}%), " +
+                $"download {config.ImageShareDownloadMegabitsPerSecond} Mb/s per joining player. " +
+                "Upload applies live as a limit; the advertised figure reaches existing players on their next join or permission refresh.");
+        }
+
+        private static void WriteImageBandwidth(NetDataWriter writer)
+        {
+            var config = NetworkServer.Configuration;
+            new AdminRequest().Serialize(writer, AdminRequestMode.GlobalGetImageBandwidth);
+            writer.Put(config.ImageShareEgressMegabitsPerSecond);
+            writer.Put(config.ImageShareDownloadMegabitsPerSecond);
+            writer.Put(config.ImageShareEgressEnforcementPercent);
+        }
+
+        private static void BroadcastImageBandwidth()
+        {
+            var writer = NetworkServer.RentWriter();
+            WriteImageBandwidth(writer);
+            NetworkServer.BroadcastMessageToClients(writer, BasisNetworkCommons.AdminChannel, NetworkServer.PeerSnapshot, DeliveryMethod.ReliableOrdered);
+            NetworkServer.ReturnWriter(writer);
+        }
+
+        public static void SendImageBandwidthToPeer(NetPeer peer)
+        {
+            var writer = NetworkServer.RentWriter();
+            WriteImageBandwidth(writer);
+            NetworkServer.TrySend(peer, writer, BasisNetworkCommons.AdminChannel, DeliveryMethod.ReliableOrdered);
+            NetworkServer.ReturnWriter(writer);
+        }
+
+        /// <summary>
+        /// Applies the maximum player count from an admin.
+        ///
+        /// The gate that reads it runs per connection request, so the new cap binds from the next
+        /// join onward. Setting it below the current population is allowed and drops nobody — the
+        /// instance stops admitting players until it drains under the cap.
+        /// </summary>
+        private static void HandlePeerLimitSet(NetPeer peer, NetPacketReader reader)
+        {
+            var config = NetworkServer.Configuration;
+            config.PeerLimit = reader.GetInt();
+
+            // 0 or negative would seal the instance shut, and player ids are ushort on the wire, so
+            // a cap past ushort.MaxValue could never be reached anyway.
+            if (config.PeerLimit < 1) config.PeerLimit = 1;
+            if (config.PeerLimit > ushort.MaxValue) config.PeerLimit = ushort.MaxValue;
+
+            SaveConfig();
+            BroadcastPeerLimit();
+            SendBackMessage(peer,
+                $"Max players set to {config.PeerLimit}. Applies from the next join; nobody connected now is disconnected.");
+        }
+
+        private static void WritePeerLimit(NetDataWriter writer)
+        {
+            new AdminRequest().Serialize(writer, AdminRequestMode.GlobalGetPeerLimit);
+            writer.Put(NetworkServer.Configuration.PeerLimit);
+        }
+
+        private static void BroadcastPeerLimit()
+        {
+            var writer = NetworkServer.RentWriter();
+            WritePeerLimit(writer);
+            NetworkServer.BroadcastMessageToClients(writer, BasisNetworkCommons.AdminChannel, NetworkServer.PeerSnapshot, DeliveryMethod.ReliableOrdered);
+            NetworkServer.ReturnWriter(writer);
+        }
+
+        public static void SendPeerLimitToPeer(NetPeer peer)
+        {
+            var writer = NetworkServer.RentWriter();
+            WritePeerLimit(writer);
+            NetworkServer.TrySend(peer, writer, BasisNetworkCommons.AdminChannel, DeliveryMethod.ReliableOrdered);
+            NetworkServer.ReturnWriter(writer);
         }
 
         private static void WriteReductionSettings(NetDataWriter writer)
@@ -911,6 +1279,10 @@ namespace BasisNetworkServer.Security
             writer.Put(config.AvatarBundleMinMessages);
             writer.Put(config.AvatarBundleMinBytes);
             writer.Put(config.EnableBSRProfiling);
+            writer.Put(config.EnableAvatarBundleZstd);
+            writer.Put(config.AvatarBundleZstdDeltaBundles);
+            writer.Put(config.AvatarBundleZstdLevel);
+            writer.Put(config.AvatarBundleZstdMaxShedTier);
         }
 
         private static void BroadcastReductionSettings()
@@ -945,6 +1317,7 @@ namespace BasisNetworkServer.Security
             NetworkServer.BroadcastMessageToClients(writer, BasisNetworkCommons.AdminChannel, NetworkServer.PeerSnapshot, DeliveryMethod.ReliableOrdered);
             NetworkServer.ReturnWriter(writer);
 
+            PersistGlobalLockState();
             BasisGlobalLockManager.BroadcastLockState();
         }
 
@@ -952,6 +1325,28 @@ namespace BasisNetworkServer.Security
         {
             string state = nowLocked ? "DISABLED" : "ENABLED";
             HandleGlobalStateNotification(peer, $"{contentType} loading has been globally {state} by an admin.");
+        }
+
+        /// <summary>
+        /// Notification for locks over a live feature rather than content loading (chat, voice,
+        /// grabbing, ...). HandleGlobalToggle's "<c>X loading</c>" template reads as nonsense for
+        /// these — nothing is being loaded — so they get a plain "<c>X has been ... DISABLED</c>".
+        /// </summary>
+        private static void HandleGlobalFeatureToggle(NetPeer peer, string featureName, bool nowLocked)
+        {
+            string state = nowLocked ? "DISABLED" : "ENABLED";
+            HandleGlobalStateNotification(peer, $"{featureName} has been globally {state} by an admin.");
+        }
+
+        /// <summary>
+        /// Notification for a protection that is ENABLED when its flag is set — the opposite sense
+        /// to every lock above, so the shared templates would announce the exact inverse of what
+        /// the admin just did.
+        /// </summary>
+        private static void HandleGlobalProtectionToggle(NetPeer peer, string protectionName, bool nowEnforced)
+        {
+            string state = nowEnforced ? "ENABLED" : "DISABLED";
+            HandleGlobalStateNotification(peer, $"{protectionName} has been globally {state} by an admin.");
         }
 
         /// <summary>
@@ -975,7 +1370,19 @@ namespace BasisNetworkServer.Security
             NetworkServer.ReturnWriter(writer);
 
             // Broadcast updated lock state so clients track it
+            PersistGlobalLockState();
             BasisGlobalLockManager.BroadcastLockState();
+        }
+
+        /// <summary>
+        /// Mirrors the live global lock state onto Configuration and writes config.xml. Every lock
+        /// seeds itself from config at boot, so a toggle that isn't persisted here silently reverts
+        /// on the next restart.
+        /// </summary>
+        private static void PersistGlobalLockState()
+        {
+            BasisGlobalLockManager.WriteToConfig(NetworkServer.Configuration);
+            SaveConfig();
         }
 
         private static void HandleHeadlessAudioSet(NetPeer peer, NetPacketReader reader)
@@ -1021,6 +1428,9 @@ namespace BasisNetworkServer.Security
                 BasisHeadlessConnectionPolicyManager.DisconnectConnectedHeadlessPeers();
             }
 
+            // Seeded from Configuration.DisallowHeadless at boot — persist or it reverts on restart.
+            NetworkServer.Configuration.DisallowHeadless = BasisHeadlessConnectionPolicyManager.HeadlessDisallowed;
+            SaveConfig();
             BasisHeadlessConnectionPolicyManager.BroadcastState();
         }
 
@@ -1056,6 +1466,7 @@ namespace BasisNetworkServer.Security
             BasisGlobalLockManager.SetCameraMetadataDisallowMask(mask);
             BNL.Log($"Camera photo-metadata disallow mask set to {mask}.");
             SendBackMessage(peer, $"Camera metadata policy updated (mask {mask}).");
+            PersistGlobalLockState();
             BasisGlobalLockManager.BroadcastLockState();
         }
 

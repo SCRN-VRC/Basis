@@ -18,6 +18,8 @@ namespace Basis
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
             TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
 
+            BasisConsoleCommands.WaitForPredecessorExit(args);
+
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string configDir = Path.Combine(baseDir, Configuration.ConfigFolderName);
             if (!Directory.Exists(configDir))
@@ -28,6 +30,18 @@ namespace Basis
             // Capture this before LoadFromXml, which creates config.xml when it's missing.
             bool isFirstBoot = !File.Exists(configFilePath);
             Configuration config = Configuration.LoadFromXml(configFilePath);
+
+            // Settings the benchmark fitted to this machine, if it left any. Applied once and
+            // folded into config.xml, so it never shadows a later hand edit.
+            //
+            // ⚠️ Before the environment overrides, not after, and the order is load-bearing in both
+            // directions. Applying this persists the config, and an override is a per-run pin — so
+            // running it second would write whatever was in the environment permanently into
+            // config.xml, turning a temporary override into a setting nobody remembers making.
+            // Going first also leaves the overrides applied last, which is what makes them still
+            // win for this run.
+            BasisTuningProfile.ApplyIfPresent(configDir, config);
+
             config.ProcessEnvironmentalOverrides();
 
             string folderPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Configuration.LogsFolderName);
@@ -38,6 +52,20 @@ namespace Basis
             if (isFirstBoot)
             {
                 BasisSetupWizard.Run(config, configFilePath);
+
+                // Offer to fit the settings to this machine before it ever serves anyone. Runs the
+                // benchmark as a separate process, so nothing from it is ever loaded here.
+                if (BasisFirstBootTuning.Run(baseDir, configDir))
+                {
+                    // Re-read from disc rather than applying onto the object in hand. That object
+                    // has already had this run's environment overrides folded into it, and applying
+                    // a profile persists the config — which would write a per-run pin into
+                    // config.xml permanently. Loading fresh also picks up the transport sidecars the
+                    // benchmark's own server runs rewrote underneath us.
+                    config = Configuration.LoadFromXml(configFilePath);
+                    BasisTuningProfile.ApplyIfPresent(configDir, config);
+                    config.ProcessEnvironmentalOverrides();
+                }
             }
 
             BNL.Log("Server Booting");
@@ -99,6 +127,7 @@ namespace Basis
                 BasisConsoleCommands.RegisterCommand("/players", "Lists all connected players.", BasisConsoleCommands.HandleShowPlayers);
                 BasisConsoleCommands.RegisterCommand("/status", "Shows the current server status.", BasisConsoleCommands.HandleStatus);
                 BasisConsoleCommands.RegisterCommand("/shutdown", "Shuts down the server.", BasisConsoleCommands.HandleShutdown);
+                BasisConsoleCommands.RegisterCommand("/restart", "Restarts the server, applying settings that need a restart.", BasisConsoleCommands.HandleRestart);
                 BasisConsoleCommands.RegisterCommand("/help", "Displays all available commands.", BasisConsoleCommands.HandleHelp);
                 BasisConsoleCommands.RegisterCommand("/clear", "Clears the console", BasisConsoleCommands.HandleClear);
                 BasisConsoleCommands.RegisterPermissionCommands();

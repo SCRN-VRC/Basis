@@ -170,6 +170,8 @@ namespace Basis.BasisUI
                 languageCode = DefaultLanguage;
             }
 
+            languageCode = BasisLocalizationCore.NormalizeLanguageCode(languageCode);
+
             _current.Clear();
             if (!string.Equals(languageCode, DefaultLanguage, StringComparison.OrdinalIgnoreCase))
             {
@@ -236,6 +238,41 @@ namespace Basis.BasisUI
             }
 
             return key;
+        }
+
+        /// <summary>
+        /// Resolves a key only if it actually exists, without the raw-key
+        /// fallback and without recording a miss. For optional strings — a
+        /// per-option dropdown tooltip, for instance — where "absent" is a
+        /// normal answer rather than a broken translation.
+        /// </summary>
+        public static bool TryGet(string key, out string value)
+        {
+            value = null;
+
+            if (string.IsNullOrEmpty(key))
+            {
+                return false;
+            }
+
+            if (!_initialized)
+            {
+                Initialize();
+            }
+
+            if (_current.TryGetValue(key, out string translated) && !string.IsNullOrEmpty(translated))
+            {
+                value = translated;
+                return true;
+            }
+
+            if (_fallback.TryGetValue(key, out string fallback) && !string.IsNullOrEmpty(fallback))
+            {
+                value = fallback;
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>

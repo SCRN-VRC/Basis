@@ -67,7 +67,8 @@ public partial class BasisHandHeldCamera
     private RenderTexture PreviewScreenFeed =>
         // Single render path now: the camera always renders into its own RT (see
         // BasisHandHeldCameraDirectToScreen), so the preview screen never needs the copy RT.
-        renderTexture;
+        // It is a viewfinder, so it takes the focus-peaking overlay when there is one.
+        ViewfinderTexture;
 
     /// <summary>Subscribes to the Camera HUD setting so toggling it spawns/despawns the screen live.</summary>
     private void SubscribePreviewScreen()
@@ -96,9 +97,13 @@ public partial class BasisHandHeldCamera
         // where the camera went, and toggling follow flipping the screen on/off was unwanted. The
         // manual panel toggle (previewScreenOverride) is the way to show it while following.
         // Flying still auto-shows in VR because the camera is off in the world with no other marker.
-        bool shouldShow = previewScreenOverride ?? (BasisSettingsDefaults.CameraHud.RawValue
-            && BasisDeviceManagement.IsCurrentModeVR()
-            && (IsFlying || IsOverridingDesktopView));
+        // The body is outside the override rather than inside it: a film body has no screen to
+        // spawn, so "show it anyway" is not a thing the panel can ask for — as opposed to the gate
+        // below, which is about whether one is wanted.
+        bool shouldShow = BodyAllowsLiveFeed
+            && (previewScreenOverride ?? (BasisSettingsDefaults.CameraHud.RawValue
+                && BasisDeviceManagement.IsCurrentModeVR()
+                && (IsFlying || IsOverridingDesktopView)));
 
         if (shouldShow)
         {
@@ -119,6 +124,7 @@ public partial class BasisHandHeldCamera
 
         previewScreenGO = GameObject.CreatePrimitive(PrimitiveType.Quad);
         previewScreenGO.name = "CameraPreviewScreen";
+        RegisterSpawnedObject(previewScreenGO);
         previewScreenGO.layer = LayerMask.NameToLayer("OverlayUI");
 
         if (previewScreenGO.TryGetComponent(out MeshCollider meshCollider))
@@ -213,6 +219,7 @@ public partial class BasisHandHeldCamera
         previewScreenUserPlaced = false;
         if (previewScreenGO != null)
         {
+            ForgetSpawnedObject(previewScreenGO);
             Destroy(previewScreenGO);
             previewScreenGO = null;
         }

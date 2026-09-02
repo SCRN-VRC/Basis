@@ -9,6 +9,7 @@
     <assembly fullname="Basis.Eerie.Movement" preserve="all" />
     <assembly fullname="Basis.ImagePickup" preserve="all" />
     <assembly fullname="Basis.Integration.AudioLink" preserve="all" />
+    <assembly fullname="Basis.Integration.MetaBodyTracking" preserve="all" />
     <assembly fullname="Basis.Integration.SlimeVR" preserve="all" />
     <assembly fullname="Basis.Integration.TrackerObjects" preserve="all" />
     <assembly fullname="Basis.OpenLipSync.Runtime" preserve="all" />
@@ -18,6 +19,7 @@
     <assembly fullname="BasisCommon" preserve="all" />
     <assembly fullname="BasisConsoleDisplay" preserve="all" />
     <assembly fullname="BasisDebug" preserve="all" />
+    <assembly fullname="BasisEditor" preserve="all" />
     <assembly fullname="BasisEventDriver" preserve="all" />
     <assembly fullname="BasisExamples" preserve="all" />
     <assembly fullname="BasisGizmos" preserve="all" />
@@ -100,7 +102,6 @@
     <assembly fullname="Unity.RenderPipelines.Universal.Shaders" preserve="all" />
     <assembly fullname="Unity.ResourceManager" preserve="all" />
     <assembly fullname="Unity.ScriptableBuildPipeline" preserve="all" />
-    <assembly fullname="Unity.Services.Analytics" preserve="all" />
     <assembly fullname="Unity.Services.CloudDiagnostics" preserve="all" />
     <assembly fullname="Unity.Services.Core" preserve="all" />
     <assembly fullname="Unity.Services.Core.Analytics" preserve="all" />
@@ -139,6 +140,7 @@
     <assembly fullname="Valve.OpenXR.Utils" preserve="all" />
     <assembly fullname="XRSDKOpenVR" preserve="all" />
     <assembly fullname="YtDlp.Runtime" preserve="all" />
+    <assembly fullname="ZstdSharp" preserve="all" />
     <assembly fullname="audioplugin_phonon" preserve="all" />
     <assembly fullname="com.cqf.urpvolumetricfog.runtime" preserve="all" />
     <assembly fullname="com.gator-dragon-games.jigglephysics" preserve="all" />

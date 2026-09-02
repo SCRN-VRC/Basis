@@ -4,6 +4,7 @@ using Basis.Scripts.Networking;
 using Basis.Scripts.Networking.NetworkedAvatar;
 using Basis.Scripts.Networking.Receivers;
 using UnityEngine;
+using UnityEngine.UI;
 using P2PState = Basis.Scripts.Networking.BasisP2PManager.P2PSessionState;
 
 namespace Basis.BasisUI
@@ -83,7 +84,8 @@ namespace Basis.BasisUI
                     BasisLocalization.Get("menu.individualPlayer.directConnection.serverLockedDialog.body"),
                     BasisLocalization.Get("ui.ok"),
                     _ => { },
-                    severity: BasisPanelSeverity.Caution);
+                    severity: BasisPanelSeverity.Caution,
+                    category: BasisNotificationCategory.Player);
                 return;
             }
 
@@ -94,7 +96,8 @@ namespace Basis.BasisUI
                     BasisLocalization.Get("menu.individualPlayer.directConnection.disabledDialog.body"),
                     BasisLocalization.Get("ui.ok"),
                     _ => { },
-                    severity: BasisPanelSeverity.Caution);
+                    severity: BasisPanelSeverity.Caution,
+                    category: BasisNotificationCategory.Player);
                 return;
             }
 
@@ -109,7 +112,8 @@ namespace Basis.BasisUI
                     if (!confirmed) return;
                     BasisP2PManager.SendRequest(playerId);
                 },
-                severity: BasisPanelSeverity.Hot);
+                severity: BasisPanelSeverity.Hot,
+                category: BasisNotificationCategory.Player);
         }
 
         /// <summary>
@@ -180,11 +184,47 @@ namespace Basis.BasisUI
             return true;
         }
 
+        // Tiles are title-only, so they need width for the longest label ("Remove from Private
+        // Chat") rather than height. Flexible constraint means the grid reflows to one column on
+        // a narrow panel instead of clipping.
+        private static readonly Vector2 ActionTileSize = new Vector2(320f, 64f);
+
         /// <summary>
-        /// Builds the Actions tab — the panel's landing page. Every row is a single press for
+        /// Grid container for the action tiles, parented inside the group so the group keeps its
+        /// header while its contents lay out in columns rather than one per row.
+        /// </summary>
+        private static RectTransform BuildActionGrid(RectTransform parent)
+        {
+            GameObject gridGO = new GameObject("ActionGrid", typeof(RectTransform));
+            RectTransform gridRect = (RectTransform)gridGO.transform;
+            gridRect.SetParent(parent, false);
+            gridRect.anchorMin = new Vector2(0f, 1f);
+            gridRect.anchorMax = new Vector2(1f, 1f);
+            gridRect.pivot = new Vector2(0.5f, 1f);
+
+            GridLayoutGroup grid = gridGO.AddComponent<GridLayoutGroup>();
+            grid.cellSize = ActionTileSize;
+            grid.spacing = new Vector2(10f, 10f);
+            grid.padding = new RectOffset(10, 10, 10, 10);
+            grid.startCorner = GridLayoutGroup.Corner.UpperLeft;
+            grid.startAxis = GridLayoutGroup.Axis.Horizontal;
+            grid.childAlignment = TextAnchor.UpperLeft;
+            grid.constraint = GridLayoutGroup.Constraint.Flexible;
+
+            ContentSizeFitter fitter = gridGO.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            LayoutElement layout = gridGO.AddComponent<LayoutElement>();
+            layout.flexibleWidth = 1f;
+
+            return gridRect;
+        }
+
+        /// <summary>
+        /// Builds the Actions tab — the panel's landing page. Every tile is a single press for
         /// something that otherwise sits several tabs deep; nothing here is exclusive to this tab,
         /// so the detail tabs remain the place to go for the surrounding context and settings.
-        /// Rows carry no inline description so the whole set fits on one screen — the long-form
+        /// Tiles carry no inline description so the whole set fits on one screen — the long-form
         /// text the detail tabs show moves onto the hover tooltip instead.
         /// </summary>
         private static void BuildActionsPage(PanelTabPage page, BasisRemotePlayer player, BasisPlayerSettingsData settings, PlayerActionSync sync)
@@ -194,7 +234,7 @@ namespace Basis.BasisUI
             var group = PanelElementDescriptor.CreateNew(PanelElementDescriptor.ElementStyles.Group, root);
             group.SetTitle(BasisLocalization.Get("menu.individualPlayer.actions"));
             group.SetDescription(BasisLocalization.Get("menu.individualPlayer.actions.description"));
-            RectTransform content = group.ContentParent;
+            RectTransform content = BuildActionGrid(group.ContentParent);
 
             PanelButton NewAction(string tooltipKey)
             {
@@ -236,35 +276,8 @@ namespace Basis.BasisUI
                 sync.Volume?.Invoke(await BasisPlayerSettingsManager.RequestPlayerSettings(player.UUID));
             };
 
-            // ---- Direct connection ----
             bool hasNetTarget = BasisNetworkPlayers.PlayerToNetworkedPlayer(player, out BasisNetworkPlayer netTarget);
             ushort netPlayerId = hasNetTarget ? netTarget.playerId : (ushort)0;
-
-            PanelButton directConnBtn = NewAction("menu.individualPlayer.directConnection.description");
-            void PaintDirectConn()
-            {
-                if (directConnBtn == null || directConnBtn.Descriptor == null) return;
-                P2PState state = BasisP2PManager.GetSessionState(netPlayerId);
-                string key;
-                if (DirectConnectionBlocked(state))
-                {
-                    key = "menu.individualPlayer.directConnection.disabled";
-                }
-                else
-                {
-                    key = state == P2PState.Idle || state == P2PState.Failed
-                        ? "menu.individualPlayer.directConnection.request"
-                        : "menu.individualPlayer.directConnection.cancel";
-                }
-                directConnBtn.Descriptor.SetTitle(BasisLocalization.Get(key));
-            }
-            PaintDirectConn();
-            sync.DirectConnection += PaintDirectConn;
-            directConnBtn.OnClicked += () =>
-            {
-                ToggleDirectConnection(player);
-                sync.DirectConnection?.Invoke();
-            };
 
             // ---- Pin ----
             string uuid = player.UUID;
@@ -373,22 +386,6 @@ namespace Basis.BasisUI
                 sync.AvatarVisible?.Invoke(await ToggleAvatarVisible(player));
             };
 
-            // ---- Jiggle grabbing ----
-            PanelToggle jiggleGrabToggle = PanelToggle.CreateNewEntry(content);
-            jiggleGrabToggle.Descriptor.SetTitle(BasisLocalization.Get("menu.individualPlayer.jiggleGrab"));
-            jiggleGrabToggle.Descriptor.SetDescription(string.Empty);
-            jiggleGrabToggle.Descriptor.SetTooltip(BasisLocalization.Get("menu.individualPlayer.jiggleGrab.description"));
-            jiggleGrabToggle.SetValueWithoutNotify(settings.JiggleGrabAllowed);
-            sync.JiggleGrab += s =>
-            {
-                if (jiggleGrabToggle == null) return;
-                jiggleGrabToggle.SetValueWithoutNotify(s.JiggleGrabAllowed);
-            };
-            jiggleGrabToggle.OnValueChanged += async allowed =>
-            {
-                sync.JiggleGrab?.Invoke(await SetJiggleGrabAllowed(player, allowed));
-            };
-
             // ---- Shout mode (admin only, same gate the Admin tab uses) ----
             if (hasNetTarget && BasisTalkModeManager.LocalCanShout())
             {
@@ -413,6 +410,52 @@ namespace Basis.BasisUI
                         BasisNetworkModeration.EnableShoutMode(netPlayerId);
                 };
             }
+
+            // Toggles sit under the tile grid rather than in it: a toggle row is a title, a
+            // description and the switch laid out across the full panel width, and a 320-wide
+            // grid cell clips the title to fit.
+            RectTransform rows = group.ContentParent;
+
+            // ---- Direct connection ----
+            PanelToggle directConnToggle = PanelToggle.CreateNewEntry(rows);
+            directConnToggle.Descriptor.SetTitle(BasisLocalization.Get("menu.individualPlayer.directConnection"));
+            directConnToggle.Descriptor.SetTooltip(BasisLocalization.Get("menu.individualPlayer.directConnection.description"));
+            void PaintDirectConn()
+            {
+                if (directConnToggle == null || directConnToggle.Descriptor == null) return;
+                P2PState state = BasisP2PManager.GetSessionState(netPlayerId);
+                bool live = state != P2PState.Idle && state != P2PState.Failed;
+                // Every paint reads the live session, so a link that drops, a request that is
+                // refused and a cancelled confirmation all put the switch back to off by itself.
+                directConnToggle.SetValueWithoutNotify(live);
+                directConnToggle.Descriptor.SetDescription(
+                    !live && DirectConnectionBlocked(state)
+                        ? BasisLocalization.Get("menu.individualPlayer.directConnection.disabled")
+                        : string.Empty);
+            }
+            PaintDirectConn();
+            sync.DirectConnection += PaintDirectConn;
+            directConnToggle.OnValueChanged += _ =>
+            {
+                ToggleDirectConnection(player);
+                sync.DirectConnection?.Invoke();
+            };
+
+            // ---- Jiggle grabbing ----
+            PanelToggle jiggleGrabToggle = PanelToggle.CreateNewEntry(rows);
+            jiggleGrabToggle.Descriptor.SetTitle(BasisLocalization.Get("menu.individualPlayer.jiggleGrab"));
+            jiggleGrabToggle.Descriptor.SetDescription(string.Empty);
+            jiggleGrabToggle.Descriptor.SetTooltip(BasisLocalization.Get("menu.individualPlayer.jiggleGrab.description"));
+            jiggleGrabToggle.SetValueWithoutNotify(settings.JiggleGrabAllowed);
+            sync.JiggleGrab += s =>
+            {
+                if (jiggleGrabToggle == null) return;
+                jiggleGrabToggle.SetValueWithoutNotify(s.JiggleGrabAllowed);
+            };
+            jiggleGrabToggle.OnValueChanged += async allowed =>
+            {
+                sync.JiggleGrab?.Invoke(await SetJiggleGrabAllowed(player, allowed));
+            };
         }
     }
 }

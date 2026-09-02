@@ -14,17 +14,74 @@ namespace Basis.Cinematics
         private const float LineWidth = 0.012f;
         private const string GizmoName = "CameraDollyTrack";
 
+        /// <summary>Not looked up yet. A real layer index is 0-31 and -1 means the project has none.</summary>
+        private const int LayerNotResolved = -2;
+
+        private static int markerLayer = LayerNotResolved;
+
+        /// <summary>
+        /// Layer the path and its numbered labels draw on. The track is an authoring aid — it is
+        /// laid out to frame a shot, so it must not appear in one. OverlayUI is what the capture
+        /// camera culls and what the waypoint markers already use, so the player sees the whole
+        /// track while a photo, a 360 or the video feed sees none of it.
+        ///
+        /// <para>A project without the layer hands back -1, which SetGizmoLayer reads as "stay on
+        /// the shared gizmo layer" — still a usable track, just visible to the shot.</para>
+        /// </summary>
+        private static int MarkerLayer
+        {
+            get
+            {
+                if (markerLayer == LayerNotResolved)
+                {
+                    markerLayer = LayerMask.NameToLayer("OverlayUI");
+                }
+                return markerLayer;
+            }
+        }
+
         private readonly List<BasisCameraDollyWaypoint> waypoints = new List<BasisCameraDollyWaypoint>();
         private readonly List<Vector3> points = new List<Vector3>();
         private readonly List<int> labelIds = new List<int>();
 
         private Vector3[] lineBuffer = System.Array.Empty<Vector3>();
+        private Color32[] lineColors = System.Array.Empty<Color32>();
         private int lineId = -1;
         private bool lineCreated;
         private bool lineVisible;
+        private bool lineColored;
 
         public bool Looped;
         public bool Visible = true;
+
+        /// <summary>
+        /// Paint the path by how fast the camera passes through each part of it rather than one
+        /// flat colour. What the move is doing is otherwise invisible until it is played: a track
+        /// laid out with points far apart is covered faster there, and the ease settings decide
+        /// where it is still getting up to speed and where it is already coming off it.
+        /// </summary>
+        public bool ColorBySpeed = true;
+
+        /// <summary>
+        /// The move the speed colouring is drawn from. Set every frame from the fitted stack, so
+        /// the path answers a speed or an ease change as it is made.
+        /// </summary>
+        public BasisCameraDollySettings Motion = BasisCameraDollySettings.Default;
+
+        /// <summary>Whether a move is actually fitted. Manual and Follow have no speed to show.</summary>
+        public bool MotionActive;
+
+        /// <summary>
+        /// How the track is shared. Read every refresh rather than cached, so a change of mode
+        /// reaches the markers on the next frame without a separate apply path to keep in step.
+        /// </summary>
+        public BasisCameraDollySync SyncMode = BasisCameraDollySync.LocalOnly;
+
+        /// <summary>
+        /// Whether this client authored the track, as opposed to mirroring somebody else's. Only
+        /// the author may reshape a locked track.
+        /// </summary>
+        public bool IsAuthor = true;
         public bool GridSnap;
         public float GridSize = 0.25f;
 
@@ -34,6 +91,13 @@ namespace Basis.Cinematics
         public IReadOnlyList<Vector3> Points => points;
 
         public int Count => waypoints.Count;
+
+        /// <summary>
+        /// Whether the points on this client may be picked up. A locked track is readable by
+        /// everyone and reshapeable only by whoever authored it; the other two modes leave the
+        /// points alone, so a track you can see is a track you can move unless it says otherwise.
+        /// </summary>
+        public bool CanMovePoints => SyncMode != BasisCameraDollySync.NetworkedLocked || IsAuthor;
 
         /// <summary>A Dolly shot needs at least two points before there is a path to ride.</summary>
         public bool HasPath => waypoints.Count >= 2;
@@ -151,11 +215,12 @@ namespace Basis.Cinematics
             {
                 BasisCameraDollyWaypoint waypoint = waypoints[Index];
                 waypoint.SetVisible(true);
+                waypoint.SetMovable(CanMovePoints);
                 waypoint.SetScale(scale);
                 waypoint.SetColor(ColorForIndex(Index, waypoints.Count));
             }
 
-            UpdateLine();
+            UpdateLine(scale);
             UpdateLabels(scale, labelFacing);
         }
 
@@ -180,6 +245,9 @@ namespace Basis.Cinematics
                 }
             }
         }
+
+        /// <summary>The path's own colour, for a track with no move fitted to read a speed off.</summary>
+        public static readonly Color RestingColor = new Color(0.4f, 0.85f, 1f);
 
         /// <summary>Direction of travel, green at the head of the queue through red at the tail.</summary>
         public static Color ColorForIndex(int index, int count)
@@ -225,7 +293,7 @@ namespace Basis.Cinematics
             }
         }
 
-        private void UpdateLine()
+        private void UpdateLine(float scale)
         {
             if (!HasPath)
             {
@@ -249,18 +317,74 @@ namespace Basis.Cinematics
 
             if (!lineCreated)
             {
-                BasisGizmoManager.CreateLineGizmo(GizmoName, out lineId, lineBuffer, LineWidth, new Color(0.4f, 0.85f, 1f), Looped);
+                BasisGizmoManager.CreateLineGizmo(GizmoName, out lineId, lineBuffer, LineWidth, RestingColor, Looped);
+                BasisGizmoManager.SetGizmoLayer(lineId, MarkerLayer);
                 lineCreated = true;
                 lineVisible = true;
+                lineColored = false;
+            }
+            else
+            {
+                if (!lineVisible)
+                {
+                    BasisGizmoManager.SetGizmoActive(lineId, true);
+                    lineVisible = true;
+                }
+                BasisGizmoManager.UpdateLineGizmo(lineId, lineBuffer);
+            }
+
+            ColorLine(samples, scale);
+        }
+
+        /// <summary>
+        /// Writes a colour per sample from the speed the camera will pass through it at.
+        ///
+        /// <para>The distances come out of the sample buffer that was just built rather than being
+        /// measured off the spline again: the playhead advances in waypoints at one rate, so how
+        /// fast a stretch is covered in the world is exactly how far apart its samples landed
+        /// against the average.</para>
+        /// </summary>
+        private void ColorLine(int samples, float scale)
+        {
+            if (!ColorBySpeed || !MotionActive || Motion.mode != BasisCameraDollyMode.Play)
+            {
+                if (lineColored)
+                {
+                    BasisGizmoManager.UpdateGizmoColor(lineId, RestingColor);
+                    lineColored = false;
+                }
                 return;
             }
 
-            if (!lineVisible)
+            if (lineColors.Length != samples)
             {
-                BasisGizmoManager.SetGizmoActive(lineId, true);
-                lineVisible = true;
+                lineColors = new Color32[samples];
             }
-            BasisGizmoManager.UpdateLineGizmo(lineId, lineBuffer);
+
+            float total = 0f;
+            for (int Index = 1; Index < samples; Index++)
+            {
+                total += Vector3.Distance(lineBuffer[Index - 1], lineBuffer[Index]);
+            }
+
+            int spans = samples - 1;
+            float mean = spans > 0 ? total / spans : 0f;
+            float denominator = spans > 0 ? spans : 1f;
+
+            for (int Index = 0; Index < samples; Index++)
+            {
+                int span = Mathf.Min(Index, spans - 1);
+                float stretch = mean > 1e-5f
+                    ? Vector3.Distance(lineBuffer[span], lineBuffer[span + 1]) / mean
+                    : 1f;
+
+                float metresPerSecond = BasisCameraDollySpeed.MetresPerSecond(
+                    Motion, Index / denominator, Looped, stretch);
+                lineColors[Index] = BasisCameraDollySpeed.Sample(metresPerSecond, scale);
+            }
+
+            BasisGizmoManager.SetLineGizmoColors(lineId, lineColors, samples);
+            lineColored = true;
         }
 
         private void UpdateLabels(float scale, Quaternion facing)
@@ -277,6 +401,10 @@ namespace Basis.Cinematics
                 if (Index >= labelIds.Count)
                 {
                     BasisGizmoManager.CreateTextGizmo(GizmoName, out int newId, position, text, color);
+
+                    // After the create, not before: a label rented back out of the pool starts on
+                    // the container's layer, so this is the point at which the layer sticks.
+                    BasisGizmoManager.SetGizmoLayer(newId, MarkerLayer);
                     labelIds.Add(newId);
                     continue;
                 }

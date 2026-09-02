@@ -17,7 +17,7 @@ namespace Basis.Scripts.Device_Management.Devices.UnityInputSystem
     {
         [SerializeField]
         private List<BasisInput> controls = new List<BasisInput>();
-        [SerializeField]
+        [NonSerialized]
         public HashSet<InputDevice> OpenXRTrackers = new HashSet<InputDevice>();
         [SerializeField]
         public List<BasisOpenxrDeviceTrackedInfo> Trackers = new List<BasisOpenxrDeviceTrackedInfo>();
@@ -35,6 +35,7 @@ namespace Basis.Scripts.Device_Management.Devices.UnityInputSystem
             "Left Elbow", "Right Elbow", "Left Knee", "Right Knee", "Waist",
             "Chest", "Camera", "Keyboard"
         };
+        [NonSerialized]
         public XRHandSubsystem m_Subsystem;
         public BasisOpenXRHandInput LeftHand;
         public BasisOpenXRHandInput RightHand;
@@ -128,6 +129,7 @@ namespace Basis.Scripts.Device_Management.Devices.UnityInputSystem
         public override void StartSDK()
         {
             BasisDebug.Log("Starting SDK for BasisOpenXRManagement");
+            PresenceSource = HMDPresenceSource.Unresolved;
             BasisLocalCameraDriver.AllowXRRenderering(true);
 
             CreatePhysicalHeadTracker("Head OPENXR", "Head OPENXR");
@@ -369,9 +371,47 @@ namespace Basis.Scripts.Device_Management.Devices.UnityInputSystem
             {
                 if (_headDevices[i].TryGetFeatureValue(UnityEngine.XR.CommonUsages.userPresence, out bool present))
                 {
+                    ReportPresenceSource(HMDPresenceSource.UserPresenceFeature);
                     BasisHMDPresence.ReportPresence(present);
                     return;
                 }
+            }
+
+            if (Count == 0)
+            {
+                ReportPresenceSource(HMDPresenceSource.NoHeadDevice);
+                BasisHMDPresence.ReportPresence(false);
+                return;
+            }
+
+            ReportPresenceSource(HMDPresenceSource.NoPresenceSignal);
+        }
+
+        private enum HMDPresenceSource
+        {
+            Unresolved,
+            UserPresenceFeature,
+            NoHeadDevice,
+            NoPresenceSignal
+        }
+
+        private HMDPresenceSource PresenceSource = HMDPresenceSource.Unresolved;
+
+        private void ReportPresenceSource(HMDPresenceSource Source)
+        {
+            if (PresenceSource == Source) return;
+            PresenceSource = Source;
+            switch (Source)
+            {
+                case HMDPresenceSource.UserPresenceFeature:
+                    BasisDebug.Log("OpenXR: HMD presence read from the userPresence feature", BasisDebug.LogTag.Device);
+                    break;
+                case HMDPresenceSource.NoHeadDevice:
+                    BasisDebug.Log("OpenXR: no head device is connected — reporting the headset as not worn", BasisDebug.LogTag.Device);
+                    break;
+                case HMDPresenceSource.NoPresenceSignal:
+                    BasisDebug.Log("OpenXR: head device present but userPresence is unavailable — presence left unchanged, auto swap will not trigger", BasisDebug.LogTag.Device);
+                    break;
             }
         }
     }

@@ -1,4 +1,4 @@
-using Basis.BasisUI;
+﻿using Basis.BasisUI;
 using Basis.Scripts.BasisSdk.Players;
 using Basis.Scripts.Device_Management;
 using Basis.Scripts.Networking;
@@ -33,6 +33,8 @@ namespace Basis.Scripts.UI.NamePlate
         public static Color ThisPersonTalkColor = new Color(1f, 0.6588235f, 0.8156863f, 1f);
         public static Color ShoutColor = new Color(1f, 0.5490196f, 0f, 1f);
         public static Color ShoutTalkColor = new Color(1f, 0.7215686f, 0.3764706f, 1f);
+        public static Color NoOneColor = new Color(0.3921569f, 0.5882353f, 0.7843137f, 1f);
+        public static Color NoOneTalkColor = new Color(0.6431373f, 0.7686275f, 0.8862745f, 1f);
         public static Color MutedColor = new Color(0.12f, 0.14f, 0.18f, 1f);
 
         public static float transitionDuration = 0.3f;
@@ -50,6 +52,8 @@ namespace Basis.Scripts.UI.NamePlate
         public static Color StaticThisPersonTalkColor;
         public static Color StaticShoutColor;
         public static Color StaticShoutTalkColor;
+        public static Color StaticNoOneColor;
+        public static Color StaticNoOneTalkColor;
         public static Color StaticMutedColor;
         public static float4 NormalColorFloat4;
 
@@ -86,7 +90,9 @@ namespace Basis.Scripts.UI.NamePlate
         public static float NamePlateSize = 1f;
         public static float NamePlateTransparency = 0.45f;
         public static float ChatSize = 1f;
-        private const float ChatNameClearance = 4.5f;
+        // The chat bubble stacks on top of the name panel, so its clearance IS the panel's half
+        // height — same constant, not a second copy of the number.
+        private const float ChatNameClearance = BasisNamePlateAnchorMath.PanelHalfHeightUnits;
         private const float ChatBubbleGap = 1.5f;
         private static bool lastMenuOpenState;
         private static bool _initialized;
@@ -122,6 +128,15 @@ namespace Basis.Scripts.UI.NamePlate
         }
 
         public static float PlateWorldScale() => 0.02f * NamePlateSize * LocalViewerNamePlateScale();
+
+        /// <summary>
+        /// Half the plate's rendered height in world metres. The baked panel is centred on the
+        /// plate's origin, so this is how far below its anchor point the plate's bottom edge sits —
+        /// the placement jobs add it back so the measured clearance is the gap the viewer actually
+        /// sees between the avatar's crown and the bottom of the plate, not the gap to a point
+        /// hidden inside it.
+        /// </summary>
+        public static float PanelHalfHeightWorld() => BasisNamePlateAnchorMath.PanelHalfHeightUnits * PlateWorldScale();
 
         /// <summary>
         /// Idempotent. Triggered by <see cref="Basis.Scripts.Device_Management.BasisDeviceManagement"/>
@@ -184,6 +199,13 @@ namespace Basis.Scripts.UI.NamePlate
         /// One-time load of the prefab-replacement assets (materials + TMP baking object).
         /// Baker is parented under the BasisDeviceManagement root so it inherits the
         /// framework's lifetime instead of needing DontDestroyOnLoad.
+        /// The single activate/deactivate pair at the end is the ONLY time the baker is ever
+        /// activated: it runs TMP's Awake + OnEnable once, here, during device init. Bakes then
+        /// run through ForceMeshUpdate(ignoreActiveState: true) on the permanently inactive
+        /// object. Do not re-add a per-bake SetActive — GameObject.Activate takes the
+        /// PersistentManager lock, and a bake landing during an async bundle load (i.e. every
+        /// join, since the joining player's avatar is loading while their plate bakes) stalled
+        /// the main thread ~120ms inside TextMeshPro.OnEnable waiting on it.
         /// </summary>
         private static void EnsureAssetsLoaded()
         {
@@ -212,6 +234,9 @@ namespace Basis.Scripts.UI.NamePlate
                 Text.enableVertexGradient = false;
                 Text.textWrappingMode = TextWrappingModes.NoWrap;
                 Text.overflowMode = TextOverflowModes.Overflow;
+
+                bakingGO.SetActive(true);
+                bakingGO.SetActive(false);
             }
         }
 
@@ -374,6 +399,8 @@ namespace Basis.Scripts.UI.NamePlate
             StaticThisPersonTalkColor = new Color(ThisPersonTalkColor.r, ThisPersonTalkColor.g, ThisPersonTalkColor.b, transparency);
             StaticShoutColor = new Color(ShoutColor.r, ShoutColor.g, ShoutColor.b, transparency);
             StaticShoutTalkColor = new Color(ShoutTalkColor.r, ShoutTalkColor.g, ShoutTalkColor.b, transparency);
+            StaticNoOneColor = new Color(NoOneColor.r, NoOneColor.g, NoOneColor.b, transparency);
+            StaticNoOneTalkColor = new Color(NoOneTalkColor.r, NoOneTalkColor.g, NoOneTalkColor.b, transparency);
             StaticMutedColor = new Color(MutedColor.r, MutedColor.g, MutedColor.b, transparency);
             NormalColorFloat4 = new float4(StaticNormalColor.r, StaticNormalColor.g, StaticNormalColor.b, StaticNormalColor.a);
         }
@@ -386,6 +413,7 @@ namespace Basis.Scripts.UI.NamePlate
                 case BasisTalkMode.Direct: return StaticDirectColor;
                 case BasisTalkMode.ThisPerson: return StaticThisPersonColor;
                 case BasisTalkMode.Shout: return StaticShoutColor;
+                case BasisTalkMode.NoOne: return StaticNoOneColor;
                 default: return StaticNormalColor;
             }
         }
@@ -398,6 +426,7 @@ namespace Basis.Scripts.UI.NamePlate
                 case BasisTalkMode.Direct: return StaticDirectTalkColor;
                 case BasisTalkMode.ThisPerson: return StaticThisPersonTalkColor;
                 case BasisTalkMode.Shout: return StaticShoutTalkColor;
+                case BasisTalkMode.NoOne: return StaticNoOneTalkColor;
                 default: return StaticIsTalkingColor;
             }
         }
@@ -583,15 +612,20 @@ namespace Basis.Scripts.UI.NamePlate
             }
             else
             {
-                BakeNameMesh(remotePlayer.DisplayName, namePlate.Filter, namePlate.Renderer);
+                // displayName, not DisplayName: the per-plate fallback must strip markup under the
+                // safe-names lock too, or a stripped-shader build renders the raw name.
+                BakeNameMesh(displayName, namePlate.Filter, namePlate.Renderer);
             }
         }
 
         /// <summary>
         /// Shared baking front-half: pushes the name through the TMP baker and computes the
         /// panel half-width plus the text submesh transform (horizontal flip, with a uniform
-        /// downscale folded in when the name exceeds MaxPlateHalfWidth). Leaves the baker active
-        /// so callers can read <see cref="TMPro.TMP_Text.textInfo"/>; callers deactivate it.
+        /// downscale folded in when the name exceeds MaxPlateHalfWidth). The baker stays inactive
+        /// throughout. TMP gates its Phase III vertex upload on IsActive(), so ForceMeshUpdate alone
+        /// lays the text out into textInfo but leaves every meshInfo Mesh empty — UpdateVertexData
+        /// performs that same upload unconditionally. Both calls are required; dropping the second
+        /// bakes empty text meshes and the merge job dies on a missing vertex attribute.
         /// </summary>
         private static bool PrepareBakedText(string displayName, out float halfWidth, out Matrix4x4 textTransform)
         {
@@ -599,10 +633,10 @@ namespace Basis.Scripts.UI.NamePlate
             textTransform = FlipX;
             if (Text == null) return false;
 
-            Text.gameObject.SetActive(true);
             Text.fontSize = BakeFontSize;
             Text.text = displayName;
-            Text.ForceMeshUpdate();
+            Text.ForceMeshUpdate(true);
+            Text.UpdateVertexData();
 
             const float horizontalPadding = 2f;
             Vector2 textSize = Text.GetRenderedValues(true);
@@ -639,7 +673,7 @@ namespace Basis.Scripts.UI.NamePlate
             if (Text == null || plate == null) return false;
             if (!PrepareBakedText(displayName, out float halfWidth, out Matrix4x4 textTransform)) return false;
 
-            Mesh panel = GenerateRoundedQuad(halfWidth, 4.5f, "NamePlate Panel (global)");
+            Mesh panel = GenerateRoundedQuad(halfWidth, BasisNamePlateAnchorMath.PanelHalfHeightUnits, "NamePlate Panel (global)");
 
             var textInfo = Text.textInfo;
             int subMeshLimit = 0;
@@ -668,7 +702,6 @@ namespace Basis.Scripts.UI.NamePlate
             textMeshes.Clear();
             textMaterials.Clear();
             BasisGlobalNamePlateRenderer.MarkDirty();
-            Text.gameObject.SetActive(false);
             return true;
         }
 
@@ -683,7 +716,7 @@ namespace Basis.Scripts.UI.NamePlate
             if (Text == null || filter == null || renderer == null) return false;
             if (!PrepareBakedText(displayName, out float halfWidth, out Matrix4x4 textTransform)) return false;
 
-            Mesh plateMesh = GenerateRoundedQuad(halfWidth, 4.5f, "Rounded NamePlate Quad");
+            Mesh plateMesh = GenerateRoundedQuad(halfWidth, BasisNamePlateAnchorMath.PanelHalfHeightUnits, "Rounded NamePlate Quad");
 
             var textInfo = Text.textInfo;
             int subMeshLimit = 0;
@@ -723,7 +756,6 @@ namespace Basis.Scripts.UI.NamePlate
             renderer.sharedMaterials = materials;
 
             Object.Destroy(plateMesh);
-            Text.gameObject.SetActive(false);
             return true;
         }
 

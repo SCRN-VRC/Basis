@@ -7,10 +7,6 @@ using GatorDragonGames.JigglePhysics;
 using UnityEngine;
 namespace Basis.Scripts.Drivers
 {
-    /// <summary>
-    /// Driver class which takes control of the <see cref="BasisLocalPlayer"/>'s
-    /// hips and legs in order to fit them onto a <see cref="BasisSeat"/>.
-    /// </summary>
     [System.Serializable]
     public class BasisLocalSeatDriver
     {
@@ -95,10 +91,10 @@ namespace Basis.Scripts.Drivers
             _seat.ResetOccupantYaw();
             seatedSnapTurnLatched = false;
 
-            LocalPlayer.transform.GetPositionAndRotation(out lastSeatRootPosition, out lastSeatRootRotation);
+            BasisLocalPose.GetPose(BasisPoseSlot.PlayerRoot, LocalPlayer.transform, out lastSeatRootPosition, out lastSeatRootRotation);
             hasLastSeatRootPosition = true;
 
-            previousRelativePosition = _seat.transform.InverseTransformPoint(LocalPlayer.transform.position);
+            previousRelativePosition = _seat.transform.ToLocalPoint(BasisLocalPose.GetPosition(BasisPoseSlot.PlayerRoot, LocalPlayer.transform));
 
             if (BasisDesktopEye.Instance != null)
             {
@@ -131,7 +127,7 @@ namespace Basis.Scripts.Drivers
 
         private float SeatYawDeg()
         {
-            Quaternion seated = _seat.transform.rotation * _seat.SpineRotation;
+            Quaternion seated = _seat.transform.GetRotation() * _seat.SpineRotation;
             float occupantYaw = _seat.OccupantYawDegrees;
             if (occupantYaw != 0f)
             {
@@ -215,7 +211,7 @@ namespace Basis.Scripts.Drivers
             _seat.ResetOccupantYaw();
             seatedSnapTurnLatched = false;
 
-            Vector3 desiredPos = _seat.transform.TransformPoint(previousRelativePosition);
+            Vector3 desiredPos = _seat.transform.ToWorldPoint(previousRelativePosition);
 
             if (BasisSafeTeleportUtil.TryFindSafeStandingPosition(
                     desiredPos, cc.radius, cc.height, cc.skinWidth,
@@ -228,7 +224,7 @@ namespace Basis.Scripts.Drivers
             else
             {
                 BasisDebug.LogWarning("No safe exit position found for seat.");
-                LocalPlayer.Teleport(LocalPlayer.transform.position, Quaternion.identity, true);
+                LocalPlayer.Teleport(BasisLocalPose.GetPosition(BasisPoseSlot.PlayerRoot, LocalPlayer.transform), Quaternion.identity, true);
             }
 
             _seat = null;
@@ -433,10 +429,6 @@ namespace Basis.Scripts.Drivers
             return Quaternion.LookRotation(forward, up);
         }
 
-        /// <summary>
-        /// Keeps requested directions in the avatar hips basis "forward hemisphere"
-        /// to reduce backwards leg flips.
-        /// </summary>
         private Vector3 EnsureForwardHemisphereInAvatarBasis(Vector3 dirAvatarLocal)
         {
             Vector3 dirInBasis = Quaternion.Inverse(avatarHipsBasisTpose) * dirAvatarLocal;
@@ -445,11 +437,6 @@ namespace Basis.Scripts.Drivers
             return (avatarHipsBasisTpose * dirInBasis).normalized;
         }
 
-        /// <summary>
-        /// Aim + Pole: swing to desired direction, then twist around that direction
-        /// so a pole axis aligns with desired pole (prevents sideways knees).
-        /// All vectors are in avatar-local space.
-        /// </summary>
         private static Quaternion AlignAimWithPole(
             Quaternion tposeLocalRot,
             Vector3 tposeOffsetUpperToLower,
@@ -510,11 +497,11 @@ namespace Basis.Scripts.Drivers
             // Stable avatar hips basis
             Quaternion avatarHipsBasis = avatarHipsBasisTpose;
 
-            BasisSeatFit.ComposeHipsWorld(seatT.localToWorldMatrix, seatT.rotation, _seat.SpineRotation, pelvisSeatLocal,
+            BasisSeatFit.ComposeHipsWorld(seatT.GetLocalToWorld(), seatT.rotation, _seat.SpineRotation, pelvisSeatLocal,
                 _seat.OccupantYawDegrees, out Vector3 pelvisWorldPos, out Quaternion hipsWorldRot, out Quaternion occupantPivot);
             BasisSeatFit.ComposeSeatedRoot(pelvisWorldPos, hipsWorldRot, avatarHipsBasis, hipsLocalPos, out Vector3 playerPos, out Quaternion playerRot);
 
-            LocalPlayer.transform.SetPositionAndRotation(playerPos, playerRot);
+            LocalPlayer.transform.SetPose(playerPos, playerRot);
             LocalPlayer.LocalAnimatorDriver.HandleTeleport();
 
             if (hasLastSeatRootPosition)
@@ -558,8 +545,8 @@ namespace Basis.Scripts.Drivers
             Vector3 leftFootSeatLocal = footSeatLocal + seatRightLocal * lFootRelInBasis.x;
             Vector3 rightFootSeatLocal = footSeatLocal + seatRightLocal * rFootRelInBasis.x;
 
-            Vector3 leftFootWorldTarget = BasisSeatFit.RotateAboutPivot(seatT.TransformPoint(leftFootSeatLocal), pelvisWorldPos, occupantPivot);
-            Vector3 rightFootWorldTarget = BasisSeatFit.RotateAboutPivot(seatT.TransformPoint(rightFootSeatLocal), pelvisWorldPos, occupantPivot);
+            Vector3 leftFootWorldTarget = BasisSeatFit.RotateAboutPivot(seatT.ToWorldPoint(leftFootSeatLocal), pelvisWorldPos, occupantPivot);
+            Vector3 rightFootWorldTarget = BasisSeatFit.RotateAboutPivot(seatT.ToWorldPoint(rightFootSeatLocal), pelvisWorldPos, occupantPivot);
 
             // --- World positions for overridden bones ---
             Vector3 hipsW = ToWorld(BasisLocalBoneDriver.HipsControl.TposeLocalScaled.position);
@@ -623,13 +610,13 @@ namespace Basis.Scripts.Drivers
             BasisSeatFitResult fit = BasisSeatFit.Solve(_seat.GetFitFrame(), legs);
 
             Transform seatT = _seat.transform;
-            Vector3 kneeW = seatT.TransformPoint(fit.Knee);
-            Vector3 footW = seatT.TransformPoint(fit.Foot);
+            Vector3 kneeW = seatT.ToWorldPoint(fit.Knee);
+            Vector3 footW = seatT.ToWorldPoint(fit.Foot);
 
             Quaternion seatWorldRot = seatT.rotation;
 
             Vector3 hipsLocalPos = BasisLocalBoneDriver.HipsControl.TposeLocalScaled.position;
-            BasisSeatFit.ComposeHipsWorld(seatT.localToWorldMatrix, seatWorldRot, _seat.SpineRotation, fit.Back, out Vector3 backW, out Quaternion hipsWorldRot);
+            BasisSeatFit.ComposeHipsWorld(seatT.GetLocalToWorld(), seatWorldRot, _seat.SpineRotation, fit.Back, out Vector3 backW, out Quaternion hipsWorldRot);
             BasisSeatFit.ComposeSeatedRoot(backW, hipsWorldRot, avatarHipsBasisTpose, hipsLocalPos, out Vector3 playerPos, out Quaternion playerRot);
 
             Vector3 ToWorld(Vector3 tposeLocalPos) => playerPos + playerRot * tposeLocalPos;

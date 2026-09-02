@@ -28,11 +28,7 @@
     },
     {
       "key": "camera.modePreset",
-      "value": "Mode"
-    },
-    {
-      "key": "camera.modePreset.description",
-      "value": "What this camera is for. Picking a mode sets it up for that job and colours each section below: brightly for settings the mode chose, dimly for ones that do nothing here. Change anything and the mode becomes Custom — nothing is ever locked."
+      "value": "Preset"
     },
     {
       "key": "camera.modePreset.custom",
@@ -40,7 +36,7 @@
     },
     {
       "key": "camera.modePreset.custom.description",
-      "value": "Your own setup. Shown whenever the settings no longer match a mode, so it is not something you switch to — it is where you end up once you start tuning. Pick a mode to go back to a known starting point."
+      "value": "Your own setup. Shown whenever the settings no longer match a preset, so it is not something you switch to — it is where you end up once you start tuning. Pick a preset to go back to a known starting point."
     },
     {
       "key": "camera.modePreset.photo",
@@ -48,7 +44,7 @@
     },
     {
       "key": "camera.modePreset.photo.description",
-      "value": "The ordinary handheld camera, set up exactly as it ships. Stays in your hand, normal lens, no effects added. The follow and cinematic sections do nothing in this mode."
+      "value": "The ordinary handheld camera, set up exactly as it ships. Stays in your hand, normal lens, no effects added. The follow and cinematic sections do nothing in this preset."
     },
     {
       "key": "camera.modePreset.flyingPuck",
@@ -75,6 +71,482 @@
       "value": "The shot rig drives the camera along your dolly, orbit and framing moves. A longer lens, shallower focus and a little motion blur for the filmic look. Follow does nothing here — the rig owns where the camera goes."
     },
     {
+      "key": "camera.modePreset.disposable",
+      "value": "Disposable"
+    },
+    {
+      "key": "camera.modePreset.disposable.description",
+      "value": "A single-use 35mm camera. Twenty-seven frames, a fixed wide lens that never focuses, and a flash you have to wait six seconds for. Warm, grainy and vignetted, with the date burned into the corner. When the roll runs out, reload it from the Camera section."
+    },
+    {
+      "key": "camera.modePreset.instant",
+      "value": "Instant"
+    },
+    {
+      "key": "camera.modePreset.instant.description",
+      "value": "Instant film: eight square prints a pack, and eleven seconds of watching each one come up before you can take the next. Soft, milky and low contrast, the way chemistry that never quite reaches black looks."
+    },
+    {
+      "key": "camera.modePreset.camcorder",
+      "value": "Camcorder"
+    },
+    {
+      "key": "camera.modePreset.camcorder.description",
+      "value": "A tape camcorder. Nothing runs out and nothing waits — the constraints are all in the picture: soft 4:3, colour smearing sideways off every edge, motion blur, and a clock burned in. The only camera kind whose zoom still works."
+    },
+    {
+      "key": "camera.modePreset.security",
+      "value": "Security Cam"
+    },
+    {
+      "key": "camera.modePreset.security.description",
+      "value": "A camera bolted to a ceiling. Very wide and barrel-distorted, crushed nearly to grey, grainy, levelled and stabilised because nobody is holding it — and stamped with the time."
+    },
+    {
+      "key": "camera.body",
+      "value": "Camera"
+    },
+    {
+      "key": "camera.body.digital",
+      "value": "Digital"
+    },
+    {
+      "key": "camera.body.kind",
+      "value": "Body"
+    },
+    {
+      "key": "camera.body.exposures",
+      "value": "Frames left"
+    },
+    {
+      "key": "camera.body.help",
+      "value": "Which camera you are holding and what its shutter is doing. Picking a body above hands you a fresh one."
+    },
+    {
+      "key": "camera.body.flash",
+      "value": "Flash"
+    },
+    {
+      "key": "camera.body.flash.tooltip",
+      "value": "Fires a real light on the frame you take, so faces near the camera come out hot and the far side of the room falls away. It has to charge between shots. Other players see the photo, not the pop."
+    },
+    {
+      "key": "camera.body.reload",
+      "value": "Reload"
+    },
+    {
+      "key": "camera.body.reload.tooltip",
+      "value": "Puts a full load of film in. The only way back from an empty camera."
+    },
+    {
+      "key": "camera.body.status.frames",
+      "value": "{0} of {1} frames left"
+    },
+    {
+      "key": "camera.body.status.unlimited",
+      "value": "Nothing to run out of"
+    },
+    {
+      "key": "camera.body.status.ready",
+      "value": "Ready"
+    },
+    {
+      "key": "camera.body.status.empty",
+      "value": "Out of film — reload to keep shooting"
+    },
+    {
+      "key": "camera.body.status.winding",
+      "value": "Winding on…"
+    },
+    {
+      "key": "camera.body.status.developing",
+      "value": "Developing…"
+    },
+    {
+      "key": "camera.body.status.flashReady",
+      "value": "Flash charged"
+    },
+    {
+      "key": "camera.body.status.flashCharging",
+      "value": "Flash charging…"
+    },
+    {
+      "key": "camera.body.status.flashOff",
+      "value": "Flash off"
+    },
+    {
+      "key": "camera.filmGrain.type",
+      "value": "Grain Size"
+    },
+    {
+      "key": "camera.filmGrain.type.description",
+      "value": "How big the grain is. This is what separates film from digital noise: a fast negative enlarged from a small frame has grain you can pick out, while a sensor turned up produces a much finer speckle."
+    },
+    {
+      "key": "camera.filmGrain.type.fine",
+      "value": "Fine"
+    },
+    {
+      "key": "camera.filmGrain.type.fine.description",
+      "value": "A fine speckle, the way a video sensor at high gain looks."
+    },
+    {
+      "key": "camera.filmGrain.type.medium",
+      "value": "Medium"
+    },
+    {
+      "key": "camera.filmGrain.type.medium.description",
+      "value": "The middle of the range — a slow film, or an instant print's dye texture."
+    },
+    {
+      "key": "camera.filmGrain.type.large",
+      "value": "Large"
+    },
+    {
+      "key": "camera.filmGrain.type.large.description",
+      "value": "Grain you can count, the way a fast consumer negative comes back from a machine scan."
+    },
+    {
+      "key": "camera.filmGrain.type.coarse",
+      "value": "Coarse"
+    },
+    {
+      "key": "camera.filmGrain.type.coarse.description",
+      "value": "The heaviest texture there is, for a small sensor pushed well past what its light allows."
+    },
+    {
+      "key": "camera.filmGrain.response",
+      "value": "Grain in Shadows"
+    },
+    {
+      "key": "camera.filmGrain.response.description",
+      "value": "How much the grain backs off in the bright parts. At zero it lies evenly over everything, which is what digital noise does; turned up it hides in the midtones and shadows and leaves a blown sky clean, which is what film grain does."
+    },
+    {
+      "key": "camera.bloomTint",
+      "value": "Glow Colour"
+    },
+    {
+      "key": "camera.bloomTint.description",
+      "value": "What colour the glow around a highlight takes. On film this is halation rather than bloom — light passes through the emulsion, bounces off the base behind it and exposes the film a second time, and the layer that stops that works least on red. It is why every bulb on a negative wears an orange ring."
+    },
+    {
+      "key": "camera.bloomTint.strength",
+      "value": "Glow Colour Strength"
+    },
+    {
+      "key": "camera.vignetteColour",
+      "value": "Vignette Colour"
+    },
+    {
+      "key": "camera.vignetteColour.description",
+      "value": "What the corners darken toward. Black is the digital answer; a lens simply passing less light at the edge of its circle darkens toward the colour of the light still getting through, which on warm film stock is a brown."
+    },
+    {
+      "key": "camera.vignetteColour.strength",
+      "value": "Vignette Colour Strength"
+    },
+    {
+      "key": "camera.vignetteRounded",
+      "value": "Round Vignette"
+    },
+    {
+      "key": "camera.vignetteRounded.description",
+      "value": "Darkens in a circle instead of following the frame. A single moulded lens element has a round image circle and falls off in a circle regardless of how the picture is cropped out of it; a corrected lens over a rectangular sensor falls off with the rectangle."
+    },
+    {
+      "key": "camera.splitToning.shadows",
+      "value": "Shadow Tone"
+    },
+    {
+      "key": "camera.splitToning.shadows.description",
+      "value": "The colour the dark half of the picture leans toward. Warming one end of the range and cooling the other is what makes a film stock as opposed to a colour filter — a negative puts teal in the shade, an instant print puts green there."
+    },
+    {
+      "key": "camera.splitToning.shadowStrength",
+      "value": "Shadow Tone Strength"
+    },
+    {
+      "key": "camera.splitToning.highlights",
+      "value": "Highlight Tone"
+    },
+    {
+      "key": "camera.splitToning.highlights.description",
+      "value": "The colour the bright half leans toward. Gold on a consumer negative, pink on an instant print."
+    },
+    {
+      "key": "camera.splitToning.highlightStrength",
+      "value": "Highlight Tone Strength"
+    },
+    {
+      "key": "camera.splitToning.balance",
+      "value": "Tone Balance"
+    },
+    {
+      "key": "camera.splitToning.balance.description",
+      "value": "Where the picture is divided between the two tones. Negative hands more of the frame to the shadow colour, positive to the highlight colour."
+    },
+    {
+      "key": "camera.filmLift",
+      "value": "Lifted Blacks"
+    },
+    {
+      "key": "camera.filmLift.description",
+      "value": "Raises the black point, so the darkest thing in the picture is a dark grey rather than black. This is the single strongest thing a film look has: a machine print has no true black in it at all, and an instant print has less than any of them."
+    },
+    {
+      "key": "camera.userMode.title",
+      "value": "Your Presets"
+    },
+    {
+      "key": "camera.userMode.help",
+      "value": "Point the camera the way you like it, give that arrangement a name and a colour, and it joins the list above. Saving over a name you already have updates that preset."
+    },
+    {
+      "key": "camera.userMode.description",
+      "value": "One of your own saved presets. Everything below was restored from it, and the panel is coloured in the colour you gave it."
+    },
+    {
+      "key": "camera.userMode.name",
+      "value": "Preset Name"
+    },
+    {
+      "key": "camera.userMode.name.tooltip",
+      "value": "What this preset is called in the list above. Saving with a name you already have replaces that preset."
+    },
+    {
+      "key": "camera.userMode.tint",
+      "value": "Preset Colour"
+    },
+    {
+      "key": "camera.userMode.tint.tooltip",
+      "value": "The colour the panel is painted while this preset is in control. Slide through the spectrum to pick one."
+    },
+    {
+      "key": "camera.userMode.save",
+      "value": "Save Current Settings"
+    },
+    {
+      "key": "camera.userMode.save.tooltip",
+      "value": "Stores everything this camera is set to right now, under the name above."
+    },
+    {
+      "key": "camera.userMode.remove",
+      "value": "Remove Preset"
+    },
+    {
+      "key": "camera.userMode.remove.tooltip",
+      "value": "Forgets the saved preset named above. Your camera keeps its current settings."
+    },
+    {
+      "key": "camera.userMode.remove.confirm",
+      "value": "Remove the saved preset “{0}”? The camera keeps the settings it has now — only the saved preset is forgotten."
+    },
+    {
+      "key": "camera.userMode.saved",
+      "value": "Saved. It is now in the list above."
+    },
+    {
+      "key": "camera.userMode.removed",
+      "value": "Removed."
+    },
+    {
+      "key": "camera.userMode.readout",
+      "value": "All Settings"
+    },
+    {
+      "key": "camera.userMode.error.empty",
+      "value": "Give the preset a name before saving it."
+    },
+    {
+      "key": "camera.userMode.error.full",
+      "value": "There is no room for another saved preset. Remove one first."
+    },
+    {
+      "key": "camera.placement",
+      "value": "Placement"
+    },
+    {
+      "key": "camera.anchor",
+      "value": "Anchor"
+    },
+    {
+      "key": "camera.anchor.description",
+      "value": "What carries the camera. Everything else — where it sits, who it films — is worked out inside whichever frame you pick here."
+    },
+    {
+      "key": "camera.anchor.hand",
+      "value": "In Your Hand"
+    },
+    {
+      "key": "camera.anchor.hand.tooltip",
+      "value": "The camera rides the prop you are holding."
+    },
+    {
+      "key": "camera.anchor.playspace",
+      "value": "With You"
+    },
+    {
+      "key": "camera.anchor.playspace.tooltip",
+      "value": "Keeps station with you. Walk, teleport or fly and the camera comes along, holding the same shot."
+    },
+    {
+      "key": "camera.anchor.world",
+      "value": "Left In The World"
+    },
+    {
+      "key": "camera.anchor.world.tooltip",
+      "value": "Stays exactly where you put it. A tripod: the world moves past it, it does not move."
+    },
+    {
+      "key": "camera.anchor.attached",
+      "value": "Attached To Something"
+    },
+    {
+      "key": "camera.anchor.attached.tooltip",
+      "value": "Rides something that moves — a vehicle, a lift, a player. The shot travels with it instead of being left behind."
+    },
+    {
+      "key": "camera.anchorFollowsBody",
+      "value": "Follow My Body"
+    },
+    {
+      "key": "camera.anchorFollowsBody.description",
+      "value": "Carries the camera when you physically walk around your room, not just when you move in game. Off is steadier and is what a tripod wants; on keeps the camera with you when you step away from where you started."
+    },
+    {
+      "key": "camera.anchorTarget",
+      "value": "Attached To"
+    },
+    {
+      "key": "camera.anchorTarget.description",
+      "value": "What the camera is riding. Pick a player here, or use the buttons below to attach it to something in the world."
+    },
+    {
+      "key": "camera.anchorTarget.none",
+      "value": "Nothing"
+    },
+    {
+      "key": "camera.anchorTarget.none.tooltip",
+      "value": "Nothing carries the camera, so it holds where it is — the same as leaving it in the world."
+    },
+    {
+      "key": "camera.anchorTarget.local",
+      "value": "Me"
+    },
+    {
+      "key": "camera.anchorTarget.local.tooltip",
+      "value": "Rides you, wherever you go."
+    },
+    {
+      "key": "camera.anchorToSurface",
+      "value": "Attach To Ground"
+    },
+    {
+      "key": "camera.anchorToSurface.description",
+      "value": "Attaches the camera to whatever it is standing over — a deck, a platform, a lift. The one to use when you have set the camera down on something that moves."
+    },
+    {
+      "key": "camera.anchorToView",
+      "value": "Attach To View"
+    },
+    {
+      "key": "camera.anchorToView.description",
+      "value": "Attaches the camera to whatever it is pointed at, for something you cannot stand it on."
+    },
+    {
+      "key": "camera.anchor.status",
+      "value": "Riding"
+    },
+    {
+      "key": "camera.anchor.status.none",
+      "value": "Nothing picked, so the camera holds where it is."
+    },
+    {
+      "key": "camera.anchor.status.riding",
+      "value": "Riding"
+    },
+    {
+      "key": "camera.anchor.status.lost",
+      "value": "What this was attached to has gone. The camera is holding where it was."
+    },
+    {
+      "key": "camera.sensorSize",
+      "value": "Sensor Size"
+    },
+    {
+      "key": "camera.shutterSpeed",
+      "value": "Shutter Speed"
+    },
+    {
+      "key": "camera.iso",
+      "value": "ISO"
+    },
+    {
+      "key": "camera.focusMode",
+      "value": "Focus Mode"
+    },
+    {
+      "key": "camera.focusManual",
+      "value": "Manual"
+    },
+    {
+      "key": "camera.focusAuto",
+      "value": "Follow Subject"
+    },
+    {
+      "key": "camera.followOffset",
+      "value": "Follow Offset"
+    },
+    {
+      "key": "camera.followRotationOffset",
+      "value": "Follow Rotation"
+    },
+    {
+      "key": "camera.autoFocusSubject",
+      "value": "Auto Focus Subject"
+    },
+    {
+      "key": "camera.detachedMarker.puck",
+      "value": "Puck"
+    },
+    {
+      "key": "camera.detachedMarker.wireframe",
+      "value": "Wireframe"
+    },
+    {
+      "key": "camera.background.world",
+      "value": "World"
+    },
+    {
+      "key": "camera.background.greenScreen",
+      "value": "Green Screen"
+    },
+    {
+      "key": "camera.background.blueScreen",
+      "value": "Blue Screen"
+    },
+    {
+      "key": "camera.background.black",
+      "value": "Black"
+    },
+    {
+      "key": "camera.background.white",
+      "value": "White"
+    },
+    {
+      "key": "camera.background.magenta",
+      "value": "Magenta"
+    },
+    {
+      "key": "camera.background.custom",
+      "value": "Custom"
+    },
+    {
+      "key": "camera.background.transparent",
+      "value": "Transparent"
+    },
+    {
       "key": "camera.noCamerasOpen",
       "value": "No Cameras Open"
     },
@@ -93,6 +565,194 @@
     {
       "key": "camera.tab.advanced",
       "value": "Advanced"
+    },
+    {
+      "key": "camera.tab.gif",
+      "value": "GIF"
+    },
+    {
+      "key": "camera.gif",
+      "value": "GIF Recording"
+    },
+    {
+      "key": "camera.gif.record",
+      "value": "Start Recording"
+    },
+    {
+      "key": "camera.gif.stop",
+      "value": "Stop ({0}s)"
+    },
+    {
+      "key": "camera.gif.saving",
+      "value": "Saving…"
+    },
+    {
+      "key": "camera.gif.status",
+      "value": "Status"
+    },
+    {
+      "key": "camera.gif.status.idle",
+      "value": "Ready. GIFs save next to your photos."
+    },
+    {
+      "key": "camera.gif.status.recording",
+      "value": "Recording… {0} frames so far."
+    },
+    {
+      "key": "camera.gif.status.saving",
+      "value": "Encoding frame {0} of {1}…"
+    },
+    {
+      "key": "camera.gif.status.saved",
+      "value": "Saved {0}"
+    },
+    {
+      "key": "camera.gif.status.failed",
+      "value": "Failed: {0}"
+    },
+    {
+      "key": "camera.gif.status.blocked",
+      "value": "Camera capture is locked by an admin."
+    },
+    {
+      "key": "camera.gif.length",
+      "value": "Length"
+    },
+    {
+      "key": "camera.gif.length.description",
+      "value": "Seconds a recording runs before it stops itself."
+    },
+    {
+      "key": "camera.gif.frameRate",
+      "value": "Frame Rate"
+    },
+    {
+      "key": "camera.gif.frameRate.description",
+      "value": "Frames per second in the finished GIF. More is smoother and bigger."
+    },
+    {
+      "key": "camera.gif.size",
+      "value": "Size"
+    },
+    {
+      "key": "camera.gif.size.description",
+      "value": "Width of the GIF in pixels. The height follows the photo aspect."
+    },
+    {
+      "key": "camera.gif.loop",
+      "value": "Loop"
+    },
+    {
+      "key": "camera.gif.loop.description",
+      "value": "Repeat forever, or play once and hold the last frame."
+    },
+    {
+      "key": "camera.gif.dither",
+      "value": "Dithering"
+    },
+    {
+      "key": "camera.gif.dither.description",
+      "value": "Blends the GIF's limited colors. Smoother gradients, slightly grainy."
+    },
+    {
+      "key": "camera.video",
+      "value": "Video Recording"
+    },
+    {
+      "key": "camera.video.record",
+      "value": "Start Recording"
+    },
+    {
+      "key": "camera.video.stop",
+      "value": "Stop ({0}s)"
+    },
+    {
+      "key": "camera.video.saving",
+      "value": "Saving…"
+    },
+    {
+      "key": "camera.video.status",
+      "value": "Status"
+    },
+    {
+      "key": "camera.video.status.idle",
+      "value": "Ready. Videos save next to your photos as MJPEG AVI files."
+    },
+    {
+      "key": "camera.video.status.recording",
+      "value": "Recording… {0} frames so far."
+    },
+    {
+      "key": "camera.video.status.recordingClip",
+      "value": "Recording clip {0}… {1} frames so far."
+    },
+    {
+      "key": "camera.video.status.saving",
+      "value": "Encoding frame {0} of {1}…"
+    },
+    {
+      "key": "camera.video.status.saved",
+      "value": "Saved {0}"
+    },
+    {
+      "key": "camera.video.status.failed",
+      "value": "Failed: {0}"
+    },
+    {
+      "key": "camera.video.status.blocked",
+      "value": "Camera capture is locked by an admin."
+    },
+    {
+      "key": "camera.video.length",
+      "value": "Length"
+    },
+    {
+      "key": "camera.video.length.description",
+      "value": "Seconds a recording runs before it stops itself."
+    },
+    {
+      "key": "camera.video.frameRate",
+      "value": "Frame Rate"
+    },
+    {
+      "key": "camera.video.frameRate.description",
+      "value": "Frames per second in the finished video. More is smoother and bigger."
+    },
+    {
+      "key": "camera.video.size",
+      "value": "Size"
+    },
+    {
+      "key": "camera.video.size.description",
+      "value": "Width of the video in pixels. The height follows the photo aspect."
+    },
+    {
+      "key": "camera.video.quality",
+      "value": "Quality"
+    },
+    {
+      "key": "camera.video.quality.description",
+      "value": "JPEG quality of each frame. Higher looks better and makes a much larger file."
+    },
+    {
+      "key": "camera.video.timeLimit",
+      "value": "Time Limit"
+    },
+    {
+      "key": "camera.video.timeLimit.description",
+      "value": "Stop by itself after the length below. Off records until you press stop."
+    },
+    {
+      "key": "camera.video.autoNewClip",
+      "value": "Auto New Clip"
+    },
+    {
+      "key": "camera.video.autoNewClip.description",
+      "value": "At the length above, save the clip and start the next one straight away. Nothing is lost at the join, and recording runs until you press stop."
+    },
+    {
+      "key": "camera.video.stopUnlimited",
+      "value": "Stop Recording"
     },
     {
       "key": "camera.lens",
@@ -143,6 +803,14 @@
       "value": "Focus Distance"
     },
     {
+      "key": "camera.focus.noSubject",
+      "value": "Nobody Is Being Tracked"
+    },
+    {
+      "key": "camera.focus.noSubject.description",
+      "value": "Follow Subject has no one to keep sharp, so focus is not being driven and the distance slider is still in charge. Choose who the camera films on the Modifiers tab, under Subject — fit a position or rotation modifier there, or pick a Follow Target."
+    },
+    {
       "key": "camera.aperture",
       "value": "Aperture"
     },
@@ -167,12 +835,212 @@
       "value": "Number of aperture blades — the shape of out-of-focus highlights (Bokeh)."
     },
     {
+      "key": "camera.focusPeaking",
+      "value": "Focus Peaking"
+    },
+    {
+      "key": "camera.focusPeaking.description",
+      "value": "Tints whatever the lens has actually resolved, so focus can be judged on a preview this small. Viewfinder only — the overlay is drawn into a texture of its own and never reaches a photo, a recording or a stream."
+    },
+    {
+      "key": "camera.focusPeaking.colour",
+      "value": "Peak Colour"
+    },
+    {
+      "key": "camera.focusPeaking.colour.description",
+      "value": "Which colour resolved detail is painted."
+    },
+    {
+      "key": "camera.focusPeaking.red",
+      "value": "Red"
+    },
+    {
+      "key": "camera.focusPeaking.red.tooltip",
+      "value": "The default, and the colour least likely to be mistaken for part of a face or a skin tone."
+    },
+    {
+      "key": "camera.focusPeaking.green",
+      "value": "Green"
+    },
+    {
+      "key": "camera.focusPeaking.green.tooltip",
+      "value": "Reads clearly against red and orange subjects, where red peaks disappear."
+    },
+    {
+      "key": "camera.focusPeaking.blue",
+      "value": "Blue"
+    },
+    {
+      "key": "camera.focusPeaking.blue.tooltip",
+      "value": "For warm, sunlit scenes with no cool colour of their own."
+    },
+    {
+      "key": "camera.focusPeaking.yellow",
+      "value": "Yellow"
+    },
+    {
+      "key": "camera.focusPeaking.yellow.tooltip",
+      "value": "The brightest of the set, for a dark subject where the other colours are hard to pick out."
+    },
+    {
+      "key": "camera.focusPeaking.white",
+      "value": "White"
+    },
+    {
+      "key": "camera.focusPeaking.white.tooltip",
+      "value": "Neutral, for a saturated scene that fights every coloured overlay."
+    },
+    {
+      "key": "camera.focusPeaking.sensitivity",
+      "value": "Peak Sensitivity"
+    },
+    {
+      "key": "camera.focusPeaking.sensitivity.description",
+      "value": "How readily detail counts as resolved. Higher paints more of the frame; past a point film grain and noise start to peak too."
+    },
+    {
+      "key": "camera.focusPeaking.grey",
+      "value": "Grey The Picture"
+    },
+    {
+      "key": "camera.focusPeaking.grey.description",
+      "value": "Drains the colour out of everything but the peaks while peaking is on, which is what makes them unmistakable. The shot itself is unaffected."
+    },
+    {
+      "key": "camera.grid",
+      "value": "Alignment Grid"
+    },
+    {
+      "key": "camera.grid.description",
+      "value": "Draws framing lines over the viewfinder, so a level horizon and an off-centre subject can be judged rather than guessed. Viewfinder only — the lines are drawn into a texture of their own and never reach a photo, a recording or a stream."
+    },
+    {
+      "key": "camera.grid.pattern",
+      "value": "Grid"
+    },
+    {
+      "key": "camera.grid.pattern.description",
+      "value": "Which lines are drawn."
+    },
+    {
+      "key": "camera.grid.thirds",
+      "value": "Rule Of Thirds"
+    },
+    {
+      "key": "camera.grid.thirds.tooltip",
+      "value": "The default. Two lines each way; a subject placed on an intersection reads better than one sat in the middle."
+    },
+    {
+      "key": "camera.grid.quarters",
+      "value": "Quarters"
+    },
+    {
+      "key": "camera.grid.quarters.tooltip",
+      "value": "Three lines each way, so the frame has a centre line as well as the off-centre pair."
+    },
+    {
+      "key": "camera.grid.golden",
+      "value": "Golden Ratio"
+    },
+    {
+      "key": "camera.grid.golden.tooltip",
+      "value": "The placement the rule of thirds rounds off — the same idea, with the lines slightly nearer the middle."
+    },
+    {
+      "key": "camera.grid.diagonal",
+      "value": "Diagonals"
+    },
+    {
+      "key": "camera.grid.diagonal.tooltip",
+      "value": "Corner to corner both ways, for lining a shot up along a road, a rail or a leading edge."
+    },
+    {
+      "key": "camera.grid.centre",
+      "value": "Centre Cross"
+    },
+    {
+      "key": "camera.grid.centre.tooltip",
+      "value": "One line each way through the middle, for centring a subject and nothing else."
+    },
+    {
+      "key": "camera.grid.opacity",
+      "value": "Grid Opacity"
+    },
+    {
+      "key": "camera.grid.opacity.description",
+      "value": "How strongly the lines are drawn over the picture. Each carries a dark edge, so they stay readable against a bright sky as well as a dark subject."
+    },
+    {
       "key": "camera.exposureColour",
       "value": "Exposure & Colour"
     },
     {
       "key": "camera.exposure",
       "value": "Exposure"
+    },
+    {
+      "key": "camera.autoBrightness",
+      "value": "Auto Brightness"
+    },
+    {
+      "key": "camera.autoBrightness.description",
+      "value": "Meters the picture and sets the exposure itself, so a walk from a dark room into daylight stays watchable. The Exposure control above keeps working and becomes compensation on top of what the meter decides."
+    },
+    {
+      "key": "camera.autoBrightness.metering",
+      "value": "Metering"
+    },
+    {
+      "key": "camera.autoBrightness.metering.description",
+      "value": "Which part of the frame the meter listens to."
+    },
+    {
+      "key": "camera.metering.average",
+      "value": "Average"
+    },
+    {
+      "key": "camera.metering.average.tooltip",
+      "value": "The whole frame, weighted evenly. The steadiest of the three, and the least likely to swing as things move through the shot."
+    },
+    {
+      "key": "camera.metering.centre",
+      "value": "Centre Weighted"
+    },
+    {
+      "key": "camera.metering.centre.tooltip",
+      "value": "The whole frame, but the middle counts for far more — the usual stills-camera meter, and the best default for filming a person."
+    },
+    {
+      "key": "camera.metering.spot",
+      "value": "Spot"
+    },
+    {
+      "key": "camera.metering.spot.tooltip",
+      "value": "Only a small circle at the centre, so a subject stays exposed against any background. Swings hard when the centre of the frame changes."
+    },
+    {
+      "key": "camera.autoBrightness.target",
+      "value": "Target Brightness"
+    },
+    {
+      "key": "camera.autoBrightness.target.description",
+      "value": "How bright the metered part of the picture is driven to. Raise it for a brighter, flatter look; lower it to protect highlights."
+    },
+    {
+      "key": "camera.autoBrightness.speed",
+      "value": "Response"
+    },
+    {
+      "key": "camera.autoBrightness.speed.description",
+      "value": "How quickly the exposure catches up. Low is a slow, cinematic drift; high reacts at once but can visibly hunt, since the meter is always reading a frame that has already been shown."
+    },
+    {
+      "key": "camera.autoBrightness.range",
+      "value": "Brightness Range"
+    },
+    {
+      "key": "camera.autoBrightness.range.description",
+      "value": "Furthest the meter may move the exposure on its own, in stops either way. Keeps a very dark room from being lifted into noise."
     },
     {
       "key": "camera.exposureOnCamera",
@@ -229,6 +1097,78 @@
     {
       "key": "camera.lensDistortion",
       "value": "Lens Distortion"
+    },
+    {
+      "key": "camera.lensDistortionScale",
+      "value": "Distortion Scale"
+    },
+    {
+      "key": "camera.lensDistortionScale.description",
+      "value": "Zooms the image to cover the corners the distortion pulled in. Above 1 crops in, below 1 lets the edges show."
+    },
+    {
+      "key": "camera.bloomScatter",
+      "value": "Bloom Scatter"
+    },
+    {
+      "key": "camera.bloomScatter.description",
+      "value": "How far the glow spreads out from a highlight, as opposed to how bright it is. Higher is softer and wider."
+    },
+    {
+      "key": "camera.vignetteSmoothness",
+      "value": "Vignette Softness"
+    },
+    {
+      "key": "camera.vignetteSmoothness.description",
+      "value": "How far the darkening reaches in from the corners. Low is a hard circle, high fades across most of the frame."
+    },
+    {
+      "key": "camera.panini",
+      "value": "Panini Projection"
+    },
+    {
+      "key": "camera.panini.description",
+      "value": "Straightens the stretch a wide lens puts on anything near the edge of frame, the way a panorama is unwrapped. Zero is an ordinary shot."
+    },
+    {
+      "key": "camera.paniniCrop",
+      "value": "Crop To Fit"
+    },
+    {
+      "key": "camera.paniniCrop.description",
+      "value": "How much of the projection's own zoom is used to cover the edges it opened up."
+    },
+    {
+      "key": "camera.tonemapping",
+      "value": "Photo Grade"
+    },
+    {
+      "key": "camera.tonemapping.description",
+      "value": "Which tonemapper the saved photo is graded with. The viewfinder always shows Neutral, so a still is not expected to match it exactly."
+    },
+    {
+      "key": "camera.tonemapping.none",
+      "value": "None"
+    },
+    {
+      "key": "camera.tonemapping.none.description",
+      "value": "No grade at all. Bright areas clip rather than rolling off."
+    },
+    {
+      "key": "camera.tonemapping.neutral",
+      "value": "Neutral"
+    },
+    {
+      "key": "camera.tonemapping.neutral.description",
+      "value": "A light touch that keeps colours where they were. Matches the viewfinder."
+    },
+    {
+      "key": "camera.tonemapping.aces",
+      "value": "ACES"
+    },
+    {
+      "key": "camera.tonemapping.aces.description",
+      "value": "Filmic. Rolls highlights off gently and deepens contrast, which is what stops a bright scene going flat."
     },
     {
       "key": "camera.motionBlur",
@@ -363,6 +1303,14 @@
       "value": "Sender Name"
     },
     {
+      "key": "camera.flyMode",
+      "value": "Fly Mode"
+    },
+    {
+      "key": "camera.flyMode.description",
+      "value": "Send the camera out into the world and steer it yourself. In VR this switch is the way in and out, and the hand that launched it keeps the controls, so you can let go of the camera and keep flying. On desktop middle click toggles it too, and you fly with the mouse and WASD. Your own movement is held still while it flies."
+    },
+    {
       "key": "camera.follow",
       "value": "Follow"
     },
@@ -467,6 +1415,14 @@
       "value": "360 Capture"
     },
     {
+      "key": "camera.printPhoto",
+      "value": "Print Photo"
+    },
+    {
+      "key": "camera.printPhoto.description",
+      "value": "Spawn each photo you take in front of you as a shared image card — the same one a file dragged onto the window makes. Everyone in the instance sees it, and anyone can grab, move, or delete it. PNG photos only."
+    },
+    {
       "key": "camera.selfie",
       "value": "Selfie"
     },
@@ -491,8 +1447,64 @@
       "value": "Smooth out hand shake when holding the camera in VR."
     },
     {
+      "key": "camera.smoothDrag",
+      "value": "Smooth Drag"
+    },
+    {
+      "key": "camera.smoothDrag.description",
+      "value": "Let the camera trail behind your hand as you drag it, then settle once you stop."
+    },
+    {
+      "key": "camera.smoothDrag.position",
+      "value": "Drag Lag"
+    },
+    {
+      "key": "camera.smoothDrag.position.description",
+      "value": "Seconds the camera takes to reach your hand. Higher trails further behind a move."
+    },
+    {
+      "key": "camera.smoothDrag.rotation",
+      "value": "Turn Lag"
+    },
+    {
+      "key": "camera.smoothDrag.rotation.description",
+      "value": "Seconds the camera takes to match how your hand is pointing."
+    },
+    {
+      "key": "camera.smoothDrag.leash",
+      "value": "Trail Distance"
+    },
+    {
+      "key": "camera.smoothDrag.leash.description",
+      "value": "Furthest the camera may fall behind your hand before it is pulled along."
+    },
+    {
       "key": "camera.openPhotosFolder",
       "value": "Open Photos Folder"
+    },
+    {
+      "key": "camera.openSavedPhoto",
+      "value": "Show Saved Photo"
+    },
+    {
+      "key": "camera.openSavedPhoto.none",
+      "value": "Take a photo first."
+    },
+    {
+      "key": "camera.photo.status",
+      "value": "Last Photo"
+    },
+    {
+      "key": "camera.photo.status.idle",
+      "value": "No photo saved yet."
+    },
+    {
+      "key": "camera.photo.status.saved",
+      "value": "Saved {0}"
+    },
+    {
+      "key": "camera.photo.status.failed",
+      "value": "Save failed: {0}"
     },
     {
       "key": "camera.renderLayers",
@@ -501,6 +1513,14 @@
     {
       "key": "camera.performance",
       "value": "Performance"
+    },
+    {
+      "key": "camera.rateLocked",
+      "value": "Rate Pinned While Recording"
+    },
+    {
+      "key": "camera.rateLocked.description",
+      "value": "A recording holds the capture rate limit on and sets it to your display's refresh rate, so every frame it takes is one the camera actually drew. The rate below is still yours to change; the limit goes back to your own setting when the recording ends."
     },
     {
       "key": "settings.general.thirdPerson.tooltip",
@@ -573,6 +1593,10 @@
     {
       "key": "settings.microphone.icon.tooltip",
       "value": "Choose when the microphone status icon appears on screen."
+    },
+    {
+      "key": "settings.microphone.icon.levelRing.tooltip",
+      "value": "Draws the microphone status as an outline-only circle that grows and shrinks with how loud you are, instead of the microphone symbol. The circle is hollow, so it covers less of your view."
     },
     {
       "key": "settings.microphone.startBehavior.tooltip",
@@ -901,6 +1925,10 @@
     {
       "key": "settings.developer.gizmoLabels.tooltip",
       "value": "Show text labels on the visible gizmos (tracker roles, linked pairs, IK colliders, audio)."
+    },
+    {
+      "key": "settings.developer.gizmoDrawOnTop.tooltip",
+      "value": "Draw every gizmo through the world so markers inside an avatar or behind a wall stay visible. Off by default, so gizmos depth-test like anything else and the world hides whatever is actually behind them."
     },
     {
       "key": "settings.general.networking.jitterBufferOverride.tooltip",
@@ -2447,6 +3475,10 @@
       "value": "Reset Position"
     },
     {
+      "key": "menu.panel.reset.all",
+      "value": "Reset All"
+    },
+    {
       "key": "menu.panel.search",
       "value": "Search"
     },
@@ -2460,7 +3492,19 @@
     },
     {
       "key": "menu.panel.reset.choose",
-      "value": "Reset all {0} settings to defaults, or just put this panel back where it started?"
+      "value": "Reset all {0} settings to defaults, put this panel back where it started, or reset both?"
+    },
+    {
+      "key": "menu.panel.reset.changed",
+      "value": "Changed from default ({0}):"
+    },
+    {
+      "key": "menu.panel.reset.nochanges",
+      "value": "Everything on this page is already at its default."
+    },
+    {
+      "key": "menu.panel.reset.changed.entry",
+      "value": "{0} → {1}"
     },
     {
       "key": "keyboard.title",
@@ -2497,6 +3541,10 @@
     {
       "key": "keyboard.display.placeholder",
       "value": "Start typing..."
+    },
+    {
+      "key": "keyboard.key.restricted",
+      "value": "Not allowed in this field"
     },
     {
       "key": "menu.provider.calibration",
@@ -2553,6 +3601,10 @@
     {
       "key": "menu.provider.micmode.shout",
       "value": "Shout"
+    },
+    {
+      "key": "menu.provider.micmode.noone",
+      "value": "No One"
     },
     {
       "key": "menu.provider.individualPlayer",
@@ -2749,6 +3801,14 @@
     {
       "key": "trackerLinking.trustSteamVRRoles.tooltip",
       "value": "Use the body role SteamVR reports for a tracker instead of working it out during calibration."
+    },
+    {
+      "key": "trackerLinking.ignoreHandTracking",
+      "value": "Ignore Hand Tracking Devices"
+    },
+    {
+      "key": "trackerLinking.ignoreHandTracking.tooltip",
+      "value": "Leave the trackers published by hand-tracking software (HANDL, HANDR, VRLINKQ) out of full-body calibration, so they can't be given a body role. Turn this off if a real body tracker of yours reports one of those names."
     },
     {
       "key": "trackerLinking.unlink",
@@ -3147,6 +4207,14 @@
       "value": "No transmission data"
     },
     {
+      "key": "network.avatarLocalOnly.title",
+      "value": "Avatar Won't Load For Others"
+    },
+    {
+      "key": "network.avatarLocalOnly.body",
+      "value": "This avatar is loaded from a file on your computer and isn't hosted anywhere the other players can reach, so nobody else on this server can download it. You will see it normally; everyone else will see a placeholder. Upload it and load it from a URL for other players to see it. Built-in avatars are unaffected — every client already has those."
+    },
+    {
       "key": "menu.servers.list.default",
       "value": "Default Basis Server"
     },
@@ -3161,10 +4229,6 @@
     {
       "key": "menu.players.sortMode.description",
       "value": "Pinned players always appear first."
-    },
-    {
-      "key": "menu.players.sortMode.default",
-      "value": "Default"
     },
     {
       "key": "menu.players.sortMode.distance",
@@ -3249,6 +4313,122 @@
     {
       "key": "menu.individualPlayer.actions.description",
       "value": "One press for the things you most often want to do to this player. Every action here also appears on the tab that owns it."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.shown",
+      "value": "Avatar Shown"
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.shown.body",
+      "value": "Their real avatar is loaded and visible."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.blockedByYou",
+      "value": "Blocked by You"
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.blockedByYou.body",
+      "value": "You blocked this player, so their avatar, voice and chat stay hidden. Unblock them to load the avatar again."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.blockedByThem",
+      "value": "They Blocked You"
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.blockedByThem.body",
+      "value": "This player blocked you, so their avatar is hidden on both sides for the rest of the session."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.hidden",
+      "value": "Hidden by You"
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.hidden.body",
+      "value": "You hid this player's avatar. Press Show Avatar to load it again."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.failed",
+      "value": "Avatar Failed to Load"
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.failed.body",
+      "value": "Their avatar could not be loaded and will not be retried on its own. Press Show Avatar to try again."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.performance",
+      "value": "Over Your Performance Limits"
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.performance.body",
+      "value": "Their avatar goes over a limit you set, so it was never downloaded. The Avatar tab can bypass the filter for this one player."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.outOfRange",
+      "value": "Out of Avatar Range"
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.outOfRange.body",
+      "value": "They are {0:0.#} m away and your avatar range is {1:0.#} m. Move closer, raise the range, or turn on Always Show Avatar for them."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.overCap",
+      "value": "Over the Avatar Limit"
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.overCap.body",
+      "value": "They are close enough, but you are showing at most {0} avatars at once and closer players took the slots. Raise the limit, or turn on Always Show Avatar for them."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.overCap.body.zero",
+      "value": "They are close enough, but your visible avatar limit is set to 0, so no real avatars load at all. Raise the limit, or turn on Always Show Avatar for them."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.rangePending",
+      "value": "Coming Back Into Range"
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.rangePending.body",
+      "value": "They just came back inside your avatar range and their avatar is being restored."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.loading",
+      "value": "Avatar Loading"
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.loading.body",
+      "value": "Their avatar is downloading now."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.placeholder",
+      "value": "No Avatar Yet"
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.placeholder.body",
+      "value": "Nothing is holding their avatar back, so this should clear on its own in a moment."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.gone",
+      "value": "Player Gone"
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.gone.body",
+      "value": "This player is no longer in the instance."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.showing.far",
+      "value": "You are seeing their far avatar — a low-detail stand-in."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.showing.placeholder",
+      "value": "You are seeing the placeholder avatar."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.showing.nothing",
+      "value": "Nothing is being drawn for them right now."
+    },
+    {
+      "key": "menu.individualPlayer.avatarStatus.reason",
+      "value": "Reason: {0}"
     },
     {
       "key": "menu.individualPlayer.player",
@@ -3661,6 +4841,66 @@
     {
       "key": "menu.individualPlayer.kick.dialog.body",
       "value": "Kick {0}?"
+    },
+    {
+      "key": "menu.individualPlayer.forceAvatar",
+      "value": "Force Avatar"
+    },
+    {
+      "key": "menu.individualPlayer.locomotion",
+      "value": "Locomotion Override"
+    },
+    {
+      "key": "menu.individualPlayer.locomotion.description",
+      "value": "Override this player's movement for this session. Cleared automatically when they disconnect, and world content cannot undo or outrank it."
+    },
+    {
+      "key": "menu.individualPlayer.locomotion.jumpHeight.override",
+      "value": "Override Jump Height"
+    },
+    {
+      "key": "menu.individualPlayer.locomotion.jumpHeight",
+      "value": "Jump Height (m)"
+    },
+    {
+      "key": "menu.individualPlayer.locomotion.walkSpeed.override",
+      "value": "Override Walk Speed"
+    },
+    {
+      "key": "menu.individualPlayer.locomotion.walkSpeed",
+      "value": "Walk Speed (m/s)"
+    },
+    {
+      "key": "menu.individualPlayer.locomotion.runSpeed.override",
+      "value": "Override Run Speed"
+    },
+    {
+      "key": "menu.individualPlayer.locomotion.runSpeed",
+      "value": "Run Speed (m/s)"
+    },
+    {
+      "key": "menu.individualPlayer.locomotion.mode",
+      "value": "Movement Mode"
+    },
+    {
+      "key": "menu.individualPlayer.locomotion.apply",
+      "value": "Apply Locomotion Override"
+    },
+    {
+      "key": "menu.individualPlayer.locomotion.clear",
+      "value": "Clear Locomotion Override"
+    },
+    {
+      "key": "menu.individualPlayer.forceAvatar.description",
+      "value": "Put this player onto the selected avatar. They can change back at any time."
+    },
+    {
+      "key": "menu.individualPlayer.forceAvatar.dialog.title",
+      "value": "Force avatar?"
+    },
+    {
+      "key": "menu.individualPlayer.forceAvatar.dialog.body",
+      "value": "Put {0} onto '{1}'?"
     },
     {
       "key": "menu.individualPlayer.ban",
@@ -4201,6 +5441,10 @@
     {
       "key": "library.embeddedItem",
       "value": "Embedded Item"
+    },
+    {
+      "key": "library.embedded.handHeldCamera",
+      "value": "Hand Held Camera"
     },
     {
       "key": "library.noDescription",
@@ -4995,6 +6239,22 @@
       "value": "Allow peer-to-peer links with other players. When off, incoming requests are auto-declined and you cannot start one; voice and avatar always go through the server. Existing sessions are not closed."
     },
     {
+      "key": "settings.general.networking.proxyBenchmarkRange",
+      "value": "VPN Compatibility (Fake-IP Proxies)"
+    },
+    {
+      "key": "settings.general.networking.proxyBenchmarkRange.tooltip",
+      "value": "Turn this on only if downloads fail while a VPN or proxy is running. Some proxies (Clash, sing-box in TUN mode) give websites fake placeholder addresses that Basis normally blocks. Local network addresses stay blocked either way."
+    },
+    {
+      "key": "settings.network.fakeIp.prompt.title",
+      "value": "Downloads blocked by VPN address range"
+    },
+    {
+      "key": "settings.network.fakeIp.prompt.body",
+      "value": "Your system is resolving websites to placeholder addresses in the 198.18.0.0/15 range, which a Fake-IP proxy such as Clash or sing-box uses in TUN mode. Basis blocks that range by default because it is not normally reachable, so worlds and avatars cannot download.\n\nAllow this range so downloads work through your proxy? Local network and cloud metadata addresses stay blocked either way. You can change this later under Settings → General → Networking."
+    },
+    {
       "key": "settings.general.networking.encryption.title",
       "value": "Encryption"
     },
@@ -5291,6 +6551,14 @@
       "value": "Play a sound when your microphone is muted or unmuted."
     },
     {
+      "key": "settings.audio.sounds.microphone.pushToTalk",
+      "value": "Microphone (Push To Talk)"
+    },
+    {
+      "key": "settings.audio.sounds.microphone.pushToTalk.tooltip",
+      "value": "Also play that sound every time you press and release push to talk. Off by default, because it repeats on every phrase."
+    },
+    {
       "key": "settings.audio.sounds.camera",
       "value": "Camera"
     },
@@ -5331,12 +6599,24 @@
       "value": "Microphone Icon"
     },
     {
+      "key": "settings.microphone.icon.levelRing",
+      "value": "Show As Voice Level Circle"
+    },
+    {
       "key": "settings.microphone.startBehavior",
       "value": "Mic Start Behavior"
     },
     {
       "key": "settings.microphone.muteBehavior",
       "value": "Mic Mute Behavior"
+    },
+    {
+      "key": "settings.microphone.talkToNoOne",
+      "value": "Talk To No One"
+    },
+    {
+      "key": "settings.microphone.talkToNoOne.tooltip",
+      "value": "Adds a \"No One\" step to the mic mode button next to mute. Your microphone stays on so your avatar’s mouth keeps moving, but nobody hears you."
     },
     {
       "key": "settings.microphone.muteBehavior.title",
@@ -5531,6 +6811,10 @@
       "value": "Your GPU takes longer to finish a frame than your CPU does, so the CPU spends part of every frame waiting. Try lowering resolution, render scale, shadow quality, antialiasing, or mirror quality."
     },
     {
+      "key": "settings.graphics.bottleneck.advice.highlight",
+      "value": "The settings on this page that change that side's cost are highlighted in blue."
+    },
+    {
       "key": "settings.graphics.bottleneck.advice.balanced",
       "value": "Your CPU and GPU finish each frame at about the same time, so neither one has spare headroom. Easing off on both sides will give the biggest gain."
     },
@@ -5653,6 +6937,58 @@
     {
       "key": "settings.graphics.fog.bakedapv.tooltip",
       "value": "Light the fog from a fast static bake of the scene's adaptive probe volumes instead of sampling them live every frame. Baked on demand and used immediately."
+    },
+    {
+      "key": "settings.graphics.motionBlur.title",
+      "value": "Motion Blur"
+    },
+    {
+      "key": "settings.graphics.motionBlur.override",
+      "value": "Override Motion Blur"
+    },
+    {
+      "key": "settings.graphics.motionBlur.override.tooltip",
+      "value": "Manually control the blur that trails fast movement, or turn a world's motion blur off."
+    },
+    {
+      "key": "settings.graphics.motionBlur.intensity",
+      "value": "Blur Strength"
+    },
+    {
+      "key": "settings.graphics.motionBlur.intensity.tooltip",
+      "value": "How much fast movement smears. Zero turns motion blur off, including the world's own."
+    },
+    {
+      "key": "settings.graphics.motionBlur.clamp",
+      "value": "Streak Limit"
+    },
+    {
+      "key": "settings.graphics.motionBlur.clamp.tooltip",
+      "value": "The longest a blur streak may get, as a fraction of the screen. Lower values keep fast turns from smearing the whole view."
+    },
+    {
+      "key": "settings.graphics.motionBlur.quality",
+      "value": "Blur Quality"
+    },
+    {
+      "key": "settings.graphics.motionBlur.quality.tooltip",
+      "value": "Samples taken per streak. Higher looks smoother and costs more."
+    },
+    {
+      "key": "settings.graphics.motionBlur.mode",
+      "value": "Blur Mode"
+    },
+    {
+      "key": "settings.graphics.motionBlur.mode.tooltip",
+      "value": "Camera Only blurs when the view moves. Camera And Objects also blurs moving objects, at the cost of an extra motion vector pass."
+    },
+    {
+      "key": "settings.graphics.motionBlur.mode.cameraOnly",
+      "value": "Camera Only"
+    },
+    {
+      "key": "settings.graphics.motionBlur.mode.cameraAndObjects",
+      "value": "Camera And Objects"
     },
     {
       "key": "settings.graphics.cameraClip.title",
@@ -6159,6 +7495,66 @@
       "value": "How far the trigger must be released before the click ends."
     },
     {
+      "key": "settings.controls.joystickBind.title",
+      "value": "Slider on a Thumbstick"
+    },
+    {
+      "key": "settings.controls.joystickBind.description",
+      "value": "Hand one slider to a thumbstick, so a value can be tuned while looking at what it changes instead of at the menu. Open any slider's options to take the bind."
+    },
+    {
+      "key": "settings.controls.joystickBind.unbind",
+      "value": "Unbind"
+    },
+    {
+      "key": "settings.controls.joystickBind.unbind.tooltip",
+      "value": "Give the stick back to walking and turning."
+    },
+    {
+      "key": "settings.controls.joystickBind.status",
+      "value": "Bound Slider"
+    },
+    {
+      "key": "settings.controls.joystickBind.status.none",
+      "value": "Nothing is bound — both sticks walk and turn as usual."
+    },
+    {
+      "key": "settings.controls.joystickBind.status.bound",
+      "value": "{0}, on the {1} stick. That stick no longer walks or turns forward and back."
+    },
+    {
+      "key": "settings.controls.joystickBind.status.unnamed",
+      "value": "A slider"
+    },
+    {
+      "key": "settings.controls.joystickBind.sweep",
+      "value": "Sweep Seconds"
+    },
+    {
+      "key": "settings.controls.joystickBind.sweep.tooltip",
+      "value": "How long a fully pushed stick takes to cross the whole slider. A small push moves far slower than this."
+    },
+    {
+      "key": "ui.joystickBind.bind",
+      "value": "Use This Thumbstick"
+    },
+    {
+      "key": "ui.joystickBind.unbind",
+      "value": "Free the Thumbstick"
+    },
+    {
+      "key": "ui.joystickBind.hint.bound",
+      "value": "On the {0} thumbstick — push forward and back to move it."
+    },
+    {
+      "key": "ui.hand.left",
+      "value": "left hand"
+    },
+    {
+      "key": "ui.hand.right",
+      "value": "right hand"
+    },
+    {
       "key": "settings.bodyTracking.description",
       "value": "Fine-tuning for avatar scaling, calibration, and IK smoothing"
     },
@@ -6273,6 +7669,22 @@
     {
       "key": "settings.bodyTracking.playspaceMover.input.secondary",
       "value": "Secondary Button"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.secondaryTrigger",
+      "value": "Secondary Trigger"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.joystick",
+      "value": "Joystick Click"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.trackpad",
+      "value": "Trackpad Click"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.menu",
+      "value": "Menu Button"
     },
     {
       "key": "settings.bodyTracking.playspaceMover.hand",
@@ -6405,6 +7817,142 @@
     {
       "key": "settings.bodyTracking.section.collision.description",
       "value": "Virtual capsules used to keep arms and hands from clipping through the body."
+    },
+    {
+      "key": "settings.bodyTracking.section.solveGizmos.title",
+      "value": "IK Solve Gizmos"
+    },
+    {
+      "key": "settings.bodyTracking.section.solveGizmos.description",
+      "value": "Draw what each stage of the full body IK solve is doing, in the order the solver runs them."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.enabled",
+      "value": "Show Solve Gizmos"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.enabled.tooltip",
+      "value": "Master switch for the solve visualization. While this is off the solver records nothing and the feature costs no performance."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.labels",
+      "value": "Show Labels"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.labels.tooltip",
+      "value": "Name each drawn point in the world. Readable, but heavier than the shapes alone; only the nearest few labels render at once."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.scale",
+      "value": "Gizmo Scale"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.scale.tooltip",
+      "value": "Thickness of the lines and size of the points, on top of your avatar scale. Raise it if the drawing is too fine to read at your size."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.targets",
+      "value": "Targets and Hints"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.targets.tooltip",
+      "value": "What the solve is aiming at before it runs: head, hips and chest targets, hand and foot targets, and the elbow and knee hints steering each limb."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.spine",
+      "value": "Spine"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.spine.tooltip",
+      "value": "The solved hips-to-head chain, the joint frames along it, and the leftover gap between the solved head and the headset - the clearest sign the spine could not reach."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.shoulders",
+      "value": "Shoulders"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.shoulders.tooltip",
+      "value": "Collarbone placement after the shoulder pass: chest to shoulder, shoulder to upper arm, and each shoulder's own frame."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.legs",
+      "value": "Legs"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.legs.tooltip",
+      "value": "Solved hip, knee and foot chain per leg, the plane the knee bends in, the pole steering it, and how far the foot landed from its target."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.arms",
+      "value": "Arms"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.arms.tooltip",
+      "value": "Solved shoulder, elbow and hand chain per arm, the elbow pole and bend directions, your reach circle, and how far the hand landed from its target."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.toes",
+      "value": "Toes"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.toes.tooltip",
+      "value": "Foot to toe bone and the axis the toe bends around, showing whether each toe is tracker driven or bent to fit the ground."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.overrides",
+      "value": "Tracker Overrides"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.overrides.tooltip",
+      "value": "Bones written directly by a tracker in the final pass, drawn at the pose they were forced to - everything the solve above them was overruled by."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.skeleton",
+      "value": "Full Skeleton"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.skeleton.tooltip",
+      "value": "Every bone in the finished pose, fingers included. The heaviest option here; useful for spotting a bone nothing is driving."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.scratch",
+      "value": "Scratch Probes"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.scratch.tooltip",
+      "value": "One-off drawings written into the solver by hand - an arbitrary vector, point or frame someone needed to see. Separate from the body-part stages so a temporary probe stays visible on its own."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.frames",
+      "value": "Reference Frames"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.frames.tooltip",
+      "value": "The spaces the solver does its maths in: your up direction, the bind-cancelled hips frame, the chest frame, the shoulder line, and each spine joint's anatomical axes. Start here when a hint points somewhere unexpected - usually the vector is fine and the frame is not the one you assumed."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.limits",
+      "value": "Joint Limits"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.limits.tooltip",
+      "value": "How far each spine joint is allowed to bend, drawn as the cone it must stay inside, turning red on the frame it is held back. Also the live elbow and knee angles."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.reach",
+      "value": "Reach"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.reach.tooltip",
+      "value": "How much of each limb's length is being used, as a sphere at the shoulder or hip that the hand or foot rides inside. Fades from green to red near full extension, which is where elbows and knees start to snap."
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.numbers",
+      "value": "Readouts"
+    },
+    {
+      "key": "settings.bodyTracking.ikGizmos.numbers.tooltip",
+      "value": "Live numbers in the world: leg reach and knee angle, raw against smoothed knee swivel, hip flexion, abduction and twist, and how far each hand, foot and the head ended up from what it was aiming at. Needs Show Labels."
     },
     {
       "key": "settings.bodyTracking.section.shoulders.title",
@@ -7355,6 +8903,14 @@
       "value": "No avatar is currently loaded."
     },
     {
+      "key": "settings.myAvatar.noCustomization",
+      "value": "No Avatar Customization"
+    },
+    {
+      "key": "settings.myAvatar.noCustomization.description",
+      "value": "This avatar does not support any Avatar Customization."
+    },
+    {
       "key": "settings.myAvatar.overview",
       "value": "Overview"
     },
@@ -8071,6 +9627,10 @@
       "value": "Gizmo Labels"
     },
     {
+      "key": "settings.developer.gizmoDrawOnTop",
+      "value": "Draw Gizmos On Top"
+    },
+    {
       "key": "settings.developer.eyeTracking.title",
       "value": "Eye Tracking"
     },
@@ -8309,6 +9869,14 @@
     {
       "key": "camera.debugGizmos",
       "value": "Debug Gizmos"
+    },
+    {
+      "key": "camera.photoMetadata",
+      "value": "Photo Metadata"
+    },
+    {
+      "key": "camera.photoMetadata.description",
+      "value": "What gets written into the photo file alongside the picture. These apply to every camera and are not changed by the reset below."
     },
     {
       "key": "camera.debugGizmos.description",
@@ -9535,6 +11103,10 @@
       "value": "Enter a whole number of {0} or more."
     },
     {
+      "key": "ui.validation.range",
+      "value": "Enter a whole number between {0} and {1}."
+    },
+    {
       "key": "ui.search",
       "value": "Search..."
     },
@@ -9587,6 +11159,22 @@
       "value": "OK"
     },
     {
+      "key": "migration.persistent.title",
+      "value": "Move {0} user data?"
+    },
+    {
+      "key": "migration.persistent.description",
+      "value": "{0} found user data in its previous storage directory. Would you like to move your core user data to the new location? This includes settings, avatar/item stores, saved servers, trust data, player/input settings, recordings, backups, and other user-owned files. Cache, temporary, and diagnostic data will stay in the old directory.\n\n<b>From:</b>\n{1}\n\n<b>To:</b>\n{2}\n\n{0} had to create fresh defaults in the new location during this startup. Those defaults will be replaced by your previous data.\n\nThe old directory itself will not be deleted. After migration, you can review that path and delete it if you no longer need the older {0} data.{3}"
+    },
+    {
+      "key": "migration.persistent.restartAutomatic",
+      "value": " {0} will restart after the move so the migrated settings are loaded."
+    },
+    {
+      "key": "migration.persistent.restartManual",
+      "value": " Restart {0} after the move so the migrated settings are loaded."
+    },
+    {
       "key": "ui.unknown",
       "value": "Unknown"
     },
@@ -9611,16 +11199,20 @@
       "value": "Reset all {0} settings to defaults?"
     },
     {
-      "key": "ui.resetValue.confirm",
-      "value": "Reset {0} to its default?"
+      "key": "ui.panelOptions.title",
+      "value": "Options"
+    },
+    {
+      "key": "ui.panelOptions.body",
+      "value": "Choose what to do with {0}."
     },
     {
       "key": "ui.resetValue.hint.desktop",
-      "value": "Right-click to reset to default."
+      "value": "Right-click for its options."
     },
     {
       "key": "ui.resetValue.hint.vr",
-      "value": "Click this hand's thumbstick to reset to default."
+      "value": "Click this hand's thumbstick for its options."
     },
     {
       "key": "ui.openFolder",
@@ -9697,6 +11289,54 @@
     {
       "key": "notifications.show.history",
       "value": "Show history"
+    },
+    {
+      "key": "notifications.history.filtered",
+      "value": "History ({0} of {1})"
+    },
+    {
+      "key": "notifications.empty.filtered",
+      "value": "No history matches this filter."
+    },
+    {
+      "key": "notifications.filter.category",
+      "value": "Filter history"
+    },
+    {
+      "key": "notifications.filter.category.description",
+      "value": "Narrow the history list to one kind of notification."
+    },
+    {
+      "key": "notifications.filter.search",
+      "value": "Search history"
+    },
+    {
+      "key": "notifications.category.all",
+      "value": "All"
+    },
+    {
+      "key": "notifications.category.system",
+      "value": "System"
+    },
+    {
+      "key": "notifications.category.player",
+      "value": "Players"
+    },
+    {
+      "key": "notifications.category.content",
+      "value": "Content"
+    },
+    {
+      "key": "notifications.category.network",
+      "value": "Network"
+    },
+    {
+      "key": "notifications.category.avatar",
+      "value": "Avatar"
+    },
+    {
+      "key": "notifications.category.developer",
+      "value": "Errors"
     },
     {
       "key": "settings.tab.performancelimits",
@@ -10679,6 +12319,30 @@
       "value": "How much of a look-up the neck is assumed NOT to carry. Higher keeps the chest and hips from drifting forward when you look at the ceiling. 0 restores the old behaviour. Default: 0.65"
     },
     {
+      "key": "settings.bodyTracking.neckFlexionDamp.title",
+      "value": "Look-Down Neck Damping"
+    },
+    {
+      "key": "settings.bodyTracking.neckFlexionDamp.title.tooltip",
+      "value": "How much of a look-down the neck is assumed NOT to carry. Higher stops the hips rising up under you when you look at your feet. 0 restores the old behaviour. Default: 0.5"
+    },
+    {
+      "key": "settings.bodyTracking.neckFlexionDamp.description",
+      "value": "How much of a look-down the neck is assumed NOT to carry. Higher stops the hips rising up under you when you look at your feet. 0 restores the old behaviour. Default: 0.5"
+    },
+    {
+      "key": "settings.bodyTracking.vspineNodPivotEstimate.title",
+      "value": "Learn Head Pivot"
+    },
+    {
+      "key": "settings.bodyTracking.vspineNodPivotEstimate.title.tooltip",
+      "value": "Works out where your head really pivots when you nod, by watching the headset, instead of assuming your avatar's neck matches yours. Stops the whole body sliding out from under you when you look up or down. Default: on"
+    },
+    {
+      "key": "settings.bodyTracking.vspineNodPivotEstimate.description",
+      "value": "Works out where your head really pivots when you nod, by watching the headset, instead of assuming your avatar's neck matches yours. Stops the whole body sliding out from under you when you look up or down. Default: on"
+    },
+    {
       "key": "settings.bodyTracking.neckGazeFollowMax.title",
       "value": "Neck Gaze Limit"
     },
@@ -11029,6 +12693,34 @@
       "value": "Avatar Reduction System"
     },
     {
+      "key": "settings.admin.title.imageBandwidth",
+      "value": "Image & GIF Bandwidth"
+    },
+    {
+      "key": "settings.admin.title.imageUploadMbps",
+      "value": "Upload (Mb/s per sharer)"
+    },
+    {
+      "key": "settings.admin.title.imageUploadMbps.description",
+      "value": "Server egress one sharing player may spend on an image or GIF. The server relays a share once per recipient, so this divided by the fan-out is the speed the sharer actually uploads at. Applies per sharer, not in total. 0 leaves clients on their own conservative default."
+    },
+    {
+      "key": "settings.admin.title.imageDownloadMbps",
+      "value": "Download (Mb/s per joining player)"
+    },
+    {
+      "key": "settings.admin.title.imageDownloadMbps.description",
+      "value": "Rate the server replays already-shared images to one arriving player, so nobody has to send them again. Without a limit a full cache lands on a joiner all at once. Applies per joining player. 0 = unlimited."
+    },
+    {
+      "key": "settings.admin.title.imageEnforcementPercent",
+      "value": "Upload Enforcement (%)"
+    },
+    {
+      "key": "settings.admin.title.imageEnforcementPercent.description",
+      "value": "How far over the upload budget a client may go before the server starts dropping its image traffic. Well-behaved clients pace themselves to the budget; this catches ones that ignore it. Headroom matters because client and server measure the rate slightly differently — 150 means drop only at half again the advertised rate. Minimum 100."
+    },
+    {
       "key": "settings.admin.title.defaultSendIntervalMs",
       "value": "Default Send Interval (ms)"
     },
@@ -11215,6 +12907,14 @@
     {
       "key": "settings.admin.title.disallowWorldViewpoint",
       "value": "Disallow World & Viewpoint"
+    },
+    {
+      "key": "settings.admin.title.maxPlayers",
+      "value": "Max Players"
+    },
+    {
+      "key": "settings.admin.title.maxPlayers.tooltip",
+      "value": "Maximum number of players allowed on this server at once (1 to 65535). Saved to the server config. Applies from the next join — setting it below the current player count never disconnects anyone."
     },
     {
       "key": "settings.admin.title.serverConfiguration",
@@ -11981,6 +13681,690 @@
       "value": "Shake Speed"
     },
     {
+      "key": "camera.modifiers",
+      "value": "Modifiers"
+    },
+    {
+      "key": "camera.tab.effects",
+      "value": "Effects"
+    },
+    {
+      "key": "camera.subject",
+      "value": "Subject"
+    },
+    {
+      "key": "camera.modifier.position",
+      "value": "Position Modifier"
+    },
+    {
+      "key": "camera.modifier.position.description",
+      "value": "What decides where the camera sits. One is fitted at a time, so nothing can fight over it."
+    },
+    {
+      "key": "camera.modifier.rotation",
+      "value": "Rotation Modifier"
+    },
+    {
+      "key": "camera.modifier.rotation.description",
+      "value": "What decides where the camera points. One is fitted at a time."
+    },
+    {
+      "key": "camera.modifier.effects",
+      "value": "Effects"
+    },
+    {
+      "key": "camera.modifier.effects.description",
+      "value": "Extras layered on top of the slots. Each can be fitted once, and each runs at the point in the solve where it makes sense — settling before anything films the subject, shake last of all."
+    },
+    {
+      "key": "camera.modifier.addEffect",
+      "value": "Add Effect"
+    },
+    {
+      "key": "camera.modifier.addEffect.description",
+      "value": "Fit another effect on top of the fitted modifiers."
+    },
+    {
+      "key": "camera.modifier.noEffects",
+      "value": "No effects fitted"
+    },
+    {
+      "key": "camera.modifier.noEffects.description",
+      "value": "Add one above to layer look-ahead, occlusion avoidance, shake or a fixed lens over whatever is driving the camera."
+    },
+    {
+      "key": "camera.modifier.freeFly",
+      "value": "Free Fly"
+    },
+    {
+      "key": "camera.modifier.freeFly.description",
+      "value": "You drive. Sticks, mouse and keyboard move the camera themselves."
+    },
+    {
+      "key": "camera.modifier.followSubject",
+      "value": "Follow Subject"
+    },
+    {
+      "key": "camera.modifier.followSubject.description",
+      "value": "Holds an offset from the subject and eases along behind them."
+    },
+    {
+      "key": "camera.modifier.orbit",
+      "value": "Orbit"
+    },
+    {
+      "key": "camera.modifier.orbit.description",
+      "value": "Rides a ring around the subject, sweeping between a low, waist and high rig."
+    },
+    {
+      "key": "camera.modifier.dollyTrack",
+      "value": "Dolly Track"
+    },
+    {
+      "key": "camera.modifier.dollyTrack.description",
+      "value": "Rides the track built from placed waypoints."
+    },
+    {
+      "key": "camera.modifier.frameSubject",
+      "value": "Frame Subject"
+    },
+    {
+      "key": "camera.modifier.frameSubject.description",
+      "value": "Dollies in or out to hold the subject at a chosen size in frame."
+    },
+    {
+      "key": "camera.modifier.lockedOff",
+      "value": "Locked Off"
+    },
+    {
+      "key": "camera.modifier.lockedOff.description",
+      "value": "Stays exactly where it was put, like a tripod."
+    },
+    {
+      "key": "camera.modifier.freeLook",
+      "value": "Free Look"
+    },
+    {
+      "key": "camera.modifier.freeLook.description",
+      "value": "You aim it. Nothing steers the camera for you."
+    },
+    {
+      "key": "camera.modifier.lookAtSubject",
+      "value": "Look At Subject"
+    },
+    {
+      "key": "camera.modifier.lookAtSubject.description",
+      "value": "Keeps the subject dead centre, every frame."
+    },
+    {
+      "key": "camera.modifier.compose",
+      "value": "Compose"
+    },
+    {
+      "key": "camera.modifier.compose.description",
+      "value": "Holds the subject inside a dead zone and a soft zone, so small movements do not move the camera."
+    },
+    {
+      "key": "camera.modifier.matchSubject",
+      "value": "Match Subject"
+    },
+    {
+      "key": "camera.modifier.matchSubject.description",
+      "value": "Copies the subject's own facing, for over-the-shoulder shots."
+    },
+    {
+      "key": "camera.modifier.hold",
+      "value": "Hold"
+    },
+    {
+      "key": "camera.modifier.hold.description",
+      "value": "Keeps whatever rotation it already had."
+    },
+    {
+      "key": "camera.modifier.lookAhead",
+      "value": "Look Ahead"
+    },
+    {
+      "key": "camera.modifier.lookAhead.description",
+      "value": "Leads a moving subject so they are not dragged to the back of the frame."
+    },
+    {
+      "key": "camera.modifier.avoidOcclusion",
+      "value": "Avoid Occlusion"
+    },
+    {
+      "key": "camera.modifier.avoidOcclusion.description",
+      "value": "Pulls the camera in when something solid comes between it and the subject."
+    },
+    {
+      "key": "camera.modifier.shake",
+      "value": "Shake"
+    },
+    {
+      "key": "camera.modifier.shake.description",
+      "value": "Positional and rotational wander, for a handheld or airborne character."
+    },
+    {
+      "key": "camera.modifier.lensOverride",
+      "value": "Lens Override"
+    },
+    {
+      "key": "camera.modifier.lensOverride.description",
+      "value": "Drives the field of view from the stack instead of the lens slider."
+    },
+    {
+      "key": "camera.modifier.needsSubject",
+      "value": "Idle — this one needs somebody to film, and the Subject slot is empty."
+    },
+    {
+      "key": "camera.modifier.steadySubject",
+      "value": "Steady Subject"
+    },
+    {
+      "key": "camera.modifier.steadySubject.description",
+      "value": "Settles the subject before anything films them, so head bob and tracking jitter never reach the shot."
+    },
+    {
+      "key": "camera.modifier.avoidCollision",
+      "value": "Avoid Collision"
+    },
+    {
+      "key": "camera.modifier.avoidCollision.description",
+      "value": "Stops the camera travelling through anything solid on its way to where it is going."
+    },
+    {
+      "key": "camera.modifier.dollyZoom",
+      "value": "Dolly Zoom"
+    },
+    {
+      "key": "camera.modifier.dollyZoom.description",
+      "value": "Holds the subject the same size while the camera moves, so the world stretches away behind them."
+    },
+    {
+      "key": "camera.modifier.rigWeight",
+      "value": "Rig Weight"
+    },
+    {
+      "key": "camera.modifier.rigWeight.description",
+      "value": "Gives the rig weight, so a fast move carries past the mark and settles back onto it."
+    },
+    {
+      "key": "camera.steadySmoothing",
+      "value": "Settling"
+    },
+    {
+      "key": "camera.steadySmoothing.description",
+      "value": "Seconds of subject movement to average out before anything films them."
+    },
+    {
+      "key": "camera.steadyDeadZone",
+      "value": "Height Dead Zone"
+    },
+    {
+      "key": "camera.steadyDeadZone.description",
+      "value": "How far the subject may move up and down before the shot follows. Absorbs a jump or a crouch without the camera bobbing after it."
+    },
+    {
+      "key": "camera.collisionRadius",
+      "value": "Collision Radius"
+    },
+    {
+      "key": "camera.collisionRadius.description",
+      "value": "How much room the camera keeps around itself as it moves. Larger takes corners wider."
+    },
+    {
+      "key": "camera.collisionPadding",
+      "value": "Collision Clearance"
+    },
+    {
+      "key": "camera.collisionPadding.description",
+      "value": "Extra gap kept from whatever the camera would otherwise have hit."
+    },
+    {
+      "key": "camera.dollyZoomMin",
+      "value": "Narrowest Lens"
+    },
+    {
+      "key": "camera.dollyZoomMin.description",
+      "value": "Narrowest the lens may go while holding subject size. Reached by moving away from the subject."
+    },
+    {
+      "key": "camera.dollyZoomMax",
+      "value": "Widest Lens"
+    },
+    {
+      "key": "camera.dollyZoomMax.description",
+      "value": "Widest the lens may go while holding subject size. Reached by moving in toward the subject."
+    },
+    {
+      "key": "camera.rigWeightResponse",
+      "value": "Response"
+    },
+    {
+      "key": "camera.rigWeightResponse.description",
+      "value": "How quickly the rig catches up to where it is being aimed. Lower is heavier."
+    },
+    {
+      "key": "camera.rigWeightBounce",
+      "value": "Bounce"
+    },
+    {
+      "key": "camera.rigWeightBounce.description",
+      "value": "How far past the mark a fast move carries before settling. At zero the rig only lags, and never overshoots."
+    },
+    {
+      "key": "camera.teleportDistance",
+      "value": "Snap Distance"
+    },
+    {
+      "key": "camera.teleportDistance.description",
+      "value": "Past this far from where it should be, the camera jumps rather than easing. Keeps a teleport from becoming a long sweep across the world."
+    },
+    {
+      "key": "camera.subjectRadius",
+      "value": "Subject Size"
+    },
+    {
+      "key": "camera.subjectRadius.description",
+      "value": "How wide the subject is assumed to be when framing them. Larger backs the camera off."
+    },
+    {
+      "key": "camera.lookAtHeightY.description",
+      "value": "Moves the point the camera aims at up or down the body. Negative aims lower."
+    },
+    {
+      "key": "camera.framingSize",
+      "value": "Frame Fill"
+    },
+    {
+      "key": "camera.framingSize.description",
+      "value": "How much of the frame the subject should fill."
+    },
+    {
+      "key": "camera.framingMin",
+      "value": "Closest Distance"
+    },
+    {
+      "key": "camera.framingMax",
+      "value": "Furthest Distance"
+    },
+    {
+      "key": "camera.orbitDamping",
+      "value": "Orbit Damping"
+    },
+    {
+      "key": "camera.orbitDamping.description",
+      "value": "Seconds for the orbit to catch up in heading and ring position."
+    },
+    {
+      "key": "camera.orbitHeading.description",
+      "value": "Angle around the subject. 0 places the camera in front, facing back at them."
+    },
+    {
+      "key": "camera.composerDamp.description",
+      "value": "Seconds for the composer to bring a drifting subject back to its screen point."
+    },
+    {
+      "key": "camera.lookAheadLimit",
+      "value": "Look Ahead Limit"
+    },
+    {
+      "key": "camera.occlusionPadding",
+      "value": "Clearance"
+    },
+    {
+      "key": "camera.occlusionPadding.description",
+      "value": "Extra distance kept clear of whatever is in the way."
+    },
+    {
+      "key": "camera.occlusionMin",
+      "value": "Closest Pull-In"
+    },
+    {
+      "key": "camera.occlusionReturn",
+      "value": "Return Damping"
+    },
+    {
+      "key": "camera.occlusionReturn.description",
+      "value": "Seconds to ease back out once the shot is clear again. Pulling in is always instant, so you never see a frame of wall."
+    },
+    {
+      "key": "camera.occlusionRadius",
+      "value": "Probe Radius"
+    },
+    {
+      "key": "camera.lensFov",
+      "value": "Lens Field Of View"
+    },
+    {
+      "key": "camera.lensFov.description",
+      "value": "The field of view the stack holds the camera at."
+    },
+    {
+      "key": "camera.lensDamping",
+      "value": "Lens Damping"
+    },
+    {
+      "key": "camera.dollyDamping",
+      "value": "Track Damping"
+    },
+    {
+      "key": "camera.dolly.description",
+      "value": "Waypoints the camera rides. Place them where you want the move to pass through."
+    },
+    {
+      "key": "camera.dolly.inactive",
+      "value": "Lay out a track here, then fit Dolly Track in the position slot to ride it."
+    },
+    {
+      "key": "camera.modifier.subject",
+      "value": "Subject"
+    },
+    {
+      "key": "camera.modifier.subject.description",
+      "value": "Who the camera is filming. Every other modifier reads whoever this resolves to."
+    },
+    {
+      "key": "camera.modifier.followPlayer",
+      "value": "Follow Player"
+    },
+    {
+      "key": "camera.modifier.followPlayer.description",
+      "value": "One player: you, or whoever is picked from the instance."
+    },
+    {
+      "key": "camera.modifier.targetGroup",
+      "value": "Target Group"
+    },
+    {
+      "key": "camera.modifier.targetGroup.description",
+      "value": "Everyone in the group at once, framed as one subject so a wide shot holds them all."
+    },
+    {
+      "key": "camera.modifier.fixedPoint",
+      "value": "Fixed Point"
+    },
+    {
+      "key": "camera.modifier.fixedPoint.description",
+      "value": "A place in the world rather than a person. It has no facing, so world axes and a fixed aim are what the other modifiers get."
+    },
+    {
+      "key": "camera.modifier.noSubject",
+      "value": "Nobody"
+    },
+    {
+      "key": "camera.modifier.noSubject.description",
+      "value": "Films no one. Modifiers that need a subject hold wherever they were."
+    },
+    {
+      "key": "camera.groupIncludesMe",
+      "value": "Include Me"
+    },
+    {
+      "key": "camera.groupIncludesMe.description",
+      "value": "Frame yourself as part of the group, alongside everyone else in it."
+    },
+    {
+      "key": "camera.groupFill",
+      "value": "Add Everyone Here"
+    },
+    {
+      "key": "camera.groupFill.description",
+      "value": "Puts everyone currently in the instance into the group."
+    },
+    {
+      "key": "camera.groupClear",
+      "value": "Clear Group"
+    },
+    {
+      "key": "camera.fixedPoint",
+      "value": "Fixed Point"
+    },
+    {
+      "key": "camera.fixedPointHere",
+      "value": "Point Here"
+    },
+    {
+      "key": "camera.fixedPointHere.description",
+      "value": "Parks the filmed point where the camera is now."
+    },
+    {
+      "key": "camera.fixedPointAtMe",
+      "value": "Point At Me"
+    },
+    {
+      "key": "camera.fixedPointAtMe.description",
+      "value": "Parks the filmed point on you, for filming the spot you are standing in."
+    },
+    {
+      "key": "camera.composerBiasX",
+      "value": "Bias Sideways"
+    },
+    {
+      "key": "camera.composerBiasY",
+      "value": "Bias Vertical"
+    },
+    {
+      "key": "camera.composerBias.description",
+      "value": "Shifts the soft zone off the screen point, so the camera gives a moving subject more room on the side they are heading."
+    },
+    {
+      "key": "camera.dollyOffsetX",
+      "value": "Track Offset Sideways"
+    },
+    {
+      "key": "camera.dollyOffsetY",
+      "value": "Track Offset Vertical"
+    },
+    {
+      "key": "camera.dollyOffsetZ",
+      "value": "Track Offset Along"
+    },
+    {
+      "key": "camera.dollyOffset.description",
+      "value": "Rides the track at an offset from it, in the track's own frame."
+    },
+    {
+      "key": "camera.dollyMode",
+      "value": "Track Mode"
+    },
+    {
+      "key": "camera.dollyMode.description",
+      "value": "Manual scrubs the playhead by hand, Follow Subject slides to whoever is being filmed, and Play runs the move under the transport buttons."
+    },
+    {
+      "key": "camera.dollyPlay",
+      "value": "Play"
+    },
+    {
+      "key": "camera.dollyPlay.description",
+      "value": "Runs the camera along the track. An open track stops itself at the end; a looped one keeps going."
+    },
+    {
+      "key": "camera.dollyPause",
+      "value": "Pause"
+    },
+    {
+      "key": "camera.dollyRestart",
+      "value": "Restart"
+    },
+    {
+      "key": "camera.dollyRestart.description",
+      "value": "Sends the playhead back to the first waypoint."
+    },
+    {
+      "key": "camera.detachedMarker.off",
+      "value": "Off"
+    },
+    {
+      "key": "camera.detachedMarker.off.tooltip",
+      "value": "Nothing marks where the camera went. You will need Teleport To Me to get it back."
+    },
+    {
+      "key": "camera.detachedMarker.puck.tooltip",
+      "value": "A grabbable puck you can reach out and take hold of to fly the camera by hand."
+    },
+    {
+      "key": "camera.detachedMarker.wireframe.tooltip",
+      "value": "An outline of the camera drawn where it is, without anything to grab."
+    },
+    {
+      "key": "camera.bindingMode.subjectYaw",
+      "value": "Turns With Subject"
+    },
+    {
+      "key": "camera.bindingMode.subjectYaw.tooltip",
+      "value": "The offset turns as they turn, so the camera stays in front of them however they face."
+    },
+    {
+      "key": "camera.bindingMode.worldSpace",
+      "value": "World Axes"
+    },
+    {
+      "key": "camera.bindingMode.worldSpace.tooltip",
+      "value": "The offset is fixed to the world, so the subject can turn on the spot without moving the camera."
+    },
+    {
+      "key": "camera.bindingMode.simpleFollow",
+      "value": "Keep Current Side"
+    },
+    {
+      "key": "camera.bindingMode.simpleFollow.tooltip",
+      "value": "Holds the distance but keeps whatever side the camera is already on, so it never swings around them."
+    },
+    {
+      "key": "camera.noiseProfile.off",
+      "value": "Off"
+    },
+    {
+      "key": "camera.noiseProfile.off.tooltip",
+      "value": "Perfectly still."
+    },
+    {
+      "key": "camera.noiseProfile.handheld",
+      "value": "Handheld"
+    },
+    {
+      "key": "camera.noiseProfile.handheld.tooltip",
+      "value": "The small, slow drift of a camera held in someone's hands."
+    },
+    {
+      "key": "camera.noiseProfile.documentary",
+      "value": "Documentary"
+    },
+    {
+      "key": "camera.noiseProfile.documentary.tooltip",
+      "value": "Looser and more present than Handheld, as though the operator is moving with the scene."
+    },
+    {
+      "key": "camera.noiseProfile.drone",
+      "value": "Drone"
+    },
+    {
+      "key": "camera.noiseProfile.drone.tooltip",
+      "value": "Wide, slow float, like a camera hanging in the air."
+    },
+    {
+      "key": "camera.noiseProfile.shaky",
+      "value": "Shaky"
+    },
+    {
+      "key": "camera.noiseProfile.shaky.tooltip",
+      "value": "Fast and unsteady, for urgency."
+    },
+    {
+      "key": "camera.noiseProfile.custom",
+      "value": "Custom"
+    },
+    {
+      "key": "camera.noiseProfile.custom.tooltip",
+      "value": "Whatever the per-channel amounts were left at, rather than a named character."
+    },
+    {
+      "key": "camera.dollyMode.manual",
+      "value": "Manual"
+    },
+    {
+      "key": "camera.dollyMode.manual.tooltip",
+      "value": "You place the camera along the track with the playhead slider."
+    },
+    {
+      "key": "camera.dollyMode.followSubject",
+      "value": "Follow Subject"
+    },
+    {
+      "key": "camera.dollyMode.followSubject.tooltip",
+      "value": "Slides to whichever part of the track is nearest whoever is being filmed."
+    },
+    {
+      "key": "camera.dollyMode.play",
+      "value": "Play"
+    },
+    {
+      "key": "camera.dollyMode.play.tooltip",
+      "value": "Runs the move along the track under the Play and Restart buttons."
+    },
+    {
+      "key": "camera.background.world.tooltip",
+      "value": "The world as it is, behind the subject."
+    },
+    {
+      "key": "camera.background.greenScreen.tooltip",
+      "value": "Flat green behind the subject, with the world hidden, for keying out later."
+    },
+    {
+      "key": "camera.background.blueScreen.tooltip",
+      "value": "Flat blue behind the subject, for keying when the subject has green in it."
+    },
+    {
+      "key": "camera.background.black.tooltip",
+      "value": "Flat black behind the subject."
+    },
+    {
+      "key": "camera.background.white.tooltip",
+      "value": "Flat white behind the subject."
+    },
+    {
+      "key": "camera.background.magenta.tooltip",
+      "value": "Flat magenta behind the subject, for keying when the subject has both green and blue in it."
+    },
+    {
+      "key": "camera.background.custom.tooltip",
+      "value": "A colour you pick with the sliders below."
+    },
+    {
+      "key": "camera.dollySync",
+      "value": "Track Sharing"
+    },
+    {
+      "key": "camera.dollySync.description",
+      "value": "Whether anyone else in the instance can see this track, and whether they may move its points."
+    },
+    {
+      "key": "camera.dollySync.local",
+      "value": "Local Only"
+    },
+    {
+      "key": "camera.dollySync.local.tooltip",
+      "value": "Nobody else sees the track. Nothing is sent."
+    },
+    {
+      "key": "camera.dollySync.networked",
+      "value": "Shared"
+    },
+    {
+      "key": "camera.dollySync.networked.tooltip",
+      "value": "Everyone sees the track and anyone can pick a point up and move it, so a move can be built together."
+    },
+    {
+      "key": "camera.dollySync.locked",
+      "value": "Shared, Locked"
+    },
+    {
+      "key": "camera.dollySync.locked.tooltip",
+      "value": "Everyone sees the track but only you can move its points."
+    },
+    {
       "key": "camera.dolly",
       "value": "Dolly Track"
     },
@@ -12094,7 +14478,7 @@
     },
     {
       "key": "camera.backgroundMode.description",
-      "value": "Replaces what is behind the subject. Colour modes drop the world out for keying."
+      "value": "Replaces what is behind the subject. Keyable modes can drop the world out for chroma key or alpha compositing."
     },
     {
       "key": "camera.backgroundKeepWorld",
@@ -12102,7 +14486,7 @@
     },
     {
       "key": "camera.backgroundKeepWorld.description",
-      "value": "Keeps world geometry in shot on a colour background. Off leaves only players and props."
+      "value": "Keeps world geometry in shot on a replacement background. Off leaves only players and props."
     },
     {
       "key": "camera.backgroundRed",
@@ -12209,6 +14593,54 @@
       "value": "Player Voice"
     },
     {
+      "key": "settings.admin.forceAvatar",
+      "value": "Force Avatar"
+    },
+    {
+      "key": "settings.admin.forceAvatar.pick",
+      "value": "Avatar"
+    },
+    {
+      "key": "settings.admin.forceAvatar.pick.tooltip",
+      "value": "Avatars this server provides, followed by your own saved avatars."
+    },
+    {
+      "key": "settings.admin.forceAvatar.refresh",
+      "value": "Refresh Avatar List"
+    },
+    {
+      "key": "settings.admin.forceAvatar.refresh.tooltip",
+      "value": "Re-read the server's avatars and your own library."
+    },
+    {
+      "key": "settings.admin.forceAvatar.apply",
+      "value": "Force Avatar On Target"
+    },
+    {
+      "key": "settings.admin.forceAvatar.apply.tooltip",
+      "value": "Put the selected player onto the selected avatar. They can change back at any time."
+    },
+    {
+      "key": "settings.admin.forceAvatar.applyAll",
+      "value": "Force Avatar On Everyone"
+    },
+    {
+      "key": "settings.admin.forceAvatar.applyAll.tooltip",
+      "value": "Put every player in the instance onto the selected avatar. Protected players are skipped, and anyone can change back at any time."
+    },
+    {
+      "key": "settings.admin.forceAvatar.serverEntry",
+      "value": "[Server] {0}"
+    },
+    {
+      "key": "settings.admin.forceAvatar.notice.body",
+      "value": "{0} changed your avatar. You can change back at any time from your library."
+    },
+    {
+      "key": "settings.admin.forceAvatar.notice.unknownModerator",
+      "value": "A moderator"
+    },
+    {
       "key": "settings.admin.playerOpusBitrate",
       "value": "Voice Bitrate Override"
     },
@@ -12231,6 +14663,134 @@
     {
       "key": "settings.admin.playerOpusBitrate.clear",
       "value": "Clear Player Bitrate"
+    },
+    {
+      "key": "settings.admin.locomotion",
+      "value": "Locomotion Override"
+    },
+    {
+      "key": "settings.admin.locomotion.jumpHeight.override",
+      "value": "Override Jump Height"
+    },
+    {
+      "key": "settings.admin.locomotion.jumpHeight",
+      "value": "Jump Height"
+    },
+    {
+      "key": "settings.admin.locomotion.walkSpeed.override",
+      "value": "Override Walk Speed"
+    },
+    {
+      "key": "settings.admin.locomotion.walkSpeed",
+      "value": "Walk Speed (m/s)"
+    },
+    {
+      "key": "settings.admin.locomotion.runSpeed.override",
+      "value": "Override Run Speed"
+    },
+    {
+      "key": "settings.admin.locomotion.runSpeed",
+      "value": "Run Speed (m/s)"
+    },
+    {
+      "key": "settings.admin.locomotion.mode",
+      "value": "Movement Mode"
+    },
+    {
+      "key": "settings.admin.locomotion.mode.none",
+      "value": "Leave Unchanged"
+    },
+    {
+      "key": "settings.admin.locomotion.mode.walk",
+      "value": "Walk"
+    },
+    {
+      "key": "settings.admin.locomotion.mode.fly",
+      "value": "Fly"
+    },
+    {
+      "key": "settings.admin.locomotion.mode.noclip",
+      "value": "No Clip"
+    },
+    {
+      "key": "settings.admin.locomotion.apply",
+      "value": "Apply To Selected Player"
+    },
+    {
+      "key": "settings.admin.locomotion.apply.tooltip",
+      "value": "Override the selected player's movement for this session. Only the fields you ticked are sent."
+    },
+    {
+      "key": "settings.admin.locomotion.clear",
+      "value": "Clear On Selected Player"
+    },
+    {
+      "key": "settings.admin.locomotion.clear.tooltip",
+      "value": "Return the selected player to whatever the world and their own settings ask for."
+    },
+    {
+      "key": "settings.admin.locomotion.applyAll",
+      "value": "Apply To Everyone"
+    },
+    {
+      "key": "settings.admin.locomotion.applyAll.tooltip",
+      "value": "Override every player in the instance. Ignores the selected player. Protected players are skipped."
+    },
+    {
+      "key": "settings.admin.locomotion.clearAll",
+      "value": "Clear On Everyone"
+    },
+    {
+      "key": "settings.admin.locomotion.clearAll.tooltip",
+      "value": "Drop the locomotion override on every player in the instance."
+    },
+    {
+      "key": "settings.admin.confirm.locomotionApply.title",
+      "value": "Override Locomotion?"
+    },
+    {
+      "key": "settings.admin.confirm.locomotionApply.body",
+      "value": "Override this player's movement for the rest of their session. They cannot undo it themselves."
+    },
+    {
+      "key": "settings.admin.confirm.locomotionApply.confirm",
+      "value": "Override"
+    },
+    {
+      "key": "settings.admin.confirm.locomotionClear.title",
+      "value": "Clear Locomotion Override?"
+    },
+    {
+      "key": "settings.admin.confirm.locomotionClear.body",
+      "value": "Return this player's movement to whatever the world and their own settings ask for."
+    },
+    {
+      "key": "settings.admin.confirm.locomotionClear.confirm",
+      "value": "Clear"
+    },
+    {
+      "key": "settings.admin.confirm.locomotionApplyAll.title",
+      "value": "Override Everyone's Locomotion?"
+    },
+    {
+      "key": "settings.admin.confirm.locomotionApplyAll.body",
+      "value": "Override the movement of EVERY player in this instance, not just the selected one. Protected players are skipped."
+    },
+    {
+      "key": "settings.admin.confirm.locomotionApplyAll.confirm",
+      "value": "Override Everyone"
+    },
+    {
+      "key": "settings.admin.confirm.locomotionClearAll.title",
+      "value": "Clear Everyone's Locomotion Override?"
+    },
+    {
+      "key": "settings.admin.confirm.locomotionClearAll.body",
+      "value": "Drop the locomotion override on EVERY player in this instance."
+    },
+    {
+      "key": "settings.admin.confirm.locomotionClearAll.confirm",
+      "value": "Clear Everyone"
     },
     {
       "key": "settings.admin.playerOpusBitrate.clear.tooltip",
@@ -12319,6 +14879,30 @@
     {
       "key": "settings.admin.confirm.kick.title",
       "value": "Kick player?"
+    },
+    {
+      "key": "settings.admin.confirm.forceAvatar.body",
+      "value": "Put the selected player onto this avatar? They can change back at any time."
+    },
+    {
+      "key": "settings.admin.confirm.forceAvatar.confirm",
+      "value": "Force Avatar"
+    },
+    {
+      "key": "settings.admin.confirm.forceAvatar.title",
+      "value": "Force avatar?"
+    },
+    {
+      "key": "settings.admin.confirm.forceAvatarAll.body",
+      "value": "Put EVERY player in this instance onto the selected avatar? Protected players are skipped, and anyone can change back at any time."
+    },
+    {
+      "key": "settings.admin.confirm.forceAvatarAll.confirm",
+      "value": "Force On Everyone"
+    },
+    {
+      "key": "settings.admin.confirm.forceAvatarAll.title",
+      "value": "Force avatar on everyone?"
     },
     {
       "key": "settings.admin.confirm.sendAll.body",
@@ -12485,8 +15069,1472 @@
       "value": "Straighten the trackers. Fires after the pose countdown."
     },
     {
+      "key": "settings.metabody.title",
+      "value": "Headset Body Tracking"
+    },
+    {
+      "key": "settings.metabody.title.description",
+      "value": "Full body straight from the headset's own body tracking, with no physical trackers. Needs a headset whose OpenXR runtime offers body tracking."
+    },
+    {
+      "key": "settings.metabody.trackerSource",
+      "value": "Use Headset Body Tracking"
+    },
+    {
+      "key": "settings.metabody.trackerSource.description",
+      "value": "Whether the headset's body tracking may drive your trackers."
+    },
+    {
+      "key": "settings.metabody.trackerSource.off",
+      "value": "Off"
+    },
+    {
+      "key": "settings.metabody.trackerSource.auto",
+      "value": "Fill Gaps Only"
+    },
+    {
+      "key": "settings.metabody.trackerSource.force",
+      "value": "Always Take Over"
+    },
+    {
+      "key": "settings.metabody.upperBody",
+      "value": "Hips, Chest and Elbows"
+    },
+    {
+      "key": "settings.metabody.upperBody.description",
+      "value": "Track your waist, chest and both elbows from the headset."
+    },
+    {
+      "key": "settings.metabody.legs",
+      "value": "Knees and Feet"
+    },
+    {
+      "key": "settings.metabody.legs.description",
+      "value": "Track both knees and both feet. Only available on headsets that solve legs."
+    },
+    {
+      "key": "settings.metabody.autoBind",
+      "value": "Bind Trackers Automatically"
+    },
+    {
+      "key": "settings.metabody.autoBind.description",
+      "value": "Send each body part straight to its bone instead of running these trackers through manual calibration."
+    },
+    {
+      "key": "settings.metabody.highFidelity",
+      "value": "High Fidelity Solve"
+    },
+    {
+      "key": "settings.metabody.highFidelity.description",
+      "value": "Track your arms and legs with the headset cameras instead of guessing them from your head and controllers. Costs headset performance."
+    },
+    {
+      "key": "settings.metabody.applyHeight",
+      "value": "Send Your Height"
+    },
+    {
+      "key": "settings.metabody.applyHeight.description",
+      "value": "Give the headset the height Basis measured for you, so its body tracking is scaled to you instead of to an estimate."
+    },
+    {
+      "key": "settings.metabody.status",
+      "value": "Status"
+    },
+    {
+      "key": "settings.metabody.refresh",
+      "value": "Refresh"
+    },
+    {
+      "key": "settings.metabody.refresh.description",
+      "value": "Re-read the tracking state and send your height again."
+    },
+    {
       "key": "menu.individualPlayer.uuid",
       "value": "UUID"
+    },
+    {
+      "key": "mirror.background",
+      "value": "Background"
+    },
+    {
+      "key": "mirror.background.description",
+      "value": "What the reflection clears to where the world does not cover it."
+    },
+    {
+      "key": "mirror.clearColor",
+      "value": "Clear Color"
+    },
+    {
+      "key": "mirror.clearColor.blue",
+      "value": "Blue"
+    },
+    {
+      "key": "mirror.clearColor.green",
+      "value": "Green"
+    },
+    {
+      "key": "mirror.clearColor.hex",
+      "value": "Hex"
+    },
+    {
+      "key": "mirror.clearColor.red",
+      "value": "Red"
+    },
+    {
+      "key": "mirror.clearFlags",
+      "value": "Clear Mode"
+    },
+    {
+      "key": "mirror.clearFlags.color",
+      "value": "Solid Color"
+    },
+    {
+      "key": "mirror.clearFlags.depth",
+      "value": "Depth Only"
+    },
+    {
+      "key": "mirror.clearFlags.fromReferenceCamera",
+      "value": "Match Player Camera"
+    },
+    {
+      "key": "mirror.clearFlags.nothing",
+      "value": "Nothing"
+    },
+    {
+      "key": "mirror.clearFlags.skybox",
+      "value": "Skybox"
+    },
+    {
+      "key": "mirror.clipPlaneOffset",
+      "value": "Surface Offset"
+    },
+    {
+      "key": "mirror.clipPlaneOffset.description",
+      "value": "Pushes the reflection clip plane off the glass. Raise it if the surface flickers at shallow angles."
+    },
+    {
+      "key": "mirror.clipping",
+      "value": "Clipping"
+    },
+    {
+      "key": "mirror.clipping.description",
+      "value": "How near and how far the mirror renders. A shorter far plane is the cheapest saving in a large world."
+    },
+    {
+      "key": "mirror.cullDistance",
+      "value": "Stop Distance"
+    },
+    {
+      "key": "mirror.cullDistance.description",
+      "value": "Past this distance the mirror stops updating and keeps its last image."
+    },
+    {
+      "key": "mirror.depthBits",
+      "value": "Depth Buffer"
+    },
+    {
+      "key": "mirror.depthBits.description",
+      "value": "Bits of depth precision. 16 is cheaper, 24 avoids z-fighting in deep scenes."
+    },
+    {
+      "key": "mirror.farClip",
+      "value": "Far Clip"
+    },
+    {
+      "key": "mirror.fullRateDistance",
+      "value": "Full Rate Distance"
+    },
+    {
+      "key": "mirror.fullRateDistance.description",
+      "value": "Standalone only. Within this distance the mirror updates every frame."
+    },
+    {
+      "key": "mirror.halfRateDistance",
+      "value": "Half Rate Distance"
+    },
+    {
+      "key": "mirror.height",
+      "value": "Height"
+    },
+    {
+      "key": "mirror.layers",
+      "value": "Reflected Layers"
+    },
+    {
+      "key": "mirror.layers.description",
+      "value": "Which layers appear in the reflection. Turning layers off is the largest saving a mirror has."
+    },
+    {
+      "key": "mirror.msaa",
+      "value": "Anti-aliasing"
+    },
+    {
+      "key": "mirror.msaa.description",
+      "value": "Edge smoothing for the reflection. Ignored while the Graphics anti-aliasing setting is off."
+    },
+    {
+      "key": "mirror.msaa.off",
+      "value": "Off"
+    },
+    {
+      "key": "mirror.nearClip",
+      "value": "Near Clip"
+    },
+    {
+      "key": "mirror.noMirrors",
+      "value": "No Mirrors"
+    },
+    {
+      "key": "mirror.noMirrors.description",
+      "value": "Spawn a mirror to change its settings."
+    },
+    {
+      "key": "mirror.occlusionCulling",
+      "value": "Occlusion Culling"
+    },
+    {
+      "key": "mirror.performance",
+      "value": "Performance"
+    },
+    {
+      "key": "mirror.performance.description",
+      "value": "Update rate and per-render work. Lower these first when a mirror costs you frames."
+    },
+    {
+      "key": "mirror.postProcessing",
+      "value": "Post Processing"
+    },
+    {
+      "key": "mirror.preset",
+      "value": "Preset"
+    },
+    {
+      "key": "mirror.preset.custom",
+      "value": "Custom"
+    },
+    {
+      "key": "mirror.preset.description",
+      "value": "Sets width and height together."
+    },
+    {
+      "key": "mirror.reset",
+      "value": "Reset To Defaults"
+    },
+    {
+      "key": "mirror.resolution",
+      "value": "Resolution"
+    },
+    {
+      "key": "mirror.resolution.description",
+      "value": "Size of the reflection texture. Doubling it costs about four times the memory and fill rate."
+    },
+    {
+      "key": "mirror.secondaryViewerCap",
+      "value": "Secondary Viewer Limit"
+    },
+    {
+      "key": "mirror.secondaryViewerCap.description",
+      "value": "Resolution cap for reflections drawn for handheld cameras and the Scene View."
+    },
+    {
+      "key": "mirror.shadows",
+      "value": "Shadows"
+    },
+    {
+      "key": "mirror.status",
+      "value": "Mirror"
+    },
+    {
+      "key": "mirror.status.effectiveResolution",
+      "value": "Rendering at {0} x {1}"
+    },
+    {
+      "key": "mirror.status.globalOverride",
+      "value": "Overridden by the Mirror Quality setting in Graphics."
+    },
+    {
+      "key": "mirror.status.notPersisted",
+      "value": "Changes here last for this session only."
+    },
+    {
+      "key": "mirror.updateInterval",
+      "value": "Update Interval"
+    },
+    {
+      "key": "mirror.updateInterval.description",
+      "value": "Render the reflection every Nth frame. 1 is every frame."
+    },
+    {
+      "key": "mirror.width",
+      "value": "Width"
+    },
+    {
+      "key": "mirror.cutout",
+      "value": "Cutout"
+    },
+    {
+      "key": "mirror.cutout.description",
+      "value": "Show only the reflection itself on a transparent background, as the calibration mirror does. Pair it with Reflected Layers set to just your avatar."
+    },
+    {
+      "key": "mirror.cutout.unavailable",
+      "value": "Cutout is unavailable: the cutout shader is missing or unsupported here."
+    },
+    {
+      "key": "mirror.size",
+      "value": "Size"
+    },
+    {
+      "key": "mirror.size.description",
+      "value": "Physical size of the mirror surface in the world."
+    },
+    {
+      "key": "mirror.status.surfaceSize",
+      "value": "Surface {0} x {1} m"
+    },
+    {
+      "key": "mirror.placement",
+      "value": "Placement"
+    },
+    {
+      "key": "mirror.placement.description",
+      "value": "How the Personal Mirror can be moved and what it moves with."
+    },
+    {
+      "key": "mirror.grabbable",
+      "value": "Grabbable"
+    },
+    {
+      "key": "mirror.grabbable.description",
+      "value": "Allow the Personal Mirror to be grabbed and moved."
+    },
+    {
+      "key": "mirror.moveWithPlayspace",
+      "value": "Move With Playspace"
+    },
+    {
+      "key": "mirror.moveWithPlayspace.description",
+      "value": "Move and rotate the Personal Mirror with your playspace instead of leaving it in the world."
+    },
+    {
+      "key": "settings.urlPrompt.scope.url.tooltip",
+      "value": "Apply your answer to this exact link only."
+    },
+    {
+      "key": "settings.urlPrompt.scope.hostname.tooltip",
+      "value": "Apply your answer to every link from this host, subdomain included."
+    },
+    {
+      "key": "settings.urlPrompt.scope.baseDomain.tooltip",
+      "value": "Apply your answer to the whole domain and every subdomain under it."
+    },
+    {
+      "key": "settings.bodyTracking.seatedMode.standing.tooltip",
+      "value": "Scale for a room-scale space you stand and walk around in."
+    },
+    {
+      "key": "settings.bodyTracking.seatedMode.seated.tooltip",
+      "value": "Scale for playing from a chair, with your height measured sitting down."
+    },
+    {
+      "key": "settings.bodyTracking.ikMode.auto.tooltip",
+      "value": "Let Basis pick the scaling method that best fits your tracking setup."
+    },
+    {
+      "key": "settings.bodyTracking.ikMode.eyeHeight.tooltip",
+      "value": "Match avatar size to your measured eye height. Best for walking and staying on the floor."
+    },
+    {
+      "key": "settings.bodyTracking.ikMode.armDistance.tooltip",
+      "value": "Match avatar size to your arm span. Best when reach and hand placement matter most."
+    },
+    {
+      "key": "settings.bodyTracking.spineLock.hips.tooltip",
+      "value": "Anchor the spine at the hips and let the head follow."
+    },
+    {
+      "key": "settings.bodyTracking.spineLock.head.tooltip",
+      "value": "Anchor the spine at the head and let the hips follow."
+    },
+    {
+      "key": "settings.bodyTracking.spineLock.both.tooltip",
+      "value": "Hold head and hips at once and share the bend between them."
+    },
+    {
+      "key": "settings.microphone.mode.onActivation.tooltip",
+      "value": "Your mic stays open and the talk button toggles mute on and off."
+    },
+    {
+      "key": "settings.microphone.mode.pushToTalk.tooltip",
+      "value": "You are heard only while you hold the talk button down."
+    },
+    {
+      "key": "settings.microphone.icon.alwaysVisible.tooltip",
+      "value": "Keep the mic icon on screen at all times."
+    },
+    {
+      "key": "settings.microphone.icon.activityDetection.tooltip",
+      "value": "Show the mic icon only while you are speaking."
+    },
+    {
+      "key": "settings.microphone.icon.hidden.tooltip",
+      "value": "Never show the mic icon."
+    },
+    {
+      "key": "settings.microphone.start.muted.tooltip",
+      "value": "Always start muted when Basis launches."
+    },
+    {
+      "key": "settings.microphone.start.unmuted.tooltip",
+      "value": "Always start unmuted when Basis launches."
+    },
+    {
+      "key": "settings.microphone.start.rememberLast.tooltip",
+      "value": "Start in whichever state you left the mic in last time."
+    },
+    {
+      "key": "settings.microphone.mute.shutdown.tooltip",
+      "value": "Close the recording device while muted. Lowest CPU and battery cost."
+    },
+    {
+      "key": "settings.microphone.mute.keepOpen.tooltip",
+      "value": "Leave the device running and only silence its output. Use this if your mic driver is slow to start."
+    },
+    {
+      "key": "settings.graphics.quality.veryLow.tooltip",
+      "value": "Cheapest setting. Best frame rate, biggest cut to detail."
+    },
+    {
+      "key": "settings.graphics.quality.low.tooltip",
+      "value": "Reduced detail for weaker hardware, with frame rate the priority."
+    },
+    {
+      "key": "settings.graphics.quality.medium.tooltip",
+      "value": "Balanced detail and performance. A safe starting point."
+    },
+    {
+      "key": "settings.graphics.quality.high.tooltip",
+      "value": "More detail, at a noticeable cost to frame rate."
+    },
+    {
+      "key": "settings.graphics.quality.ultra.tooltip",
+      "value": "Maximum detail. Worth it only on hardware with headroom to spare."
+    },
+    {
+      "key": "settings.graphics.aa.off.tooltip",
+      "value": "No edge smoothing. Fastest, but edges stay jagged."
+    },
+    {
+      "key": "settings.graphics.aa.msaa2x.tooltip",
+      "value": "Light multisampling. Softens edges for a small cost."
+    },
+    {
+      "key": "settings.graphics.aa.msaa4x.tooltip",
+      "value": "Moderate multisampling. The usual balance of quality and cost."
+    },
+    {
+      "key": "settings.graphics.aa.msaa8x.tooltip",
+      "value": "Heavy multisampling. Cleanest edges, and the most expensive."
+    },
+    {
+      "key": "settings.graphics.aa.linear.tooltip",
+      "value": "No multisampling. Upscales a lower-resolution image with smooth filtering: softer, but faster."
+    },
+    {
+      "key": "settings.graphics.aa.point.tooltip",
+      "value": "No multisampling. Upscales a lower-resolution image with no filtering: sharp, but blocky."
+    },
+    {
+      "key": "settings.graphics.aa.fsr.tooltip",
+      "value": "No multisampling. Upscales with AMD FidelityFX Super Resolution, which holds more detail than plain filtering."
+    },
+    {
+      "key": "settings.graphics.vsync.on.tooltip",
+      "value": "Match the display refresh rate. No tearing, slightly more input lag."
+    },
+    {
+      "key": "settings.graphics.vsync.capped.tooltip",
+      "value": "Ignore the refresh rate and hold the frame rate at the cap set below."
+    },
+    {
+      "key": "settings.graphics.vsync.off.tooltip",
+      "value": "Render as fast as the machine allows. Lowest latency, but the image can tear."
+    },
+    {
+      "key": "settings.graphics.vsync.half.tooltip",
+      "value": "Sync to every second refresh, so 30 FPS on a 60 Hz display. Steady, at half the frames."
+    },
+    {
+      "key": "settings.graphics.memoryAllocation.dynamic.tooltip",
+      "value": "Let the renderer size its texture budget from whatever the machine has free."
+    },
+    {
+      "key": "settings.graphics.screenMode.fullscreen.tooltip",
+      "value": "Take the display exclusively. Best performance, slowest to alt-tab out of."
+    },
+    {
+      "key": "settings.graphics.screenMode.borderless.tooltip",
+      "value": "Fill the screen in a window with no border. Switching to other apps stays instant."
+    },
+    {
+      "key": "settings.graphics.screenMode.windowed.tooltip",
+      "value": "Run in an ordinary resizable window."
+    },
+    {
+      "key": "settings.graphics.hdr.off.tooltip",
+      "value": "Render in standard dynamic range. Cheapest and most compatible."
+    },
+    {
+      "key": "settings.graphics.hdr.32bit.tooltip",
+      "value": "High dynamic range at 32 bits per pixel. Brighter highlights for a modest memory cost."
+    },
+    {
+      "key": "settings.graphics.hdr.64bit.tooltip",
+      "value": "High dynamic range at 64 bits per pixel. Widest range and least banding, heaviest on memory and bandwidth."
+    },
+    {
+      "key": "settings.chat.camera.photoMetadata.noOne.tooltip",
+      "value": "Write no names into the photo. The default."
+    },
+    {
+      "key": "settings.chat.camera.photoMetadata.everyone.tooltip",
+      "value": "Write the name of every player visible in the shot."
+    },
+    {
+      "key": "settings.chat.camera.photoMetadata.justMe.tooltip",
+      "value": "Write only your own name into the photo."
+    },
+    {
+      "key": "settings.developer.logLevel.all.tooltip",
+      "value": "Keep everything: logs, warnings, and errors."
+    },
+    {
+      "key": "settings.developer.logLevel.warningsErrors.tooltip",
+      "value": "Hide plain logs; keep warnings and errors."
+    },
+    {
+      "key": "settings.developer.logLevel.errorsOnly.tooltip",
+      "value": "Keep errors only. The quietest setting."
+    },
+    {
+      "key": "settings.console.filter.all.tooltip",
+      "value": "Show every message in the console."
+    },
+    {
+      "key": "settings.console.filter.errors.tooltip",
+      "value": "Show errors only."
+    },
+    {
+      "key": "settings.console.filter.warnings.tooltip",
+      "value": "Show warnings only."
+    },
+    {
+      "key": "settings.console.filter.logs.tooltip",
+      "value": "Show plain log messages only."
+    },
+    {
+      "key": "settings.controls.desktopInputInVR.adaptive.tooltip",
+      "value": "Keyboard and mouse stay live while you use them, then idle down until the next input."
+    },
+    {
+      "key": "settings.controls.desktopInputInVR.alwaysOn.tooltip",
+      "value": "Keyboard and mouse are read every frame, whatever headset is connected."
+    },
+    {
+      "key": "settings.controls.desktopInputInVR.off.tooltip",
+      "value": "Ignore keyboard and mouse entirely while a headset is in use."
+    },
+    {
+      "key": "settings.general.fingerTouch.finger.index.tooltip",
+      "value": "Press panels with your index finger. The usual choice."
+    },
+    {
+      "key": "settings.general.fingerTouch.finger.thumb.tooltip",
+      "value": "Press panels with your thumb."
+    },
+    {
+      "key": "settings.general.fingerTouch.finger.middle.tooltip",
+      "value": "Press panels with your middle finger."
+    },
+    {
+      "key": "settings.general.fingerTouch.finger.ring.tooltip",
+      "value": "Press panels with your ring finger."
+    },
+    {
+      "key": "settings.general.fingerTouch.finger.little.tooltip",
+      "value": "Press panels with your little finger."
+    },
+    {
+      "key": "settings.general.fingerTouch.hands.both.tooltip",
+      "value": "Either hand can press panels directly."
+    },
+    {
+      "key": "settings.general.fingerTouch.hands.left.tooltip",
+      "value": "Only your left hand can press panels directly."
+    },
+    {
+      "key": "settings.general.fingerTouch.hands.right.tooltip",
+      "value": "Only your right hand can press panels directly."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.grip.tooltip",
+      "value": "The squeeze button on the side of the controller."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.trigger.tooltip",
+      "value": "The index-finger trigger on the controller."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.primary.tooltip",
+      "value": "The primary face button: A on the right controller, X on the left."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.secondary.tooltip",
+      "value": "The secondary face button: B on the right controller, Y on the left."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.secondaryTrigger.tooltip",
+      "value": "The hand trigger read as an axis, squeezed past halfway. On most controllers this is the same squeeze as Grip."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.joystick.tooltip",
+      "value": "Pressing the thumbstick straight down until it clicks."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.trackpad.tooltip",
+      "value": "The trackpad on controllers that have one. Under SteamVR this registers on touch rather than a full click."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.input.menu.tooltip",
+      "value": "The menu button on the controller. Some headset runtimes keep this button for themselves."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.hand.both.tooltip",
+      "value": "Either controller can grab, and using both at once lets you rotate and scale."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.hand.left.tooltip",
+      "value": "Only the left controller can grab."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.hand.right.tooltip",
+      "value": "Only the right controller can grab."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.flipAxis.roll.tooltip",
+      "value": "Tip sideways, rolling the world over until you are upside down."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.flipAxis.pitch.tooltip",
+      "value": "Tip forward or backward, nose over tail."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.flipAxis.yaw.tooltip",
+      "value": "Spin your view left or right while staying level."
+    },
+    {
+      "key": "settings.bodyTracking.trackerVisuals.off.tooltip",
+      "value": "Draw nothing at your trackers."
+    },
+    {
+      "key": "settings.bodyTracking.trackerVisuals.markers.tooltip",
+      "value": "Draw a simple shape at each tracker. Cheap, and easy to line up."
+    },
+    {
+      "key": "settings.bodyTracking.trackerVisuals.deviceModels.tooltip",
+      "value": "Draw each device's real model, when the runtime provides one."
+    },
+    {
+      "key": "settings.bodyTracking.smoothing.preset.auto.tooltip",
+      "value": "Pick smoothing to suit whatever tracking hardware is in use."
+    },
+    {
+      "key": "settings.bodyTracking.smoothing.preset.off.tooltip",
+      "value": "No smoothing. Raw tracking: lowest latency, most jitter."
+    },
+    {
+      "key": "settings.bodyTracking.smoothing.preset.light.tooltip",
+      "value": "A little smoothing. Keeps motion responsive while taking the edge off jitter."
+    },
+    {
+      "key": "settings.bodyTracking.smoothing.preset.standard.tooltip",
+      "value": "The balanced default for most headsets and trackers."
+    },
+    {
+      "key": "settings.bodyTracking.smoothing.preset.heavy.tooltip",
+      "value": "Strong smoothing for noisy tracking. Calmest motion, most lag."
+    },
+    {
+      "key": "settings.bodyTracking.smoothing.preset.optical.tooltip",
+      "value": "Tuned for camera-based tracking, which drifts and jumps more than it shakes."
+    },
+    {
+      "key": "settings.bodyTracking.smoothing.preset.custom.tooltip",
+      "value": "Set the smoothing values yourself with the sliders below."
+    },
+    {
+      "key": "settings.remoteAudio.rolloff.logarithmic.tooltip",
+      "value": "Volume drops quickly up close and gently far away, the way real sound behaves."
+    },
+    {
+      "key": "settings.remoteAudio.rolloff.linear.tooltip",
+      "value": "Volume falls at a steady rate out to the maximum distance."
+    },
+    {
+      "key": "settings.remoteAudio.rolloff.custom.tooltip",
+      "value": "Use the curve preset chosen below instead of a fixed rolloff shape."
+    },
+    {
+      "key": "settings.remoteAudio.curve.natural.tooltip",
+      "value": "A realistic falloff that keeps nearby voices clear without carrying far."
+    },
+    {
+      "key": "settings.remoteAudio.curve.legacy.tooltip",
+      "value": "The falloff Basis used previously. Pick it if the newer curves sound wrong to you."
+    },
+    {
+      "key": "settings.remoteAudio.curve.sharp.tooltip",
+      "value": "Volume drops away fast. Good in busy rooms where you only want the people beside you."
+    },
+    {
+      "key": "settings.remoteAudio.curve.gradual.tooltip",
+      "value": "Voices carry further before fading. Good in large open worlds."
+    },
+    {
+      "key": "settings.remoteAudio.curve.inverseSquare.tooltip",
+      "value": "Physically accurate inverse-square falloff: quiet quickly, then a long faint tail."
+    },
+    {
+      "key": "settings.remoteAudio.curve.flat.tooltip",
+      "value": "Almost no falloff. Everyone stays about as loud wherever they stand."
+    },
+    {
+      "key": "settings.remoteAudio.curve.userDefined.tooltip",
+      "value": "Use the curve you have shaped by hand rather than a preset."
+    },
+    {
+      "key": "settings.remoteAudio.interp.nearest.tooltip",
+      "value": "Snap to the closest measured HRTF direction. Cheapest, and can step audibly as people move."
+    },
+    {
+      "key": "settings.remoteAudio.interp.bilinear.tooltip",
+      "value": "Blend between neighbouring HRTF directions for smoother movement, at a little more CPU."
+    },
+    {
+      "key": "settings.remoteAudio.attenuation.curveDriven.tooltip",
+      "value": "Take distance volume from the rolloff curve above."
+    },
+    {
+      "key": "settings.remoteAudio.attenuation.physicsBased.tooltip",
+      "value": "Let the audio simulation work distance volume out from the scene itself."
+    },
+    {
+      "key": "settings.remoteAudio.airMode.simulation.tooltip",
+      "value": "Let the simulation decide how much high frequency the air absorbs."
+    },
+    {
+      "key": "settings.remoteAudio.airMode.userDefined.tooltip",
+      "value": "Set the low, mid, and high absorption amounts yourself with the sliders below."
+    },
+    {
+      "key": "settings.remoteAudio.occlusionType.raycast.tooltip",
+      "value": "Test a single ray to the speaker. Cheap, and switches abruptly at edges."
+    },
+    {
+      "key": "settings.remoteAudio.occlusionType.volumetric.tooltip",
+      "value": "Test a spread of rays for partial blocking. Softer transitions, more CPU."
+    },
+    {
+      "key": "settings.remoteAudio.transmissionType.independent.tooltip",
+      "value": "Muffle every frequency by the same amount when sound passes through a wall."
+    },
+    {
+      "key": "settings.remoteAudio.transmissionType.dependent.tooltip",
+      "value": "Let low frequencies through more than high ones, the way real walls behave."
+    },
+    {
+      "key": "menu.players.sortMode.joinTime.tooltip",
+      "value": "Order the list by when each player arrived."
+    },
+    {
+      "key": "menu.players.sortMode.distance.tooltip",
+      "value": "Order the list by how far away each player is, nearest first."
+    },
+    {
+      "key": "menu.players.sortMode.name.tooltip",
+      "value": "Order the list alphabetically by display name."
+    },
+    {
+      "key": "menu.players.sortMode.platform.tooltip",
+      "value": "Order the list by the platform each player is on."
+    },
+    {
+      "key": "settings.admin.joinRestriction.normal.tooltip",
+      "value": "Anyone may join the server."
+    },
+    {
+      "key": "settings.admin.joinRestriction.allowList.tooltip",
+      "value": "Only players on the allow list may join."
+    },
+    {
+      "key": "settings.admin.joinRestriction.rejoinOnly.tooltip",
+      "value": "Locks the server to the players connected when this was set; admins may still join. Resets to Normal on restart."
+    },
+    {
+      "key": "settings.performanceMode.level.off.tooltip",
+      "value": "Leave your own graphics settings alone. No avatar simplification."
+    },
+    {
+      "key": "settings.performanceMode.level.light.tooltip",
+      "value": "A gentle trim of avatar detail. Armed on its own past 250 players."
+    },
+    {
+      "key": "settings.performanceMode.level.balanced.tooltip",
+      "value": "A firmer trim that keeps crowds readable. Armed on its own past 500 players."
+    },
+    {
+      "key": "settings.performanceMode.level.aggressive.tooltip",
+      "value": "The tightest limits, for very large instances. Armed on its own past 1000 players."
+    },
+    {
+      "key": "settings.graphics.mirrorResolution.256.tooltip",
+      "value": "256 x 256. Cheapest, and very soft up close."
+    },
+    {
+      "key": "settings.graphics.mirrorResolution.512.tooltip",
+      "value": "512 x 512. Light on performance, noticeably blurry."
+    },
+    {
+      "key": "settings.graphics.mirrorResolution.1024.tooltip",
+      "value": "1024 x 1024. A reasonable balance on most machines."
+    },
+    {
+      "key": "settings.graphics.mirrorResolution.2048.tooltip",
+      "value": "2048 x 2048. Sharp, and the usual choice on desktop hardware."
+    },
+    {
+      "key": "settings.graphics.mirrorResolution.4096.tooltip",
+      "value": "4096 x 4096. Very sharp, and heavy enough to cost real frame rate."
+    },
+    {
+      "key": "settings.graphics.mirrorResolution.8192.tooltip",
+      "value": "8192 x 8192. Extreme. Worth it only for stills on a powerful GPU."
+    },
+    {
+      "key": "settings.platform.swapMode.shutdown.tooltip",
+      "value": "Fully restart the XR runtime when you swap. Slower, but the cleanest handover."
+    },
+    {
+      "key": "settings.platform.swapMode.autoSwap.tooltip",
+      "value": "Switch between VR and desktop on its own as the headset comes and goes."
+    },
+    {
+      "key": "settings.controls.dominantHand.right.tooltip",
+      "value": "Treat your right hand as the main interaction hand."
+    },
+    {
+      "key": "settings.controls.dominantHand.left.tooltip",
+      "value": "Treat your left hand as the main interaction hand."
+    },
+    {
+      "key": "settings.admin.opusFrameDuration.20.tooltip",
+      "value": "Send voice in 20 ms packets. Lower latency, a little more bandwidth and CPU."
+    },
+    {
+      "key": "settings.admin.opusFrameDuration.40.tooltip",
+      "value": "Send voice in 40 ms packets. Less bandwidth and overhead, a little more delay."
+    },
+    {
+      "key": "settings.admin.title.type.avatar.tooltip",
+      "value": "Add this URL to the server's default avatars."
+    },
+    {
+      "key": "settings.admin.title.type.world.tooltip",
+      "value": "Add this URL to the server's default worlds."
+    },
+    {
+      "key": "settings.admin.title.type.prop.tooltip",
+      "value": "Add this URL to the server's default props."
+    },
+    {
+      "key": "notifications.category.all.tooltip",
+      "value": "Show notifications from every category."
+    },
+    {
+      "key": "notifications.category.system.tooltip",
+      "value": "Notices from Basis itself: updates, settings, and failures."
+    },
+    {
+      "key": "notifications.category.player.tooltip",
+      "value": "Players joining and leaving, and moderation actions."
+    },
+    {
+      "key": "notifications.category.content.tooltip",
+      "value": "Props, worlds, and other content being loaded or spawned."
+    },
+    {
+      "key": "notifications.category.network.tooltip",
+      "value": "Connection state, servers, and direct connections."
+    },
+    {
+      "key": "notifications.category.avatar.tooltip",
+      "value": "Avatar loading, swapping, and calibration."
+    },
+    {
+      "key": "notifications.category.developer.tooltip",
+      "value": "Developer and debug messages."
+    },
+    {
+      "key": "menu.individualPlayer.voiceRecording.policy.ask.tooltip",
+      "value": "Prompt you each time this player asks to record you."
+    },
+    {
+      "key": "menu.individualPlayer.voiceRecording.policy.allow.tooltip",
+      "value": "Let this player record your voice without asking again."
+    },
+    {
+      "key": "menu.individualPlayer.voiceRecording.policy.deny.tooltip",
+      "value": "Refuse this player's recording requests without asking again."
+    },
+    {
+      "key": "menu.individualPlayer.directConnection.policy.ask.tooltip",
+      "value": "Prompt you each time this player requests a direct connection."
+    },
+    {
+      "key": "menu.individualPlayer.directConnection.policy.accept.tooltip",
+      "value": "Accept direct connection requests from this player automatically."
+    },
+    {
+      "key": "menu.individualPlayer.directConnection.policy.decline.tooltip",
+      "value": "Decline direct connection requests from this player automatically."
+    },
+    {
+      "key": "library.sort.name.tooltip",
+      "value": "Sort items alphabetically by name."
+    },
+    {
+      "key": "library.sort.dateOldestToNewest.tooltip",
+      "value": "Show the oldest items first."
+    },
+    {
+      "key": "library.sort.dateNewestToOldest.tooltip",
+      "value": "Show the most recently added items first."
+    },
+    {
+      "key": "library.filter.all.tooltip",
+      "value": "Show every item."
+    },
+    {
+      "key": "library.filter.embedded.tooltip",
+      "value": "Show only items bundled with Basis or with the world."
+    },
+    {
+      "key": "library.filter.local.tooltip",
+      "value": "Show only items stored on this machine."
+    },
+    {
+      "key": "library.filter.networked.tooltip",
+      "value": "Show only items shared over the network."
+    },
+    {
+      "key": "library.filter.gameObject.tooltip",
+      "value": "Show only props and other objects."
+    },
+    {
+      "key": "library.filter.scene.tooltip",
+      "value": "Show only worlds and scenes."
+    },
+    {
+      "key": "library.filter.avatar.tooltip",
+      "value": "Show only avatars."
+    },
+    {
+      "key": "library.filter.adminOnly.tooltip",
+      "value": "Show only items restricted to admins."
+    },
+    {
+      "key": "library.filter.persistentOnly.tooltip",
+      "value": "Show only items that stay in the world after you leave."
+    },
+    {
+      "key": "library.filter.notPersistent.tooltip",
+      "value": "Show only items that disappear when you leave."
+    },
+    {
+      "key": "library.filter.placedByMe.tooltip",
+      "value": "Show only items you placed yourself."
+    },
+    {
+      "key": "library.filter.notPlacedByMe.tooltip",
+      "value": "Show only items placed by someone else."
+    },
+    {
+      "key": "menu.servers.reject.updateClient.title",
+      "value": "Update Required"
+    },
+    {
+      "key": "menu.servers.reject.updateClient.body",
+      "value": "This server is running a newer version of Basis (network protocol v{0}) than your client (v{1}). Update Basis to join."
+    },
+    {
+      "key": "menu.servers.reject.updateServer.title",
+      "value": "Server Out Of Date"
+    },
+    {
+      "key": "menu.servers.reject.updateServer.body",
+      "value": "This server is running an older version of Basis (network protocol v{0}) than your client (v{1}). The server has to update before you can join."
+    },
+    {
+      "key": "menu.servers.reject.serverFull.title",
+      "value": "Server Full"
+    },
+    {
+      "key": "menu.servers.reject.serverFull.body",
+      "value": "This server is full. Please try again later."
+    },
+    {
+      "key": "menu.servers.reject.title",
+      "value": "Connection Rejected"
+    },
+    {
+      "key": "menu.servers.reject.body",
+      "value": "The server rejected the connection."
+    },
+    {
+      "key": "menu.servers.reject.bodyUnknown",
+      "value": "The server rejected the connection. It may be full, running a different Basis version, or you may not be authorized."
+    },
+    {
+      "key": "menu.servers.disconnected.title",
+      "value": "Server Disconnected"
+    },
+    {
+      "key": "camera.dollyEaseIn",
+      "value": "Ease In"
+    },
+    {
+      "key": "camera.dollyEaseIn.description",
+      "value": "Curve the camera gets up to track speed on, leaving the waypoint the move starts from."
+    },
+    {
+      "key": "camera.dollyEaseInPortion",
+      "value": "Ease In Length"
+    },
+    {
+      "key": "camera.dollyEaseInPortion.description",
+      "value": "How much of the track is spent getting up to speed. 0 leaves at full speed."
+    },
+    {
+      "key": "camera.dollyEaseOut",
+      "value": "Ease Out"
+    },
+    {
+      "key": "camera.dollyEaseOut.description",
+      "value": "Curve the camera comes back down to a stop on, arriving at the last waypoint."
+    },
+    {
+      "key": "camera.dollyEaseOutPortion",
+      "value": "Ease Out Length"
+    },
+    {
+      "key": "camera.dollyEaseOutPortion.description",
+      "value": "How much of the track is spent slowing to a stop. 0 stops dead."
+    },
+    {
+      "key": "camera.dollyEase.linear",
+      "value": "Linear"
+    },
+    {
+      "key": "camera.dollyEase.linear.description",
+      "value": "No ease at all. The move is at full speed from the first frame to the last."
+    },
+    {
+      "key": "camera.dollyEase.sine",
+      "value": "Sine"
+    },
+    {
+      "key": "camera.dollyEase.sine.description",
+      "value": "The gentlest ease. Barely noticeable as an effect, which is what makes it the safe one."
+    },
+    {
+      "key": "camera.dollyEase.quad",
+      "value": "Quadratic"
+    },
+    {
+      "key": "camera.dollyEase.quad.description",
+      "value": "A soft, even ramp. A little more deliberate than Sine."
+    },
+    {
+      "key": "camera.dollyEase.cubic",
+      "value": "Cubic"
+    },
+    {
+      "key": "camera.dollyEase.cubic.description",
+      "value": "The classic camera ease: slow to leave, then away quickly."
+    },
+    {
+      "key": "camera.dollyEase.quart",
+      "value": "Quartic"
+    },
+    {
+      "key": "camera.dollyEase.quart.description",
+      "value": "Steeper than Cubic. Holds still noticeably longer before it goes."
+    },
+    {
+      "key": "camera.dollyEase.quint",
+      "value": "Quintic"
+    },
+    {
+      "key": "camera.dollyEase.quint.description",
+      "value": "Steeper again. A long hold, then a fast build."
+    },
+    {
+      "key": "camera.dollyEase.expo",
+      "value": "Exponential"
+    },
+    {
+      "key": "camera.dollyEase.expo.description",
+      "value": "The most extreme of the smooth curves. Almost stationary, then a sudden run."
+    },
+    {
+      "key": "camera.dollyEase.circ",
+      "value": "Circular"
+    },
+    {
+      "key": "camera.dollyEase.circ.description",
+      "value": "Slow to start and then very sharp, like the shoulder of a circle."
+    },
+    {
+      "key": "camera.dollyEase.back",
+      "value": "Back"
+    },
+    {
+      "key": "camera.dollyEase.back.description",
+      "value": "Winds up against the move before it goes, for a shot with some weight behind it."
+    },
+    {
+      "key": "camera.dollyEase.elastic",
+      "value": "Elastic"
+    },
+    {
+      "key": "camera.dollyEase.elastic.description",
+      "value": "Overshoots the speed and settles back onto it. A loose, sprung rig."
+    },
+    {
+      "key": "camera.dollyEase.bounce",
+      "value": "Bounce"
+    },
+    {
+      "key": "camera.dollyEase.bounce.description",
+      "value": "Arrives in a run of decreasing hops. Broad, and rarely subtle."
+    },
+    {
+      "key": "camera.dollySpeedColor",
+      "value": "Colour Track by Speed"
+    },
+    {
+      "key": "camera.dollySpeedColor.description",
+      "value": "Paint the path by how fast the camera passes through each part of it: blue slow through red fast. Shows the ease, and where widely spaced waypoints make the move race."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.gizmos",
+      "value": "Playspace Gizmos"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.gizmos.tooltip",
+      "value": "Draw your play space in the world: the runtime's play-area outline, the tracking origin every device pose is measured from, and the offsets the mover has stacked on top."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.gizmos.boundary",
+      "value": "Play Area Outline"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.gizmos.boundary.tooltip",
+      "value": "Outline your headset's own play area (SteamVR chaperone, Quest guardian) on the floor, with a rail at your eye height. Nothing is drawn when the runtime reports no boundary."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.gizmos.origin",
+      "value": "Origin & Capsule"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.gizmos.origin.tooltip",
+      "value": "Mark the tracking origin your play space is measured from, its forward and side axes, and the character capsule that locomotion actually moves."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.gizmos.offset",
+      "value": "Offsets"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.gizmos.offset.tooltip",
+      "value": "Show how far the mover has shifted you: the vertical space drag against the floor you started on, the horizontal drag Reset would undo, and the pivot an active flip turns about."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.gizmos.hands",
+      "value": "Grab Hands"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.gizmos.hands.tooltip",
+      "value": "Mark the hands the mover is reading and which input each one is holding, plus the span line the two-hand rotate and scale gestures measure."
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.gizmos.readouts",
+      "value": "Readouts"
+    },
+    {
+      "key": "settings.bodyTracking.playspaceMover.gizmos.readouts.tooltip",
+      "value": "Float a label over the play space with the mover's state, the drag offsets in metres, your device scale, and the size of the play area."
+    },
+    {
+      "key": "camera.dollyPreset",
+      "value": "Track Presets"
+    },
+    {
+      "key": "camera.dollyPreset.description",
+      "value": "Save a laid-out track and lay it out again, here or anywhere else."
+    },
+    {
+      "key": "camera.dollyPreset.help",
+      "value": "Save the track you have built, then load it back around wherever you are standing. Export writes it to a file you can hand to somebody else."
+    },
+    {
+      "key": "camera.dollyPreset.list",
+      "value": "Saved Track"
+    },
+    {
+      "key": "camera.dollyPreset.list.description",
+      "value": "Your saved tracks, with how many waypoints each one has."
+    },
+    {
+      "key": "camera.dollyPreset.name",
+      "value": "Preset Name"
+    },
+    {
+      "key": "camera.dollyPreset.name.tooltip",
+      "value": "What to save the track as. Saving onto a name you already have replaces it."
+    },
+    {
+      "key": "camera.dollyPreset.save",
+      "value": "Save Track"
+    },
+    {
+      "key": "camera.dollyPreset.save.tooltip",
+      "value": "Store the waypoints you have placed, along with the speed, ease and offset settings."
+    },
+    {
+      "key": "camera.dollyPreset.load",
+      "value": "Load At Me"
+    },
+    {
+      "key": "camera.dollyPreset.load.tooltip",
+      "value": "Rebuild the track around where you are standing, at the size of the avatar you are wearing. This replaces the track you have out."
+    },
+    {
+      "key": "camera.dollyPreset.loadInPlace",
+      "value": "Load In Place"
+    },
+    {
+      "key": "camera.dollyPreset.loadInPlace.tooltip",
+      "value": "Put the track back at the exact spot it was saved from. Only useful in the world it was built in. This replaces the track you have out."
+    },
+    {
+      "key": "camera.dollyPreset.remove",
+      "value": "Delete Preset"
+    },
+    {
+      "key": "camera.dollyPreset.remove.tooltip",
+      "value": "Forget this saved track. The track you have out is left alone."
+    },
+    {
+      "key": "camera.dollyPreset.remove.confirm",
+      "value": "Delete the saved track \"{0}\"? The track currently laid out is not affected."
+    },
+    {
+      "key": "camera.dollyPreset.export",
+      "value": "Export"
+    },
+    {
+      "key": "camera.dollyPreset.export.tooltip",
+      "value": "Write this preset to its own file in the presets folder, so it can be sent to somebody else."
+    },
+    {
+      "key": "camera.dollyPreset.import",
+      "value": "Import"
+    },
+    {
+      "key": "camera.dollyPreset.import.tooltip",
+      "value": "Read every preset file in the presets folder into your saved list."
+    },
+    {
+      "key": "camera.dollyPreset.folder",
+      "value": "Open Folder"
+    },
+    {
+      "key": "camera.dollyPreset.folder.tooltip",
+      "value": "Open the presets folder, to put a file somebody sent you in or take one out."
+    },
+    {
+      "key": "camera.dollyPreset.saved",
+      "value": "Track saved."
+    },
+    {
+      "key": "camera.dollyPreset.loaded",
+      "value": "Track laid out around you."
+    },
+    {
+      "key": "camera.dollyPreset.loadedInPlace",
+      "value": "Track put back where it was saved."
+    },
+    {
+      "key": "camera.dollyPreset.removed",
+      "value": "Preset deleted."
+    },
+    {
+      "key": "camera.dollyPreset.exported",
+      "value": "Exported as {0}."
+    },
+    {
+      "key": "camera.dollyPreset.imported",
+      "value": "Imported {0} preset(s)."
+    },
+    {
+      "key": "camera.dollyPreset.importedNone",
+      "value": "Nothing to import. Put preset files in the folder first."
+    },
+    {
+      "key": "camera.dollyPreset.error.empty",
+      "value": "Give the preset a name first."
+    },
+    {
+      "key": "camera.dollyPreset.error.noPoints",
+      "value": "Place some waypoints first. There is no track to save."
+    },
+    {
+      "key": "camera.dollyPreset.error.missing",
+      "value": "No preset saved under that name."
+    },
+    {
+      "key": "camera.dollyPreset.error.full",
+      "value": "You have as many saved presets as this will hold. Delete one first."
+    },
+    {
+      "key": "camera.dollyPreset.error.exportFailed",
+      "value": "The preset could not be written. See the log."
+    },
+    {
+      "key": "camera.dollyPreset.error.importFailed",
+      "value": "The presets folder could not be read. See the log."
+    },
+    {
+      "key": "settings.microphone.test.title",
+      "value": "Test Microphone"
+    },
+    {
+      "key": "settings.microphone.test.monitor",
+      "value": "Microphone Monitor"
+    },
+    {
+      "key": "settings.microphone.test.monitor.tooltip",
+      "value": "Record a short clip from your microphone and play it back to hear what other players hear. The clip stays on this computer and is never sent to the server."
+    },
+    {
+      "key": "settings.microphone.test.record",
+      "value": "Record"
+    },
+    {
+      "key": "settings.microphone.test.record.tooltip",
+      "value": "Start a test recording from your microphone. It plays back automatically when you stop."
+    },
+    {
+      "key": "settings.microphone.test.stop",
+      "value": "Stop & Play"
+    },
+    {
+      "key": "settings.microphone.test.play",
+      "value": "Play Back"
+    },
+    {
+      "key": "settings.microphone.test.play.tooltip",
+      "value": "Play the last test recording back through your speakers or headset."
+    },
+    {
+      "key": "settings.microphone.test.playStop",
+      "value": "Stop Playback"
+    },
+    {
+      "key": "settings.microphone.test.play.disabled",
+      "value": "Record a test clip first."
+    },
+    {
+      "key": "settings.microphone.test.status.recording",
+      "value": "Recording {0:F1}s of {1}s"
+    },
+    {
+      "key": "settings.microphone.test.status.playing",
+      "value": "Playing back {0:F1}s of {1:F1}s"
+    },
+    {
+      "key": "settings.microphone.test.status.ready",
+      "value": "Recorded {0:F1}s. Press Play Back to hear it."
+    },
+    {
+      "key": "settings.microphone.test.status.waiting",
+      "value": "Waiting for microphone input..."
+    },
+    {
+      "key": "settings.microphone.test.status.muted",
+      "value": "Your microphone is muted. It is opened only while this section is open, and nothing is sent to other players."
+    },
+    {
+      "key": "settings.microphone.test.status.idle",
+      "value": "Your level shows here as you speak. Press Record to hear yourself back."
+    },
+    {
+      "key": "settings.microphone.test.status.noDevice",
+      "value": "No microphone is available."
+    },
+    {
+      "key": "settings.microphone.test.status.recordingMuted",
+      "value": "Recording {0:F1}s of {1}s — muted, so nothing is sent to other players."
+    },
+    {
+      "key": "settings.microphone.test.save",
+      "value": "Save Recording"
+    },
+    {
+      "key": "settings.microphone.test.save.tooltip",
+      "value": "Write the test recording to a WAV file on disk."
+    },
+    {
+      "key": "settings.microphone.test.save.disabled",
+      "value": "Record something first."
+    },
+    {
+      "key": "settings.microphone.test.save.done",
+      "value": "Saved to {0}"
+    },
+    {
+      "key": "settings.microphone.test.save.failed",
+      "value": "Could not save the recording."
+    },
+    {
+      "key": "settings.microphone.test.live",
+      "value": "Back to Live Preview"
+    },
+    {
+      "key": "settings.microphone.test.live.tooltip",
+      "value": "Stop showing the recorded clip and go back to watching your live microphone level. The recording is kept."
+    },
+    {
+      "key": "settings.microphone.test.live.disabled",
+      "value": "The live level is already showing."
+    },
+    {
+      "key": "settings.microphone.test.status.localOnly",
+      "value": "Recorded {0:F1}s. Only you can hear your microphone until this test finishes."
+    },
+    {
+      "key": "settings.microphone.test.status.recordingLocal",
+      "value": "Recording {0:F1}s of {1}s — outbound voice is off, only you can hear this."
     }
   ]
 }

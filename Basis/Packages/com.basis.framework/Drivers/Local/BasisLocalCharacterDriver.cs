@@ -23,7 +23,9 @@ namespace Basis.Scripts.BasisCharacterController
         [SerializeField] public float MaximumMovementSpeed = 4;
         [SerializeField] public float DefaultMovementSpeed = 2.5f;
         [SerializeField] public float MinimumMovementSpeed = 0.5f;
+        [SerializeField] public float ProneMovementSpeed = 0.35f;
         [SerializeField, Range(0f, 1f)] public float MinimumCrouchPercent = 0.5f;
+        [SerializeField, Range(0f, 1f)] public float MinimumPronePercent = 0.15f;
         [SerializeField] public float gravityValue = -9.81f;
         [SerializeField] public float RaycastDistance = 0.2f;
         [SerializeField] public float MinimumColliderSize = 0.01f;
@@ -36,29 +38,15 @@ namespace Basis.Scripts.BasisCharacterController
         public bool HasJumpAction = false;
         public float jumpHeight = 1.0f; // Jump height set to 1 meter
         public float currentVerticalSpeed = 0f; // Vertical speed of the character
-        /// <summary>
-        /// Temporary hips offset applied on landing to simulate impact absorption.
-        /// Eases toward <see cref="landingCrouchTarget"/> then recovers to zero.
-        /// </summary>
         [System.NonSerialized] public float landingCrouchEffect;
         [System.NonSerialized] public float landingCrouchTarget;
         [SerializeField] public float landingDescentSpeed = 15f;
         [SerializeField] public float landingRecoverySpeed = 6f;
         [SerializeField] public float landingImpactScale = 0.06f;
         [SerializeField] public float maxLandingCrouchEffect = 0.35f;
-        /// <summary>
-        /// Duration in seconds after leaving the ground during which the player can still jump.
-        /// Helps with unreliable grounded detection on slopes and near ledges.
-        /// </summary>
         [SerializeField] public float coyoteTimeDuration = 0.15f;
         [System.NonSerialized] public float coyoteTimeCounter;
-        /// <summary>
-        /// Whether the player is allowed to jump — true when grounded or within the coyote time window.
-        /// </summary>
         public bool CanJump => groundedPlayer || coyoteTimeCounter > 0f;
-        /// <summary>
-        /// Grace period before the falling state triggers, preventing animation flicker on slopes.
-        /// </summary>
         [SerializeField] public float fallingGracePeriod = 0.1f;
         [System.NonSerialized] public float airborneTimer;
 
@@ -74,6 +62,14 @@ namespace Basis.Scripts.BasisCharacterController
         private BasisNoClipMovementMode _noClipMode = new BasisNoClipMovementMode();
         [System.NonSerialized] public IMovementMode CurrentMode;
         [System.NonSerialized] public Mode CurrentModeKind = Mode.Walk;
+
+        [System.NonSerialized] public float BaselineJumpHeight = 1f;
+        [System.NonSerialized] public float BaselineWalkSpeed = 2.5f;
+        [System.NonSerialized] public float BaselineRunSpeed = 4f;
+        [System.NonSerialized] public float BaselineMinimumSpeed = 0.5f;
+        [System.NonSerialized] public float BaselineGravity = -9.81f;
+        [System.NonSerialized] public Mode BaselineMode = Mode.Walk;
+        [System.NonSerialized] private int _appliedOverrideVersion = -1;
         public delegate void ModeChangedHandler(Mode newMode);
         public ModeChangedHandler ModeChanged;
         public void SetMode(Mode mode)
@@ -89,7 +85,12 @@ namespace Basis.Scripts.BasisCharacterController
             };
             airborneTimer = 0f;
             coyoteTimeCounter = 0f;
+            StanceSpeedBlend = CrouchBlend;
+            StanceSpeedProne = IsProne;
+            TakeoffStanceDrop = GetCrouchHeightDrop();
+            AirborneStanceLift = 0f;
             CurrentMode.Enter(this);
+            UpdateMovementSpeed(UseMaxSpeed);
             ModeChanged?.Invoke(mode);
         }
 
@@ -112,25 +113,23 @@ namespace Basis.Scripts.BasisCharacterController
         private bool _sizeCache_HasEye;
         private float _sizeCache_Radius;
         private bool _sizeCache_Valid;
+
+        private float _appliedRadius = float.NaN;
+        private float _appliedSkinWidth = float.NaN;
+        private float _appliedHeight = float.NaN;
+        private Vector3 _appliedCenter = new Vector3(float.NaN, float.NaN, float.NaN);
+        private float _appliedStepOffset = float.NaN;
         public Vector2 MovementVector { get; private set; }
-        /// <summary>
-        /// A value between 0 and 1 representing the relative speed of player movement.
-        /// </summary>
         [field: SerializeField] public float MovementSpeedScale { get; private set; }
         [field: SerializeField] public float MovementSpeedBoost { get; private set; }
-        /// <summary>
-        /// A value between 0 and 1 representing the character's crouch state, where 0 is fully crouched and 1 is fully standing.
-        /// </summary>
         public float CrouchBlend = 1f;
-        /// <summary>
-        /// Value updated by <see cref="SetCrouchBlendDelta"/> which triggers <see cref="UpdateCrouchBlend"/> implicitly each simulation frame.
-        /// This is generally used by event based input systems where a start and stop event are called, but per-frame updates are not.
-        /// </summary>
         public float CrouchBlendDelta = 0f;
-        /// <summary>
-        /// Indicates whether the character is considered crouching based on the CrouchBlend value being less than the defined threshold.
-        /// </summary>
+        [System.NonSerialized] public float StanceSpeedBlend = 1f;
+        [System.NonSerialized] public bool StanceSpeedProne;
+        [System.NonSerialized] public float TakeoffStanceDrop;
+        [System.NonSerialized] public float AirborneStanceLift;
         public bool IsCrouching => CrouchBlend <= LocalAnimatorDriver.CrouchThreshold;
+        public bool IsProne = false;
         public bool IsRunning => CurrentSpeed > DefaultMovementSpeed;
         public bool UseMaxSpeed => BasisLocalInputActions.IsRunHeld;
         public bool CanPushRigidbodys = false;
@@ -147,16 +146,20 @@ namespace Basis.Scripts.BasisCharacterController
                 Validate();
                 CalculateCharacterSize();
                 characterController.enabled = value;
+                TakeoffStanceDrop = GetCrouchHeightDrop();
+                AirborneStanceLift = 0f;
             }
         }
 
         [System.NonSerialized] public BasisLocks.LockContext MovementLock = BasisLocks.GetContext(BasisLocks.Movement);
+        [System.NonSerialized] public BasisLocks.LockContext LookRotationLock = BasisLocks.GetContext(BasisLocks.LookRotation);
         [System.NonSerialized] public BasisLocks.LockContext CrouchingLock = BasisLocks.GetContext(BasisLocks.Crouching);
         public Transform BasisLocalPlayerTransform;
         private bool isEnabled = true;
         public float CurrentSpeed;
         public void DeInitialize()
         {
+            BasisLocomotionOverrides.RemoveAll(true);
             CurrentMode?.Exit(this);
             CurrentMode = null;
             if (HasEvents)
@@ -170,7 +173,7 @@ namespace Basis.Scripts.BasisCharacterController
             BasisLocalPlayerTransform = localPlayer.transform;
             LocalAnimatorDriver = localPlayer.LocalAnimatorDriver;
             characterController.minMoveDistance = 0;
-            characterController.skinWidth = 0.01f;
+            ApplySkinWidth(0.01f);
             if (!HasEvents)
             {
                 HasEvents = true;
@@ -178,7 +181,56 @@ namespace Basis.Scripts.BasisCharacterController
             SetMovementSpeedMultiplier(GetMultiplierForMovementSpeed(DefaultMovementSpeed));
             Validate();
             CalculateCharacterSize();
+            CaptureLocomotionBaselines();
             SetMode(Mode.Walk);
+            ApplyLocomotionOverrides(true);
+        }
+
+        public void CaptureLocomotionBaselines()
+        {
+            if (BasisLocomotionOverrides.Count != 0)
+            {
+                return;
+            }
+
+            BaselineJumpHeight = jumpHeight;
+            BaselineWalkSpeed = DefaultMovementSpeed;
+            BaselineRunSpeed = MaximumMovementSpeed;
+            BaselineMinimumSpeed = MinimumMovementSpeed;
+            BaselineGravity = gravityValue;
+            BaselineMode = CurrentModeKind;
+            _appliedOverrideVersion = -1;
+        }
+
+        public void ApplyLocomotionOverrides(bool force = false)
+        {
+            int version = BasisLocomotionOverrides.Version;
+            if (!force && version == _appliedOverrideVersion)
+            {
+                return;
+            }
+            _appliedOverrideVersion = version;
+
+            BasisLocomotionEffective effective = BasisLocomotionOverrides.Flatten(
+                BasisLocomotionOverrides.Resolve(),
+                new BasisLocomotionBaseline
+                {
+                    JumpHeight = BaselineJumpHeight,
+                    WalkSpeed = BaselineWalkSpeed,
+                    RunSpeed = BaselineRunSpeed,
+                    MinimumSpeed = BaselineMinimumSpeed,
+                    Gravity = BaselineGravity,
+                    Mode = BaselineMode,
+                });
+
+            jumpHeight = effective.JumpHeight;
+            gravityValue = effective.Gravity;
+            MinimumMovementSpeed = effective.MinimumSpeed;
+            DefaultMovementSpeed = effective.WalkSpeed;
+            MaximumMovementSpeed = effective.RunSpeed;
+            UpdateMovementSpeed(UseMaxSpeed);
+
+            SetMode(effective.Mode);
         }
 
         public void OnControllerColliderHit(ControllerColliderHit hit)
@@ -200,16 +252,19 @@ namespace Basis.Scripts.BasisCharacterController
                 body.AddForce(pushDir * pushPower, ForceMode.Impulse);
             }
         }
+
         public void SimulateMovement(float DeltaTime)
         {
             if (!IsEnabled)
             {
 
                 // If you want basis localToWorld using the *new* pose:
-                BasisLocalPlayerTransform.GetPositionAndRotation(out Vector3 Position, out Quaternion Rotation);
-                BasisLocalPlayer.localToWorldMatrix = Matrix4x4.TRS(Position, Rotation, BasisLocalPlayerTransform.lossyScale);
+                BasisLocalPose.GetPose(BasisPoseSlot.PlayerRoot, BasisLocalPlayerTransform, out Vector3 Position, out Quaternion Rotation);
+                BasisLocalPlayer.localToWorldMatrix = Matrix4x4.TRS(Position, Rotation, BasisLocalPose.GetLossyScale(BasisPoseSlot.PlayerRoot, BasisLocalPlayerTransform));
                 return;
             }
+            BasisLocalPlayerMarkers.MoveSize.Begin();
+            ApplyLocomotionOverrides();
             BasisScriptedPlayerInput.ApplyLocomotion(this);
             LastBottomPoint = bottomPointLocalSpace;
             CalculateCharacterSize();
@@ -229,7 +284,10 @@ namespace Basis.Scripts.BasisCharacterController
                 landingCrouchEffect = Mathf.Lerp(landingCrouchEffect, 0f, landingRecoverySpeed * DeltaTime);
                 if (landingCrouchEffect < 0.001f) landingCrouchEffect = 0f;
             }
+            BasisLocalPlayerMarkers.MoveSize.End();
+
             // Delegate movement, gravity, and ground checking to the active mode.
+            BasisLocalPlayerMarkers.MoveMode.Begin();
             if (CurrentMode != null)
             {
                 CurrentMode.Tick(this, DeltaTime);
@@ -239,8 +297,11 @@ namespace Basis.Scripts.BasisCharacterController
                 HandleMovement(DeltaTime);
                 GroundCheck(DeltaTime);
             }
+            BasisLocalPlayerMarkers.MoveMode.End();
 
+            BasisLocalPlayerMarkers.MoveTurn.Begin();
             // Calculate the rotation amount for this frame
+            bool lookLocked = LookRotationLock;
             float rotationAmount;
             if (SMModuleControllerSettings.UsingSnapTurnAngle && BasisDeviceManagement.IsCurrentModeVR())
             {
@@ -267,32 +328,45 @@ namespace Basis.Scripts.BasisCharacterController
                 rotationAmount = Rotation.x * SMModuleControllerSettings.SmoothTurnSpeed * DeltaTime;
             }
 
+            if (lookLocked)
+            {
+                rotationAmount = 0f;
+            }
 
-            // Get the current rotation and position of the player
-            Vector3 pivot = BasisLocalBoneDriver.EyeControl.OutgoingWorldData.position;
-            Vector3 upAxis = Vector3.up;
+            Vector3 newPos;
+            Quaternion newRot;
+            if (rotationAmount != 0f)
+            {
+                // Get the current rotation and position of the player
+                Vector3 pivot = BasisLocalBoneDriver.EyeControl.OutgoingWorldData.position;
+                Vector3 upAxis = Vector3.up * BasisLocalPlayspaceMover.FlipUpSign;
 
-            // Calculate direction from the pivot to the current position
-            Vector3 directionToPivot = CurrentPosition - pivot;
+                // Calculate direction from the pivot to the current position
+                Vector3 directionToPivot = CurrentPosition - pivot;
 
-            // Calculate rotation quaternion based on the rotation amount and axis
-            Quaternion rotation = Quaternion.AngleAxis(rotationAmount, upAxis);
+                // Calculate rotation quaternion based on the rotation amount and axis
+                Quaternion rotation = Quaternion.AngleAxis(rotationAmount, upAxis);
 
-            // Apply rotation to the direction vector
-            Vector3 rotatedDirection = rotation * directionToPivot;
+                // Apply rotation to the direction vector
+                Vector3 rotatedDirection = rotation * directionToPivot;
 
-            Vector3 FinalRotation = pivot + rotatedDirection;
+                newPos = pivot + rotatedDirection;
+                newRot = rotation * CurrentRotation;
 
-            BasisLocalPlayerTransform.SetPositionAndRotation(FinalRotation, rotation * CurrentRotation);
+                BasisLocalPlayerTransform.SetPose(newPos, newRot);
+            }
+            else
+            {
+                newPos = CurrentPosition;
+                newRot = CurrentRotation;
+            }
 
-            float HeightOffset = (characterController.height / 2) - characterController.radius;
-            bottomPointLocalSpace = FinalRotation + (characterController.center - new Vector3(0, HeightOffset, 0));
-
-            Quaternion newRot = rotation * CurrentRotation;
-            Vector3 newPos = FinalRotation;
+            float HeightOffset = (_appliedHeight / 2) - radius;
+            bottomPointLocalSpace = newPos + (_appliedCenter - new Vector3(0, HeightOffset, 0));
 
             // If you want basis localToWorld using the *new* pose:
-            BasisLocalPlayer.localToWorldMatrix = Matrix4x4.TRS(newPos, newRot, BasisLocalPlayerTransform.lossyScale);
+            BasisLocalPlayer.localToWorldMatrix = Matrix4x4.TRS(newPos, newRot, BasisLocalPose.GetLossyScale(BasisPoseSlot.PlayerRoot, BasisLocalPlayerTransform));
+            BasisLocalPlayerMarkers.MoveTurn.End();
         }
 
         public float GetVerticalMovement()
@@ -356,13 +430,86 @@ namespace Basis.Scripts.BasisCharacterController
             }
 
             LastWasGrounded = groundedPlayer;
+            SyncStanceSpeedSource();
+        }
+
+        public void SyncStanceSpeedSource()
+        {
+            if (CurrentModeKind == Mode.Walk && !groundedPlayer)
+            {
+                return;
+            }
+            if (StanceSpeedBlend == CrouchBlend && StanceSpeedProne == IsProne)
+            {
+                return;
+            }
+            StanceSpeedBlend = CrouchBlend;
+            StanceSpeedProne = IsProne;
+            UpdateMovementSpeed(UseMaxSpeed);
+        }
+
+        public float GetCrouchHeightDrop()
+        {
+            if (BasisDeviceManagement.IsCurrentModeVR())
+            {
+                return 0f;
+            }
+            var head = BasisLocalBoneDriver.HeadControl;
+            if (head == null)
+            {
+                return 0f;
+            }
+            return CrouchHeightDrop(head.TposeLocalScaled.position.y, MinimumCrouchPercent, CrouchBlend);
+        }
+
+        public static float CrouchHeightDrop(float headHeight, float minimumCrouchPercent, float crouchBlend)
+        {
+            if (float.IsNaN(headHeight) || float.IsInfinity(headHeight) || headHeight <= 0f)
+            {
+                return 0f;
+            }
+            return headHeight * (1f - math.clamp(minimumCrouchPercent, 0f, 1f)) * (1f - math.clamp(crouchBlend, 0f, 1f));
+        }
+
+        public float ConsumeStanceLift()
+        {
+            return ResolveStanceLift(groundedPlayer, GetCrouchHeightDrop(), ref TakeoffStanceDrop, ref AirborneStanceLift);
+        }
+
+        public static float ResolveStanceLift(bool grounded, float currentDrop, ref float takeoffDrop, ref float appliedLift)
+        {
+            if (grounded)
+            {
+                takeoffDrop = currentDrop;
+                appliedLift = 0f;
+                return 0f;
+            }
+
+            float target = currentDrop - takeoffDrop;
+            float delta = target - appliedLift;
+            appliedLift = target;
+            return delta;
         }
 
         public void CrouchToggle()
         {
+            IsProne = false;
             // check what the animator driver considers to be crouching, and standup if crouch threshold is matched, otherwise, full crouch
             CrouchBlend = CrouchingLock || CrouchBlend <= LocalAnimatorDriver.CrouchThreshold ? 1f : 0f;
             UpdateMovementSpeed(UseMaxSpeed);
+        }
+
+        public void ProneToggle()
+        {
+            if (CrouchingLock) return;
+            IsProne = !IsProne;
+            UpdateMovementSpeed(UseMaxSpeed);
+        }
+
+        public float GetStanceHeightPercent()
+        {
+            if (IsProne) return MinimumPronePercent;
+            return (1f - MinimumCrouchPercent) * CrouchBlend + MinimumCrouchPercent;
         }
 
         public void SetCrouchBlendDelta(float delta)
@@ -382,8 +529,8 @@ namespace Basis.Scripts.BasisCharacterController
             var topSpeed = GetMultiplierForMovementSpeed(maxSpeed ? MaximumMovementSpeed : DefaultMovementSpeed);
             var boostSpeed = maxSpeed ? MaximumMovementSpeed / DefaultMovementSpeed : 1f;
             // inverse of crouch blend so standing is the least value, multiply by the boost that running gives
-            MovementSpeedBoost = (1 - CrouchBlend) * boostSpeed;
-            SetMovementSpeedMultiplier(topSpeed * CrouchBlend * MovementVector.magnitude);
+            MovementSpeedBoost = (1 - StanceSpeedBlend) * boostSpeed;
+            SetMovementSpeedMultiplier(topSpeed * StanceSpeedBlend * MovementVector.magnitude);
         }
 
         public float GetMultiplierForMovementSpeed(float speed)
@@ -400,25 +547,24 @@ namespace Basis.Scripts.BasisCharacterController
         {
             MovementVector = movement;
         }
-        /// <summary>
-        /// Horizontal facing that movement input is expressed in: the viewpoint (CenterEye) — the HMD in VR,
-        /// the mouse-look camera on desktop. Deliberately NOT the head bone. The head bone is an avatar-side
-        /// output that normally just copies the eye rotation, so the two agree until something overrides it —
-        /// camera tracking writing a Head-role tracker, or a real head tracker — and then the player walks off
-        /// at the angle their physical head is turned instead of where the camera points.
-        /// </summary>
         public static Quaternion GetMovementFacing()
         {
             // Project view forward onto horizontal plane (avoids gimbal lock near ±90° pitch)
             Quaternion viewRotation = BasisLocalBoneDriver.EyeControl.OutgoingWorldData.rotation;
+            Vector3 upReference = Vector3.up * BasisLocalPlayspaceMover.FlipUpSign;
             Vector3 flatForward = viewRotation * Vector3.forward;
             flatForward.y = 0f;
             if (flatForward.sqrMagnitude < 0.0001f)
             {
-                flatForward = -(viewRotation * Vector3.up);
-                flatForward.y = 0f;
+                Vector3 flatRight = viewRotation * Vector3.right;
+                flatRight.y = 0f;
+                flatForward = Vector3.Cross(flatRight, upReference);
             }
-            return Quaternion.LookRotation(flatForward.normalized, Vector3.up);
+            if (flatForward.sqrMagnitude < 0.0001f)
+            {
+                flatForward = Vector3.forward;
+            }
+            return Quaternion.LookRotation(flatForward.normalized, upReference);
         }
         public void HandleMovement(float DeltaTime)
         {
@@ -429,6 +575,7 @@ namespace Basis.Scripts.BasisCharacterController
             Vector3 horizontalMoveDirection = new Vector3(MovementVector.x, 0, MovementVector.y).normalized;
 
             CurrentSpeed = math.lerp(MinimumMovementSpeed, MaximumMovementSpeed, MovementSpeedScale) + MinimumMovementSpeed * MovementSpeedBoost;
+            if (StanceSpeedProne) CurrentSpeed = ProneMovementSpeed;
 
             Vector3 totalMoveDirection = flattenedRotation * horizontalMoveDirection * CurrentSpeed * DeltaTime;
             if (MovementLock)
@@ -466,7 +613,9 @@ namespace Basis.Scripts.BasisCharacterController
 
             // Move character
             Flags = characterController.Move(totalMoveDirection);
-            BasisLocalPlayerTransform.GetPositionAndRotation(out CurrentPosition, out CurrentRotation);
+            // PhysX writes the root transform directly; the pose cache cannot observe it.
+            BasisLocalPose.InvalidateAll();
+            BasisLocalPlayerTransform.GetPose(out CurrentPosition, out CurrentRotation);
         }
         // Authored (unscaled) capsule dimensions, captured once. CalculateCharacterSize writes
         // avatar-scaled values back onto the controller, so re-reading the controller on a later
@@ -475,26 +624,16 @@ namespace Basis.Scripts.BasisCharacterController
         private float _authoredSkinWidth = -1f;
         private float _authoredStepOffset = -1f;
 
-        /// <summary>Guarded avatar size ratio; 1 when the height driver has nothing sane to report.</summary>
         public static float AvatarSizeRatio()
         {
             float s = BasisHeightDriver.AvatarToDefaultRatioScaledWithAvatarScale;
             return (float.IsNaN(s) || float.IsInfinity(s) || s <= 0f) ? 1f : s;
         }
 
-        /// <summary>Fall-speed cap at default avatar size, in m/s. Was implicitly abs(gravityValue).</summary>
         private const float TerminalVelocityAtDefaultSize = 9.81f;
 
-        /// <summary>Fall-speed cap for this avatar. Speeds scale as sqrt(g*L).</summary>
         public static float TerminalVelocity() => TerminalVelocityAtDefaultSize * Mathf.Sqrt(AvatarSizeRatio());
 
-        /// <summary>
-        /// Locomotion speed multiplier. Gait is modelled on the Froude number v/sqrt(g*L) and every step
-        /// parameter is derived from the avatar's own leg, but movement speed was a fixed m/s — so a small
-        /// avatar's v-hat inflated by 1/sqrt(scale), pinning speedScale and urgencyT at maximum and roughly
-        /// doubling step cadence at half size. Scaling speed by sqrt(ratio) holds v-hat constant, so cadence,
-        /// bob, sway and double-support all match at every size (0.5x size keeps 71% of speed, not 50%).
-        /// </summary>
         public static float LocomotionSpeedScale() => Mathf.Sqrt(AvatarSizeRatio());
 
         public void Validate()
@@ -512,8 +651,44 @@ namespace Basis.Scripts.BasisCharacterController
                 _authoredStepOffset = characterController.stepOffset;
             }
 
-            characterController.radius = radius;
+            ApplyRadius(radius);
         }
+
+        private void ApplyRadius(float value)
+        {
+            if (_appliedRadius == value) return;
+            _appliedRadius = value;
+            characterController.radius = value;
+        }
+
+        private void ApplySkinWidth(float value)
+        {
+            if (_appliedSkinWidth == value) return;
+            _appliedSkinWidth = value;
+            characterController.skinWidth = value;
+        }
+
+        private void ApplyHeight(float value)
+        {
+            if (_appliedHeight == value) return;
+            _appliedHeight = value;
+            characterController.height = value;
+        }
+
+        private void ApplyCenter(Vector3 value)
+        {
+            if (_appliedCenter.x == value.x && _appliedCenter.y == value.y && _appliedCenter.z == value.z) return;
+            _appliedCenter = value;
+            characterController.center = value;
+        }
+
+        private void ApplyStepOffset(float value)
+        {
+            if (_appliedStepOffset == value) return;
+            _appliedStepOffset = value;
+            characterController.stepOffset = value;
+        }
+
         public void CalculateCharacterSize()
         {
             bool hasEye = BasisLocalBoneDriver.HasEye;
@@ -562,41 +737,41 @@ namespace Basis.Scripts.BasisCharacterController
 
             if (_authoredRadius > 0f)
             {
-                characterController.radius = radius;
-                characterController.skinWidth = _authoredSkinWidth * sizeRatio;
+                ApplyRadius(radius);
+                ApplySkinWidth(_authoredSkinWidth * sizeRatio);
             }
 
             // Ensure height is valid relative to radius
             float minHeight = 2f * radius + 0.001f;
             float finalHeight = Mathf.Max(rawEyeHeight, minHeight);
 
-            characterController.height = finalHeight;
+            ApplyHeight(finalHeight);
 
             float halfHeight = finalHeight * 0.5f;
 
             // Offset the capsule down by skinWidth so the collider bottom
             // (including its skin shell) sits flush with the floor instead
             // of hovering skinWidth above it.
-            float skinCompensation = characterController.skinWidth;
+            float skinCompensation = _appliedSkinWidth;
 
             if (hasEye)
             {
-                characterController.center = new Vector3(eyePos.x, halfHeight - skinCompensation, eyePos.z);
+                ApplyCenter(new Vector3(eyePos.x, halfHeight - skinCompensation, eyePos.z));
             }
             else
             {
-                characterController.center = new Vector3(0f, halfHeight - skinCompensation, 0f);
+                ApplyCenter(new Vector3(0f, halfHeight - skinCompensation, 0f));
             }
 
             // Clamp stepOffset to something sane relative to height
-            float maxStep = (finalHeight + 2f * characterController.radius) - 0.001f;
+            float maxStep = (finalHeight + 2f * radius) - 0.001f;
             maxStep = Mathf.Max(0f, maxStep);
             maxStep = Mathf.Min(maxStep, finalHeight * 0.25f);
 
             // Assignment, not Min-against-itself: Mathf.Min is monotonic decreasing, so shrinking the
             // avatar and growing it back left stepOffset stuck at the small value for the whole session.
             float desiredStep = _authoredStepOffset > 0f ? _authoredStepOffset * sizeRatio : maxStep;
-            characterController.stepOffset = Mathf.Min(desiredStep, maxStep);
+            ApplyStepOffset(Mathf.Min(desiredStep, maxStep));
 
             _sizeCache_HasEye = hasEye;
             _sizeCache_EyePos = eyePos;

@@ -63,7 +63,8 @@ public class SettingsData
 public static class BasisSettingsSystem
 {
     public const string SettingsJson = "settingsConfig.json";
-    private static readonly string filePath = Path.Combine(Application.persistentDataPath, SettingsJson);
+    private static string _filePath;
+    private static string FilePath => _filePath ??= Path.Combine(Application.persistentDataPath, SettingsJson);
     // private static readonly string currentVersion = "2.0.5";
     private static SettingsData settingsData = new SettingsData();
     private static bool _settingsLoaded = false;
@@ -85,6 +86,90 @@ public static class BasisSettingsSystem
     /// </summary>
     public static event Action<string, string> OnSettingChanged;
     public static event Action OnSettingsFinishedChanges;
+
+    private static int _batchDepth;
+    private static bool _batchSavePending;
+    private static bool _batchFinishPending;
+
+    /// <summary>
+    /// Coalesces the per-write tail of <see cref="SaveString"/> — the full-file save, the
+    /// <see cref="OnSettingsFinishedChanges"/> broadcast and <see cref="ForceQualityRefresh"/> —
+    /// across a burst of writes, so a caller that changes fifty settings at once pays for that
+    /// tail once instead of fifty times.
+    ///
+    /// <para>Per-key <see cref="OnSettingChanged"/> still fires inline, in write order, so every
+    /// module applies its value exactly when it did before. Only the once-per-change tail moves
+    /// to the end of the burst, which is where it always belonged: the save writes the whole
+    /// dictionary anyway, the finished-changes broadcast is a "push current state" pass, and
+    /// <c>SetQualityLevel(level, applyExpensiveChanges: true)</c> re-uploads every texture mip.
+    /// Running that chain per setting is what made a Performance Mode level change a
+    /// multi-second main-thread stall — long enough for the XR compositor to drop the app.</para>
+    ///
+    /// <para>Nesting is counted, so a batch inside a batch flushes once at the outermost exit.
+    /// Always pair with <see cref="EndBatch"/> in a <c>finally</c>, or use <see cref="Batch"/>.</para>
+    /// </summary>
+    public static void BeginBatch()
+    {
+        _batchDepth++;
+    }
+
+    /// <summary>Closes a <see cref="BeginBatch"/> scope, flushing the deferred tail at depth zero.</summary>
+    public static void EndBatch()
+    {
+        if (_batchDepth == 0)
+        {
+            return;
+        }
+
+        _batchDepth--;
+        if (_batchDepth != 0)
+        {
+            return;
+        }
+
+        bool save = _batchSavePending;
+        bool finish = _batchFinishPending;
+        _batchSavePending = false;
+        _batchFinishPending = false;
+
+        if (save)
+        {
+            SaveAllSettings();
+        }
+        if (finish)
+        {
+            OnSettingsFinishedChanges?.Invoke();
+            ForceQualityRefresh();
+        }
+    }
+
+    /// <summary><c>using (BasisSettingsSystem.Batch()) { ... }</c> form of <see cref="BeginBatch"/>.</summary>
+    public static BatchScope Batch()
+    {
+        BeginBatch();
+        return new BatchScope(_batchDepth);
+    }
+
+    public readonly struct BatchScope : IDisposable
+    {
+        // Depth this scope opened, always at least 1. A default(BatchScope) never opened one and
+        // carries 0, so disposing it can't close a batch it does not own.
+        private readonly int _depth;
+
+        internal BatchScope(int depth)
+        {
+            _depth = depth;
+        }
+
+        public void Dispose()
+        {
+            if (_depth != 0)
+            {
+                EndBatch();
+            }
+        }
+    }
+
     public static void Initialize()
     {
         BasisSettingsSystem.LoadAllSettings();
@@ -169,10 +254,22 @@ public static class BasisSettingsSystem
         // must not race the load.
         if (changed && _settingsLoaded)
         {
-            SaveAllSettings();
-            OnSettingChanged?.Invoke(uniqueSettingsName, value);
-            OnSettingsFinishedChanges?.Invoke();
-            ForceQualityRefresh();
+            if (_batchDepth > 0)
+            {
+                // The value is already in the dictionary, so the deferred save will carry it.
+                // The per-key notify still goes out now: modules apply in write order, and some
+                // of them depend on it (the quality level re-clamps shadows and HDR behind it).
+                _batchSavePending = true;
+                _batchFinishPending = true;
+                OnSettingChanged?.Invoke(uniqueSettingsName, value);
+            }
+            else
+            {
+                SaveAllSettings();
+                OnSettingChanged?.Invoke(uniqueSettingsName, value);
+                OnSettingsFinishedChanges?.Invoke();
+                ForceQualityRefresh();
+            }
         }
     }
 
@@ -196,7 +293,14 @@ public static class BasisSettingsSystem
 
         if (changed && _settingsLoaded)
         {
-            SaveAllSettings();
+            if (_batchDepth > 0)
+            {
+                _batchSavePending = true;
+            }
+            else
+            {
+                SaveAllSettings();
+            }
         }
     }
 
@@ -213,7 +317,14 @@ public static class BasisSettingsSystem
         settingsData.settings[uniqueSettingsName] = defaultValue;
         if (_settingsLoaded)
         {
-            SaveAllSettings();
+            if (_batchDepth > 0)
+            {
+                _batchSavePending = true;
+            }
+            else
+            {
+                SaveAllSettings();
+            }
         }
         return defaultValue;
     }
@@ -223,7 +334,7 @@ public static class BasisSettingsSystem
         // Default blank (will fill from file or remain empty)
         settingsData.RebuildDictionary();
 
-        _freshSettingsFile = !File.Exists(filePath);
+        _freshSettingsFile = !File.Exists(FilePath);
         if (_freshSettingsFile)
         {
             // First run: no file yet. Just create an empty file at current version.
@@ -237,7 +348,7 @@ public static class BasisSettingsSystem
 
         try
         {
-            json = File.ReadAllText(filePath);
+            json = File.ReadAllText(FilePath);
             loaded = JsonUtility.FromJson<SettingsData>(json);
         }
         catch (Exception e)
@@ -251,8 +362,8 @@ public static class BasisSettingsSystem
             // Corrupt or unreadable file. OPTIONAL: backup the bad file for debugging.
             try
             {
-                string backupPath = filePath + ".corrupt_backup";
-                File.Copy(filePath, backupPath, true);
+                string backupPath = FilePath + ".corrupt_backup";
+                File.Copy(FilePath, backupPath, true);
             }
             catch (Exception e)
             {
@@ -311,17 +422,17 @@ public static class BasisSettingsSystem
 
             string json = JsonUtility.ToJson(settingsData, true);
 
-            string dir = Path.GetDirectoryName(filePath);
+            string dir = Path.GetDirectoryName(FilePath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
             {
                 Directory.CreateDirectory(dir);
             }
 
-            File.WriteAllText(filePath, json);
+            File.WriteAllText(FilePath, json);
         }
         catch (Exception e)
         {
-            BasisDebug.LogError($"Failed to save settings to {filePath}: {e}");
+            BasisDebug.LogError($"Failed to save settings to {FilePath}: {e}");
         }
     }
 
