@@ -51,7 +51,7 @@ public partial class BasisHandHeldCamera
 
     /// <summary>
     /// Whether this body can send its picture anywhere but its own viewfinder. False on the film
-    /// bodies, which gates the preview screen, direct-to-screen and the video output — there is no
+    /// bodies, which gates direct-to-screen and the video output — there is no
     /// socket on the back of a disposable, so those are things it does not have rather than things
     /// somebody switched off.
     /// </summary>
@@ -70,17 +70,6 @@ public partial class BasisHandHeldCamera
     /// running, and never clears text it did not put there.</para>
     /// </summary>
     private bool frameCountShowing;
-
-    /// <summary>
-    /// Set when a body change moved whether this camera has an output socket, and cleared by the
-    /// render tick once it has re-asked the three gates that depend on it.
-    ///
-    /// <para>Deferred rather than done on the spot because a body is restored from the settings
-    /// file <em>while the camera is still being set up</em>, and the re-ask goes through
-    /// <c>OverrideDesktopOutput</c> — which points the capture camera at a render texture that does
-    /// not exist yet at that moment. The tick is the first place both are certainly true.</para>
-    /// </summary>
-    private bool bodyFeedDirty;
 
     /// <summary>
     /// Reused across captures. A stamp is a few dozen rectangles and this is reached from a GPU
@@ -236,8 +225,6 @@ public partial class BasisHandHeldCamera
         {
             ClearFrameCount();
         }
-
-        TickBodyLiveFeed();
     }
 
     /// <summary>Puts the frames left on the prop's display, if the self-timer is not using it.</summary>
@@ -373,8 +360,8 @@ public partial class BasisHandHeldCamera
     }
 
     /// <summary>
-    /// Re-runs the three gates a body's lack of an output socket closes: direct-to-screen, the
-    /// preview screen it spawns, and the video stream.
+    /// Re-runs the gates a body's lack of an output socket closes: direct-to-screen and the video
+    /// stream.
     ///
     /// <para>Run in both directions, because coming back off a film body has to give them back —
     /// the toggles were never cleared, only overruled, so the settings return with the camera that
@@ -393,20 +380,9 @@ public partial class BasisHandHeldCamera
         // — it is a no-op on a camera that was not streaming.
         if (!traits.LivePreview) StopVideoOutput();
 
-        bodyFeedDirty = true;
-    }
-
-    /// <summary>
-    /// Re-asks direct-to-screen and the preview screen now that the body has changed what the
-    /// camera is allowed to present. Both derive the answer themselves, so this only has to make
-    /// them look again.
-    /// </summary>
-    private void TickBodyLiveFeed()
-    {
-        if (!bodyFeedDirty || captureCamera == null || renderTexture == null) return;
-
-        bodyFeedDirty = false;
-        OverrideDesktopOutput();
+        // The window gate runs in both directions: a film body takes the monitor back, and the
+        // digital body fitted after it returns the feed without the setting having moved.
+        RefreshDirectToScreen();
     }
 
     // ---------- The stamp ----------
@@ -523,30 +499,40 @@ public partial class BasisHandHeldCamera
         Unity.Collections.NativeArray<byte> source = picture.GetRawTextureData<byte>();
         Color32 stock = BasisCameraPrintFinish.InstantBorderColour;
 
-        for (int y = 0; y < printHeight; y++)
+        // Row-contiguous on both sides, so the sheet is filled with three copies per row —
+        // border, photograph, border — instead of one bounds-checked write per byte.
+        int rowBytes = printWidth * 4;
+        if (printBorderRow == null || printBorderRow.Length != rowBytes)
         {
-            int sheetRow = y * printWidth * 4;
-            bool insideRows = y >= window.yMin && y < window.yMax;
-
+            printBorderRow = new byte[rowBytes];
             for (int x = 0; x < printWidth; x++)
             {
-                int offset = sheetRow + x * 4;
-
-                if (insideRows && x >= window.xMin && x < window.xMax)
-                {
-                    int sourceOffset = ((y - window.yMin) * window.width + (x - window.xMin)) * 4;
-                    sheet[offset] = source[sourceOffset];
-                    sheet[offset + 1] = source[sourceOffset + 1];
-                    sheet[offset + 2] = source[sourceOffset + 2];
-                    sheet[offset + 3] = source[sourceOffset + 3];
-                    continue;
-                }
-
-                sheet[offset] = stock.r;
-                sheet[offset + 1] = stock.g;
-                sheet[offset + 2] = stock.b;
-                sheet[offset + 3] = 255;
+                int offset = x * 4;
+                printBorderRow[offset] = stock.r;
+                printBorderRow[offset + 1] = stock.g;
+                printBorderRow[offset + 2] = stock.b;
+                printBorderRow[offset + 3] = 255;
             }
+        }
+
+        int leftBytes = window.xMin * 4;
+        int windowBytes = window.width * 4;
+        int rightStart = window.xMax * 4;
+        int rightBytes = rowBytes - rightStart;
+
+        for (int y = 0; y < printHeight; y++)
+        {
+            int sheetRow = y * rowBytes;
+
+            if (y < window.yMin || y >= window.yMax)
+            {
+                Unity.Collections.NativeArray<byte>.Copy(printBorderRow, 0, sheet, sheetRow, rowBytes);
+                continue;
+            }
+
+            if (leftBytes > 0) Unity.Collections.NativeArray<byte>.Copy(printBorderRow, 0, sheet, sheetRow, leftBytes);
+            Unity.Collections.NativeArray<byte>.Copy(source, (y - window.yMin) * windowBytes, sheet, sheetRow + leftBytes, windowBytes);
+            if (rightBytes > 0) Unity.Collections.NativeArray<byte>.Copy(printBorderRow, rightStart, sheet, sheetRow + rightStart, rightBytes);
         }
 
         pooledPrint.Apply(false);
@@ -555,6 +541,7 @@ public partial class BasisHandHeldCamera
 
     /// <summary>The sheet a print is mounted on, kept between shots. Null until a body asks for one.</summary>
     private Texture2D pooledPrint;
+    private byte[] printBorderRow;
 
     /// <summary>Frees the sheet, alongside the rest of what the camera pooled.</summary>
     private void ReleasePrintSheet()

@@ -39,7 +39,9 @@ namespace Basis.Scripts.Drivers
         private int[] roleToIndex;
         private NativeArray<int> allChainIndices;
         private bool nativeAllocated;
-        private int nativeCapacity;
+        // internal: BasisLocalBoneControl.HasStore range-checks its Index against the store, which
+        // it reaches through simInputPtr/simStatePtr with no bounds check of its own.
+        internal int nativeCapacity;
         private bool chainsBuilt;
         private const int SkeletonChainCount = 5;
         private readonly int[] skeletonChainIds = { -1, -1, -1, -1, -1 };
@@ -582,7 +584,7 @@ namespace Basis.Scripts.Drivers
         {
             role = (BasisBoneTrackedRole)Index;
             BasisBoneControl = new BasisLocalBoneControl();
-            FillOutBasicInformation(BasisBoneControl, role.ToString(), Color);
+            FillOutBasicInformation(BasisBoneControl, role, Color);
         }
         private const int RenderGizmosPriority = 250;
         public void InitializeGizmos()
@@ -794,9 +796,9 @@ namespace Basis.Scripts.Drivers
                 }
             }
         }
-        public void FillOutBasicInformation(BasisLocalBoneControl Control, string Name, Color Color)
+        public void FillOutBasicInformation(BasisLocalBoneControl Control, BasisBoneTrackedRole Role, Color Color)
         {
-            Control.name = Name;
+            Control.Role = Role;
             Control.Color = Color;
         }
         public Color[] GenerateRainbowColors(int RequestColorCount)

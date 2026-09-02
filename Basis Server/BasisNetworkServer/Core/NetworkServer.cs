@@ -229,6 +229,7 @@ public static class NetworkServer
     {
         var HasFileSupport = Configuration.HasFileSupport;
         BasisPlayerModeration.UseFileOnDisc = HasFileSupport;
+        BasisPlayerMuteManager.UseFileOnDisc = HasFileSupport;
         IAuthIdentity.HasFileSupport = HasFileSupport;
 
         Auth = new PasswordAuth(Configuration.Password ?? string.Empty);
@@ -258,8 +259,11 @@ public static class NetworkServer
     private static void SubscribeEvents(Configuration Configuration)
     {
         BasisServerHandleEvents.SubscribeServerEvents();
-        BasisPlayerModeration.LoadBannedPlayers();
-        BasisNetworkChat.LoadWordFilter(Configuration);
+        // Three independent disk loads with disjoint state; overlap them at boot.
+        System.Threading.Tasks.Parallel.Invoke(
+            BasisPlayerModeration.LoadBannedPlayers,
+            BasisPlayerMuteManager.LoadMutedPlayers,
+            () => BasisNetworkChat.LoadWordFilter(Configuration));
         BasisNetworkStackRegistry.RegisterIntroducerFactory(
             BasisNetworkStackRegistry.LiteNetLibId,
             _ => new BasisNetworkServer.LNLPeerIntroducer());

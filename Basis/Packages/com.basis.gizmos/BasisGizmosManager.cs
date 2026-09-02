@@ -42,12 +42,28 @@ public static class BasisGizmoManager
             }
             return renderLayer;
         }
-        set => renderLayer = value;
+        set
+        {
+            if (renderLayer == value)
+            {
+                return;
+            }
+            renderLayer = value;
+            ApplySharedLayerToLabels();
+        }
     }
 
     private const int LayerNotResolved = -2;
+
+    /// <summary>
+    /// Default — the layer the world itself is on, so every camera in the scene renders it.
+    /// Where <see cref="RenderInAllCameras"/> puts gizmos.
+    /// </summary>
+    private const int AllCameraLayer = 0;
+
     private static int renderLayer = LayerNotResolved;
-    private static int defaultRenderLayer = LayerNotResolved;
+    private static int overlayLayer = LayerNotResolved;
+    private static bool renderInAllCameras;
 
     /// <summary>
     /// Where gizmos live unless something moves them: OverlayUI.
@@ -59,18 +75,55 @@ public static class BasisGizmoManager
     /// else, which is what makes the waypoint markers already sitting on it grabbable.</para>
     ///
     /// <para>Falls back to the Default layer in a project that does not define OverlayUI, which is
-    /// where gizmos used to live — visible to every camera including the capture.</para>
+    /// where gizmos used to live — visible to every camera including the capture. Turning
+    /// <see cref="RenderInAllCameras"/> on asks for that same layer deliberately.</para>
     /// </summary>
     public static int DefaultRenderLayer
     {
         get
         {
-            if (defaultRenderLayer == LayerNotResolved)
+            if (renderInAllCameras)
+            {
+                return AllCameraLayer;
+            }
+            if (overlayLayer == LayerNotResolved)
             {
                 int overlayUi = LayerMask.NameToLayer("OverlayUI");
-                defaultRenderLayer = overlayUi >= 0 ? overlayUi : 0;
+                overlayLayer = overlayUi >= 0 ? overlayUi : AllCameraLayer;
             }
-            return defaultRenderLayer;
+            return overlayLayer;
+        }
+    }
+
+    /// <summary>
+    /// Whether gizmos are drawn for every camera in the scene rather than only the ones that
+    /// render <see cref="DefaultRenderLayer"/>. Off by default: gizmos belong to the person
+    /// operating the thing they describe, so photos, streams and the follow PIP stay clean.
+    /// On moves them to the Default layer the world itself is on, which every camera renders —
+    /// captures, mirrors and any world camera then show what the player sees.
+    /// <para>
+    /// Gizmos parked on a layer of their own with <see cref="SetGizmoLayer"/> stay there: those
+    /// are a camera rig's own markers (its frustum, its dolly track, the follow puck), kept out
+    /// of its own shot on purpose rather than by this default.
+    /// </para>
+    /// </summary>
+    public static bool RenderInAllCameras
+    {
+        get => renderInAllCameras;
+        set
+        {
+            if (renderInAllCameras == value)
+            {
+                return;
+            }
+            int previousDefault = DefaultRenderLayer;
+            renderInAllCameras = value;
+            // Anything that pointed RenderLayer somewhere of its own — the calibration mirror
+            // relay — keeps it, and restores to DefaultRenderLayer, which now reads the new value.
+            if (renderLayer == LayerNotResolved || renderLayer == previousDefault)
+            {
+                RenderLayer = DefaultRenderLayer;
+            }
         }
     }
 
@@ -132,6 +185,7 @@ public static class BasisGizmoManager
         if (Parent == null)
         {
             Parent = new GameObject("Parent Of Debug Data");
+            Parent.layer = RenderLayer;
         }
     }
 
@@ -187,6 +241,7 @@ public static class BasisGizmoManager
     {
         public BasisTextGizmos Component;
         public Vector3 Position;   // last requested — ranks nearest-K even while hidden
+        public int Layer = -1;     // -1 follows RenderLayer; see SetGizmoLayer
         public bool Active = true;
         public bool Visible = true;
     }
@@ -636,8 +691,8 @@ public static class BasisGizmoManager
         t.position = position;
         component.gameObject.name = gizmoName;
         // A label that came back from the pool still carries whatever layer SetGizmoLayer put
-        // it on; the next renter has not asked for that, so it starts on the container's layer.
-        component.gameObject.layer = Parent.layer;
+        // it on; the next renter has not asked for that, so it starts on the shared layer.
+        component.gameObject.layer = RenderLayer;
         component.ResetContent(text, color);
         component.gameObject.SetActive(true);
         return component;
@@ -814,6 +869,7 @@ public static class BasisGizmoManager
         }
         if (_textByID.TryGetValue(linkedID, out TextSlot text) && text.Component != null)
         {
+            text.Layer = layer;
             text.Component.gameObject.layer = ResolveLayer(layer);
             return true;
         }
@@ -824,6 +880,29 @@ public static class BasisGizmoManager
     private static int ResolveLayer(int slotLayer)
     {
         return slotLayer >= 0 ? slotLayer : RenderLayer;
+    }
+
+    /// <summary>
+    /// Moves the label objects that follow the shared layer onto it. Spheres and lines are
+    /// batched draws whose layer is read at submission, so they need nothing; labels are
+    /// GameObjects and carry the layer they were rented on until something rewrites it.
+    /// </summary>
+    private static void ApplySharedLayerToLabels()
+    {
+        int layer = RenderLayer;
+        if (Parent != null)
+        {
+            Parent.layer = layer;
+        }
+        foreach (KeyValuePair<int, TextSlot> kvp in _textByID)
+        {
+            TextSlot slot = kvp.Value;
+            if (slot.Layer >= 0 || slot.Component == null)
+            {
+                continue;
+            }
+            slot.Component.gameObject.layer = layer;
+        }
     }
 
     /// <summary>
@@ -850,6 +929,33 @@ public static class BasisGizmoManager
                 text.Component.SetVisible(false);
             }
         }
+    }
+
+    /// <summary>
+    /// One-line dump of everything between a submitted gizmo and a pixel: how many slots exist,
+    /// how many pass the drawable test, the layer they are submitted on, and whether the line
+    /// material resolved. Every one of these fails the same way from the outside -- nothing on
+    /// screen -- so a caller chasing "my gizmo does not show" needs all of them at once.
+    /// </summary>
+    public static string DescribeState(Vector3 viewer)
+    {
+        int lineSlots = _linesByID.Count;
+        int drawableLines = 0;
+        float maxDistSq = float.IsPositiveInfinity(MaxDrawDistance) ? float.PositiveInfinity : MaxDrawDistance * MaxDrawDistance;
+        int inactive = 0, degenerate = 0, culled = 0;
+        foreach (KeyValuePair<int, LineSlot> kvp in _linesByID)
+        {
+            LineSlot slot = kvp.Value;
+            if (!slot.Active) { inactive++; continue; }
+            if (slot.Count < 2) { degenerate++; continue; }
+            if (!(maxDistSq >= float.PositiveInfinity) && (slot.Points[0] - viewer).sqrMagnitude > maxDistSq) { culled++; continue; }
+            drawableLines++;
+        }
+        return $"lines slots={lineSlots} drawable={drawableLines} (inactive={inactive} degenerate={degenerate} distanceCulled={culled})"
+            + $" | spheres={_sphereByID.Count} labels={_textByID.Count}"
+            + $" | layer={RenderLayer} ('{LayerMask.LayerToName(RenderLayer)}') renderInAllCameras={RenderInAllCameras}"
+            + $" | lineMaterial={(_lineMaterial != null ? _lineMaterial.shader.name : "NULL -- shader missing")}"
+            + $" | drawOnTop={DrawOnTop} maxDrawDistance={MaxDrawDistance}";
     }
 
     /// <summary>True while a gizmo with this ID exists in any of the stores.</summary>
@@ -1093,9 +1199,11 @@ public static class BasisGizmoManager
 
         bool drawSolid = SolidSphereMaterial != null;
 
-        // Which layers are in play. One entry unless something called SetGizmoLayer, and a
-        // chunk cannot straddle two layers, so each gets its own pass over the slots.
+        // Bucket drawable slot indices per layer in ONE walk. One bucket unless
+        // something called SetGizmoLayer, and a chunk cannot straddle two layers,
+        // so each bucket then renders its own indices without re-walking the slots.
         _sphereLayerScratch.Clear();
+        int bucketsUsed = 0;
         for (int i = 0; i < _sphereHighWater; i++)
         {
             ref SphereSlot s = ref _spheres[i];
@@ -1104,20 +1212,31 @@ public static class BasisGizmoManager
                 continue;
             }
             int layer = ResolveLayer(s.Layer);
-            if (!_sphereLayerScratch.Contains(layer))
+            int bucket = _sphereLayerScratch.IndexOf(layer);
+            if (bucket < 0)
             {
+                bucket = bucketsUsed;
+                if (_sphereLayerBuckets.Count == bucket)
+                {
+                    _sphereLayerBuckets.Add(new List<int>());
+                }
+                _sphereLayerBuckets[bucket].Clear();
                 _sphereLayerScratch.Add(layer);
+                bucketsUsed++;
             }
+            _sphereLayerBuckets[bucket].Add(i);
         }
 
         // The chunk counter keeps running across layers: each chunk owns a MaterialPropertyBlock
         // that has to survive until the frame renders, so two draws must never share one.
         int chunk = 0;
-        for (int Index = 0; Index < _sphereLayerScratch.Count; Index++)
+        for (int Index = 0; Index < bucketsUsed; Index++)
         {
-            RenderSphereLayer(_sphereLayerScratch[Index], drawSolid, viewer, maxDistSq, ref chunk);
+            RenderSphereLayer(_sphereLayerScratch[Index], _sphereLayerBuckets[Index], ref chunk);
         }
     }
+
+    private static readonly List<List<int>> _sphereLayerBuckets = new List<List<int>>();
 
     private static bool IsSphereDrawable(ref SphereSlot s, bool drawSolid, Vector3 viewer, float maxDistSq)
     {
@@ -1132,17 +1251,14 @@ public static class BasisGizmoManager
         return maxDistSq >= float.PositiveInfinity || (s.Position - viewer).sqrMagnitude <= maxDistSq;
     }
 
-    private static void RenderSphereLayer(int layer, bool drawSolid, Vector3 viewer, float maxDistSq, ref int chunk)
+    private static void RenderSphereLayer(int layer, List<int> slotIndices, ref int chunk)
     {
         int n = 0;
         int solidCount = 0;
-        for (int i = 0; i < _sphereHighWater; i++)
+        int indexCount = slotIndices.Count;
+        for (int Index = 0; Index < indexCount; Index++)
         {
-            ref SphereSlot s = ref _spheres[i];
-            if (!IsSphereDrawable(ref s, drawSolid, viewer, maxDistSq) || ResolveLayer(s.Layer) != layer)
-            {
-                continue;
-            }
+            ref SphereSlot s = ref _spheres[slotIndices[Index]];
 
             Matrix4x4 m;
             if (s.HasRotation)
@@ -1222,9 +1338,12 @@ public static class BasisGizmoManager
             return;
         }
 
-        // Segment tally per layer. One entry unless something called SetGizmoLayer.
+        // Segment tally per layer, bucketing the drawable slots in the same walk so
+        // each layer renders its own list instead of re-walking the whole dictionary.
+        // One entry unless something called SetGizmoLayer.
         _lineSegmentsByLayer.Clear();
         _lineLayerOrder.Clear();
+        int bucketsUsed = 0;
         foreach (KeyValuePair<int, LineSlot> kvp in _linesByID)
         {
             LineSlot slot = kvp.Value;
@@ -1237,18 +1356,28 @@ public static class BasisGizmoManager
             if (_lineSegmentsByLayer.TryGetValue(layer, out int running))
             {
                 _lineSegmentsByLayer[layer] = running + segments;
+                _lineLayerBuckets[_lineLayerOrder.IndexOf(layer)].Add(slot);
                 continue;
             }
             _lineSegmentsByLayer.Add(layer, segments);
+            if (_lineLayerBuckets.Count == bucketsUsed)
+            {
+                _lineLayerBuckets.Add(new List<LineSlot>());
+            }
+            _lineLayerBuckets[bucketsUsed].Clear();
+            _lineLayerBuckets[bucketsUsed].Add(slot);
             _lineLayerOrder.Add(layer);
+            bucketsUsed++;
         }
 
         for (int Index = 0; Index < _lineLayerOrder.Count; Index++)
         {
             int layer = _lineLayerOrder[Index];
-            RenderLineLayer(layer, _lineSegmentsByLayer[layer], viewer, maxDistSq);
+            RenderLineLayer(layer, _lineSegmentsByLayer[layer], _lineLayerBuckets[Index]);
         }
     }
+
+    private static readonly List<List<LineSlot>> _lineLayerBuckets = new List<List<LineSlot>>();
 
     private static bool IsLineDrawable(LineSlot slot, Vector3 viewer, float maxDistSq)
     {
@@ -1259,7 +1388,7 @@ public static class BasisGizmoManager
         return maxDistSq >= float.PositiveInfinity || (slot.Points[0] - viewer).sqrMagnitude <= maxDistSq;
     }
 
-    private static void RenderLineLayer(int layer, int totalSegments, Vector3 viewer, float maxDistSq)
+    private static void RenderLineLayer(int layer, int totalSegments, List<LineSlot> slots)
     {
         if (totalSegments == 0)
         {
@@ -1275,13 +1404,10 @@ public static class BasisGizmoManager
         float maxHalfWidth = 0f;
         Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
         Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
-        foreach (KeyValuePair<int, LineSlot> kvp in _linesByID)
+        int slotCount = slots.Count;
+        for (int slotIndex = 0; slotIndex < slotCount; slotIndex++)
         {
-            LineSlot slot = kvp.Value;
-            if (!IsLineDrawable(slot, viewer, maxDistSq) || ResolveLayer(slot.Layer) != layer)
-            {
-                continue;
-            }
+            LineSlot slot = slots[slotIndex];
 
             int count = slot.Count;
             int segments = count - 1 + (slot.Loop ? 1 : 0);

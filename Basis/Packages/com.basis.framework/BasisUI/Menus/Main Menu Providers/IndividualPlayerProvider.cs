@@ -153,6 +153,8 @@ namespace Basis.BasisUI
 
             if (player.IsEffectivelyBlocked)
             {
+                player.IsChatTyping = false;
+                player.OnChatTypingStateChanged?.Invoke(false);
                 player.OnChatMessageReceived?.Invoke(string.Empty);
             }
             player.OnNamePlateActiveStateShouldRefresh?.Invoke();
@@ -686,20 +688,32 @@ namespace Basis.BasisUI
 
             sampler.Initialize(remotePlayer);
 
-            // Wire slider -> save -> apply to receiver
+            // Wire slider -> apply to receiver -> save. Bumped and captured on every call so a
+            // change that is still awaiting its disk write can tell it has been superseded by a
+            // newer one and skip its tail-end repaint instead of snapping the slider/tint back to
+            // a stale value once that write finally completes.
+            int volumeChangeSeq = 0;
             volumeSlider.OnValueChanged += async raw =>
             {
                 float value = Mathf.Clamp(raw, 0f, 1.5f);
+                int mySeq = ++volumeChangeSeq;
 
-                var s = await BasisPlayerSettingsManager.RequestPlayerSettings(remotePlayer.UUID);
-                s.VolumeLevel = value;
-                await BasisPlayerSettingsManager.SetPlayerSettings(s);
-
+                // Apply to the live audio path first and immediately - this is what the player
+                // hears, so it must not wait on the settings file write below. Gated behind that
+                // write, a burst of quick adjustments audibly lagged behind the slider.
                 if (remotePlayer != null)
                 {
                     remotePlayer.NetworkReceiver.AudioReceiverModule.ChangeRemotePlayersVolumeSettings(
                         remotePlayer.IsEffectivelyBlocked ? 0f : value);
                 }
+
+                var s = await BasisPlayerSettingsManager.RequestPlayerSettings(remotePlayer.UUID);
+                s.VolumeLevel = value;
+                await BasisPlayerSettingsManager.SetPlayerSettings(s);
+
+                // Superseded by a newer adjustment while the write above was in flight - that
+                // one owns the repaint now, so don't drag the slider/tint back to this stale value.
+                if (mySeq != volumeChangeSeq) return;
 
                 // Dragging to (or off) zero is a mute, so the Actions tab has to follow.
                 sync.Volume?.Invoke(s);
@@ -1312,6 +1326,8 @@ namespace Basis.BasisUI
                 // If chat was just hidden, clear any currently displayed message
                 if (!s.ChatVisible && remotePlayer != null)
                 {
+                    remotePlayer.IsChatTyping = false;
+                    remotePlayer.OnChatTypingStateChanged?.Invoke(false);
                     remotePlayer.OnChatMessageReceived?.Invoke(string.Empty);
                 }
             };
@@ -1416,6 +1432,19 @@ namespace Basis.BasisUI
                     else
                         BasisNetworkModeration.EnableShoutMode(shoutPlayerId);
                 };
+
+                // Server-enforced mutes. The admin client doesn't track the target's current
+                // state, so like the full-quality toggle these start off and send the explicit
+                // state on change — the server's reply popup reports the authoritative result.
+                PanelToggle voiceMuteToggle = PanelToggle.CreateNewEntry(adminGroup.ContentParent);
+                voiceMuteToggle.Descriptor.SetTitle(BasisLocalization.Get("menu.individualPlayer.muteVoice"));
+                voiceMuteToggle.Descriptor.SetTooltip(BasisLocalization.Get("menu.individualPlayer.muteVoice.tooltip"));
+                voiceMuteToggle.OnValueChanged += muted => BasisNetworkModeration.SetVoiceMute(targetUUID, muted);
+
+                PanelToggle textMuteToggle = PanelToggle.CreateNewEntry(adminGroup.ContentParent);
+                textMuteToggle.Descriptor.SetTitle(BasisLocalization.Get("menu.individualPlayer.muteText"));
+                textMuteToggle.Descriptor.SetTooltip(BasisLocalization.Get("menu.individualPlayer.muteText.tooltip"));
+                textMuteToggle.OnValueChanged += muted => BasisNetworkModeration.SetTextMute(targetUUID, muted);
 
                 PanelTextField msgField = PanelTextField.CreateNewEntry(adminGroup.ContentParent);
                 msgField.Descriptor.SetTitle(BasisLocalization.Get("menu.individualPlayer.message"));
