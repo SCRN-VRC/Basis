@@ -707,6 +707,13 @@ namespace Basis.BasisUI
                         remotePlayer.IsEffectivelyBlocked ? 0f : value);
                 }
 
+                // remotePlayer is the shared "who are we editing" context, not a capture - it can
+                // have gone null (target left) between this panel opening and the slider firing.
+                if (remotePlayer == null)
+                {
+                    BasisDebug.LogWarning("Individual player volume change dropped: remotePlayer is null (target likely left before the slider fired).");
+                    return;
+                }
                 var s = await BasisPlayerSettingsManager.RequestPlayerSettings(remotePlayer.UUID);
                 s.VolumeLevel = value;
                 await BasisPlayerSettingsManager.SetPlayerSettings(s);
@@ -727,6 +734,11 @@ namespace Basis.BasisUI
 
             normalizeToggle.OnValueChanged += async enabled =>
             {
+                if (remotePlayer == null)
+                {
+                    BasisDebug.LogWarning("Individual player normalize-loudness change dropped: remotePlayer is null (target likely left before the toggle fired).");
+                    return;
+                }
                 var s = await BasisPlayerSettingsManager.RequestPlayerSettings(remotePlayer.UUID);
                 s.NormalizeLoudness = enabled;
                 await BasisPlayerSettingsManager.SetPlayerSettings(s);
@@ -1408,16 +1420,39 @@ namespace Basis.BasisUI
                         BasisNetworkModeration.TeleportHere(np.playerId);
                 };
 
+                PanelButton announceBtn = PanelButton.CreateNew(adminGroup.ContentParent);
+                announceBtn.Descriptor.SetDescription(BasisLocalization.Get("menu.individualPlayer.announce.description"));
+                bool hasAnnounceTarget = BasisNetworkPlayers.PlayerToNetworkedPlayer(remotePlayer, out BasisNetworkPlayer announceNp);
+                ushort announcePlayerId = hasAnnounceTarget ? announceNp.playerId : (ushort)0;
+
+                void PaintDetailAnnounce()
+                {
+                    if (announceBtn == null || announceBtn.Descriptor == null) return;
+                    announceBtn.Descriptor.SetTitle(BasisLocalization.Get(
+                        hasAnnounceTarget && BasisAnnounceAudioDriver.IsInAnnounceMode(announcePlayerId)
+                            ? "menu.individualPlayer.announce.disable"
+                            : "menu.individualPlayer.announce.enable"));
+                }
+                PaintDetailAnnounce();
+                sync.Announce += PaintDetailAnnounce;
+
+                announceBtn.OnClicked += () =>
+                {
+                    if (!hasAnnounceTarget) return;
+                    if (BasisAnnounceAudioDriver.IsInAnnounceMode(announcePlayerId))
+                        BasisNetworkModeration.DisableAnnounceMode(announcePlayerId);
+                    else
+                        BasisNetworkModeration.EnableAnnounceMode(announcePlayerId);
+                };
+
                 PanelButton shoutBtn = PanelButton.CreateNew(adminGroup.ContentParent);
                 shoutBtn.Descriptor.SetDescription(BasisLocalization.Get("menu.individualPlayer.shout.description"));
-                bool hasShoutTarget = BasisNetworkPlayers.PlayerToNetworkedPlayer(remotePlayer, out BasisNetworkPlayer shoutNp);
-                ushort shoutPlayerId = hasShoutTarget ? shoutNp.playerId : (ushort)0;
 
                 void PaintDetailShout()
                 {
                     if (shoutBtn == null || shoutBtn.Descriptor == null) return;
                     shoutBtn.Descriptor.SetTitle(BasisLocalization.Get(
-                        hasShoutTarget && BasisShoutAudioDriver.IsInShoutMode(shoutPlayerId)
+                        hasAnnounceTarget && BasisNetworkModeration.IsInShoutMode(announcePlayerId)
                             ? "menu.individualPlayer.shout.disable"
                             : "menu.individualPlayer.shout.enable"));
                 }
@@ -1426,11 +1461,11 @@ namespace Basis.BasisUI
 
                 shoutBtn.OnClicked += () =>
                 {
-                    if (!hasShoutTarget) return;
-                    if (BasisShoutAudioDriver.IsInShoutMode(shoutPlayerId))
-                        BasisNetworkModeration.DisableShoutMode(shoutPlayerId);
+                    if (!hasAnnounceTarget) return;
+                    if (BasisNetworkModeration.IsInShoutMode(announcePlayerId))
+                        BasisNetworkModeration.DisableShoutMode(announcePlayerId);
                     else
-                        BasisNetworkModeration.EnableShoutMode(shoutPlayerId);
+                        BasisNetworkModeration.EnableShoutMode(announcePlayerId);
                 };
 
                 // Server-enforced mutes. The admin client doesn't track the target's current
@@ -1533,6 +1568,13 @@ namespace Basis.BasisUI
                     BasisLocalization.Get("menu.individualPlayer.locomotion.runSpeed"), 0.1f, 20f, false, 2, ValueDisplayMode.Raw));
                 runSlider.SetValueWithoutNotify(4f);
 
+                PanelToggle gravityToggle = PanelToggle.CreateNew(locomotionGroup.ContentParent);
+                gravityToggle.Descriptor.SetTitle(BasisLocalization.Get("settings.admin.locomotion.gravity.override"));
+                PanelSlider gravitySlider = PanelSlider.CreateNew(locomotionGroup.ContentParent);
+                gravitySlider.SetSliderSettings(PanelSlider.SliderSettings.Advanced(
+                    BasisLocalization.Get("settings.admin.locomotion.gravity"), 0f, 50f, false, 2, ValueDisplayMode.Raw));
+                gravitySlider.SetValueWithoutNotify(SettingsProviderModeratorTab.DefaultLocomotionGravity);
+
                 List<string> modeEntries = SettingsProviderModeratorTab.BuildLocomotionModeEntries();
                 PanelDropdown modeDropdown = PanelDropdown.CreateNewEntry(locomotionGroup.ContentParent);
                 modeDropdown.Descriptor.SetTitle(BasisLocalization.Get("menu.individualPlayer.locomotion.mode"));
@@ -1544,12 +1586,14 @@ namespace Basis.BasisUI
                     jumpSlider.Descriptor.SetActive(jumpToggle.Value);
                     walkSlider.Descriptor.SetActive(walkToggle.Value);
                     runSlider.Descriptor.SetActive(runToggle.Value);
+                    gravitySlider.Descriptor.SetActive(gravityToggle.Value);
                 }
 
                 ApplyLocomotionSliderVisibility();
                 jumpToggle.OnValueChanged += _ => { ApplyLocomotionSliderVisibility(); locomotionGroup.ForceRebuild(); };
                 walkToggle.OnValueChanged += _ => { ApplyLocomotionSliderVisibility(); locomotionGroup.ForceRebuild(); };
                 runToggle.OnValueChanged += _ => { ApplyLocomotionSliderVisibility(); locomotionGroup.ForceRebuild(); };
+                gravityToggle.OnValueChanged += _ => { ApplyLocomotionSliderVisibility(); locomotionGroup.ForceRebuild(); };
 
                 PanelButton locomotionApplyBtn = PanelButton.CreateNew(locomotionGroup.ContentParent);
                 locomotionApplyBtn.Descriptor.SetTitle(BasisLocalization.Get("menu.individualPlayer.locomotion.apply"));
@@ -1561,7 +1605,8 @@ namespace Basis.BasisUI
                         jumpToggle.Value, jumpSlider.Value,
                         walkToggle.Value, walkSlider.Value,
                         runToggle.Value, runSlider.Value,
-                        modeEntries.IndexOf(modeDropdown.Value));
+                        modeEntries.IndexOf(modeDropdown.Value),
+                        gravityToggle.Value, gravitySlider.Value);
 
                     if (values.Fields == BasisLocomotionField.None)
                     {
@@ -1606,7 +1651,7 @@ namespace Basis.BasisUI
                     PermNodes.ModerationMessage,
                     PermNodes.ModerationMessageAll,
                     PermNodes.ModerationTeleport,
-                    PermNodes.ModerationShout,
+                    PermNodes.ModerationAnnounce,
                     PermNodes.ModerationForceAvatar,
                     PermNodes.ModerationLocomotion,
                     PermNodes.PlayerModeration,
@@ -1940,9 +1985,29 @@ namespace Basis.BasisUI
 
             AddPage(debugTabKey, debugPage);
 
-            // Shout is a server round trip, so the button cannot repaint from its own click —
+            // Announce is a server round trip, so the button cannot repaint from its own click —
             // the local driver still reports the old state at that point. Wait for the change
             // to come back instead, and drop the subscription once the panel is gone.
+            Action<ushort, bool> announceHandler = null;
+            announceHandler = (changedId, _) =>
+            {
+                if (!BasisNetworkPlayers.PlayerToNetworkedPlayer(remotePlayer, out BasisNetworkPlayer announceTarget)
+                    || changedId != announceTarget.playerId)
+                {
+                    return;
+                }
+                BasisDeviceManagement.EnqueueOnMainThread(() =>
+                {
+                    if (panel == null || panel.Descriptor == null)
+                    {
+                        BasisNetworkModeration.OnAnnounceModeChanged -= announceHandler;
+                        return;
+                    }
+                    sync.Announce?.Invoke();
+                });
+            };
+            BasisNetworkModeration.OnAnnounceModeChanged += announceHandler;
+
             Action<ushort, bool> shoutHandler = null;
             shoutHandler = (changedId, _) =>
             {

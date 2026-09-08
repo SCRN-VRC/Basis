@@ -863,7 +863,7 @@ namespace Basis.BasisUI
         // avatar when a better measurement turns up, instead of trusting whatever pose they happened to be
         // in on the one frame an avatar loaded. Both measurements only ever read SHORT, so this only ever
         // corrects upward and settles. See BasisBodyEvidenceSampler.
-        public static BasisSettingsBinding<bool> ContinuousBodyMeasurement = new("continuousbodymeasurement", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> ContinuousBodyMeasurement = new("continuousbodymeasurement_v2", new BasisPlatformDefault<bool>(false));
 
         public static BasisSettingsBinding<string> SelectedBone = new("selectedbone", new BasisPlatformDefault<string>("selectedbone"));
 
@@ -1122,6 +1122,8 @@ namespace Basis.BasisUI
 
         public static BasisSettingsBinding<bool> TalkToNoOne = new("talktonoone", new BasisPlatformDefault<bool>(false));
 
+        public static BasisSettingsBinding<bool> ShoutMode = new("shoutmode", new BasisPlatformDefault<bool>(false));
+
         public static BasisSettingsBinding<bool> UseAutomaticGain = new("automaticgainenabled", new BasisPlatformDefault<bool>
         {
             windows = true,
@@ -1224,6 +1226,7 @@ namespace Basis.BasisUI
         public const string DesktopInputInVR_Adaptive = "Adaptive";
         public const string DesktopInputInVR_AlwaysOn = "Always On";
         public const string DesktopInputInVR_Off = "Off";
+        public static BasisSettingsBinding<bool> QuestControllerFix = new("questcontrollerfix", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> ForceGridSnap = new("forcegridsnap", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<float> GridSnapSize = new("gridsnapsize", new BasisPlatformDefault<float>(0.25f));
         public static BasisSettingsBinding<bool> ForceRotationSnap = new("forcerotationsnap", new BasisPlatformDefault<bool>(false));
@@ -1241,6 +1244,14 @@ namespace Basis.BasisUI
         /// being applied to nameplates and local sends are short-circuited.
         /// </summary>
         public static BasisSettingsBinding<bool> ChatDisabled = new("chatdisabled", new BasisPlatformDefault<bool>(false));
+
+        /// <summary>
+        /// How long a chat message bubble stays visible above a player's nameplate (in seconds)
+        /// before it auto-clears. Drives <see cref="BasisNetworkHandleChat.MessageDisplayDuration"/>.
+        /// </summary>
+        public static BasisSettingsBinding<float> ChatMessageDuration = new("chat_duration", new BasisPlatformDefault<float>(11f));
+        public const float CHAT_MESSAGE_DURATION_MIN = 3f;
+        public const float CHAT_MESSAGE_DURATION_MAX = 60f;
 
         // Commented out 2026-08-04: never referenced anywhere — leftover scaffolding.
         //public static BasisSettingsBinding<bool> FalseBinding = new("falsebinding", new BasisPlatformDefault<bool>(false));
@@ -1956,21 +1967,21 @@ namespace Basis.BasisUI
         // disable, so every install that ran that build has false pinned on disk and a value-only change
         // would not reach them.
         public static BasisSettingsBinding<bool> FBIKSpineAnatomicalRom = new("fbikspineanatomicalrom_v3", new BasisPlatformDefault<bool>(true));
-        // The chest becomes a real (secondary) IK target instead of a free FK consequence of the head
-        // solve. Placed by the lower spine, with the head restored by the upper joints so it is never
-        // traded away.
-        // ON by default. Measured: pooled spine 0.471 vs 2.181 cm and UpperChest/Neck 3.2x better with a
-        // chest tracker; chest POSITION goes 3.23 -> 0.29 cm. Without a chest tracker it is marginal but
-        // harmless.
-        // ⚠ HISTORY, so this is not "fixed" back and forth a third time: it was ON, the _v2 rename shipped it
-        // false, and it stayed false because in-headset it CRANED THE NECK -- having passed every position
-        // test first. That is the precedent that makes a corpus number alone insufficient here. It is being
-        // re-enabled now because the head CCD's drag on a tracked chest was separately root-caused and fixed
-        // (ReassertTrackedChest, 0.402 -> 0.125 deg per deg of gaze), which is the most likely cause of the
-        // craning. If the neck cranes again in a headset, THAT is the finding -- turn this off and say so,
-        // rather than compensating for it somewhere downstream.
+        // With a CHEST TRACKER the chest becomes a real (secondary) IK target: the lower spine places the chest
+        // bone on the tracker's position, the upper joints restore the head, and a head budget bisects the pull
+        // back before the head is traded for it. Measured with a tracked chest: chest POSITION 3.23 -> 0.29 cm.
+        // The planner enables it only when a chest tracker is present (BasisEeriePlanner.Frame). Without one
+        // the target had to be synthesized from the solver's own pelvis and neck estimate: it carried no
+        // information, cost the head 0.3-1.1 cm in crouch/look-down/nod, and, fed from the T-pose-height chest
+        // control, folded the spine and flipped the head whenever the avatar was scaled too small. That path
+        // is gone (2026-09-06).
+        // ⚠ HISTORY: it was ON, the _v2 rename shipped it false because in-headset it CRANED THE NECK (having
+        // passed every position test first), and _v3 re-enabled it citing ReassertTrackedChest, a stage that
+        // has since been removed (fd6b13f00). The tracked chest ROTATION is still written once before the solve
+        // and re-aimed by the head CCD; this toggle pulls position only. If the neck cranes again in a headset,
+        // THAT is the finding: turn this off and say so, rather than compensating for it downstream.
         // Key bumped _v2 -> _v3 because a value-only change cannot reach installs that already ran the build
-        // which pinned false on disk -- exactly why FBIKSpineAnatomicalRom above is _v3.
+        // which pinned false on disk, exactly why FBIKSpineAnatomicalRom above is _v3.
         public static BasisSettingsBinding<bool> FBIKChestIKTarget = new("fbikchestiktarget_v3", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<bool> FBIKLegSwivelSmoothing = new("fbiklegswivelsmoothing", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<bool> FBIKTrackerBendNormal = new("fbiktrackerbendnormal", new BasisPlatformDefault<bool>(true));
@@ -2190,7 +2201,7 @@ namespace Basis.BasisUI
         // ---------------- ADMIN ----------------
         public static BasisSettingsBinding<bool> AdminAutoRefreshPlayerList = new("admin_autorefresh_playerlist", new BasisPlatformDefault<bool>(true));
 
-        public static BasisSettingsBinding<bool> ShoutShowOnMenuBar = new("admin_shout_on_menubar", new BasisPlatformDefault<bool>(false));
+        public static BasisSettingsBinding<bool> AnnounceShowOnMenuBar = new("admin_announce_on_menubar", new BasisPlatformDefault<bool>(false));
 
         // Limiter
         public static BasisSettingsBinding<float> LimitThreshold = new("limitthreshold", new BasisPlatformDefault<float>(0.95f)); // pre-clip
@@ -2304,6 +2315,7 @@ namespace Basis.BasisUI
             MicStartBehavior.LoadBindingValue();
             MicMuteBehavior.LoadBindingValue();
             TalkToNoOne.LoadBindingValue();
+            ShoutMode.LoadBindingValue();
             UseAutomaticGain.LoadBindingValue();
             DenoiseMakeupDb.LoadBindingValue();
             DenoiseWet.LoadBindingValue();
@@ -2674,6 +2686,7 @@ namespace Basis.BasisUI
 
             // Chat
             ChatDisabled.LoadBindingValue();
+            ChatMessageDuration.LoadBindingValue();
 
             // UI
             RememberMenuState.LoadBindingValue();
@@ -3046,7 +3059,7 @@ namespace Basis.BasisUI
 
             // Admin
             AdminAutoRefreshPlayerList.LoadBindingValue();
-            ShoutShowOnMenuBar.LoadBindingValue();
+            AnnounceShowOnMenuBar.LoadBindingValue();
 
             // Remote Player Audio
             RAMinDistance.LoadBindingValue();

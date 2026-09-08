@@ -771,6 +771,82 @@
       "value": "Stop Recording"
     },
     {
+      "key": "camera.photogrammetry",
+      "value": "Photogrammetry"
+    },
+    {
+      "key": "camera.photogrammetry.record",
+      "value": "Start Session"
+    },
+    {
+      "key": "camera.photogrammetry.stopUnlimited",
+      "value": "Stop Session"
+    },
+    {
+      "key": "camera.photogrammetry.saving",
+      "value": "Saving..."
+    },
+    {
+      "key": "camera.photogrammetry.status",
+      "value": "Status"
+    },
+    {
+      "key": "camera.photogrammetry.status.idle",
+      "value": "Not recording. Tip: turn off Depth of Field and Motion Blur first for cleaner reconstructions."
+    },
+    {
+      "key": "camera.photogrammetry.status.recording",
+      "value": "Session active: {0} photos captured so far."
+    },
+    {
+      "key": "camera.photogrammetry.status.saving",
+      "value": "Saving... {0} of {1} photos written."
+    },
+    {
+      "key": "camera.photogrammetry.status.saved",
+      "value": "Last photo saved: {0}"
+    },
+    {
+      "key": "camera.photogrammetry.status.failed",
+      "value": "Last session failed: {0}"
+    },
+    {
+      "key": "camera.photogrammetry.status.blocked",
+      "value": "Camera capture is locked by an admin."
+    },
+    {
+      "key": "camera.photogrammetry.distance",
+      "value": "Distance Trigger"
+    },
+    {
+      "key": "camera.photogrammetry.distance.description",
+      "value": "Takes a photo whenever the camera has moved at least this far since the last one."
+    },
+    {
+      "key": "camera.photogrammetry.angle",
+      "value": "Angle Trigger"
+    },
+    {
+      "key": "camera.photogrammetry.angle.description",
+      "value": "Takes a photo whenever the camera has turned at least this far since the last one."
+    },
+    {
+      "key": "camera.photogrammetry.resolution",
+      "value": "Resolution"
+    },
+    {
+      "key": "camera.photogrammetry.resolution.description",
+      "value": "Size of each captured photo. Lower keeps the session fast and the dataset small."
+    },
+    {
+      "key": "camera.photogrammetry.captureNow",
+      "value": "Capture Now"
+    },
+    {
+      "key": "camera.photogrammetry.captureNow.description",
+      "value": "Takes one photo immediately, ignoring the movement thresholds."
+    },
+    {
       "key": "camera.lens",
       "value": "Lens"
     },
@@ -1803,6 +1879,14 @@
       "value": "Keep the horizon level while flying the camera."
     },
     {
+      "key": "camera.rollControl",
+      "value": "Camera Roll"
+    },
+    {
+      "key": "camera.rollControl.description",
+      "value": "On, the camera rolls with the puck while you hold it, so you can tilt the shot or turn the camera on its side for a portrait frame. Off, the picture stays level however you twist the puck."
+    },
+    {
       "key": "camera.vrStabilization",
       "value": "VR Stabilization"
     },
@@ -2237,6 +2321,10 @@
     {
       "key": "settings.chat.textSize.tooltip",
       "value": "How large chat text appears above players."
+    },
+    {
+      "key": "settings.chat.duration.tooltip",
+      "value": "How long a chat message stays visible above a player's head, in seconds, before it disappears."
     },
     {
       "key": "settings.chat.camera.photoMetadata.tooltip",
@@ -3543,12 +3631,12 @@
       "value": "Open the folder where all crash reports are stored on your computer."
     },
     {
-      "key": "settings.admin.title.showShoutOnMenuBar.tooltip",
-      "value": "Show the Shout option on your menu bar's microphone mode button."
+      "key": "settings.admin.title.showAnnounceOnMenuBar.tooltip",
+      "value": "Show the Announce option on your menu bar's microphone mode button."
     },
     {
-      "key": "settings.admin.title.showShoutOnMenuBar.description",
-      "value": "Adds the Shout option to the mic-mode button on your main menu bar. Off by default, so the button stays hidden until you enable it here."
+      "key": "settings.admin.title.showAnnounceOnMenuBar.description",
+      "value": "Adds the Announce option to the mic-mode button on your main menu bar. Off by default, so the button stays hidden until you enable it here."
     },
     {
       "key": "settings.admin.title.lockAvatars.tooltip",
@@ -3847,11 +3935,11 @@
       "value": "Broadcast the reason text as a message to every player."
     },
     {
-      "key": "menu.individualPlayer.shout.enable.tooltip",
+      "key": "menu.individualPlayer.announce.enable.tooltip",
       "value": "Let this player's voice broadcast to everyone without distance falloff."
     },
     {
-      "key": "menu.individualPlayer.shout.disable.tooltip",
+      "key": "menu.individualPlayer.announce.disable.tooltip",
       "value": "Return this player's voice to normal distance-based spatial audio."
     },
     {
@@ -4097,6 +4185,10 @@
     {
       "key": "menu.provider.micmode.shout",
       "value": "Shout"
+    },
+    {
+      "key": "menu.provider.micmode.announce",
+      "value": "Announce"
     },
     {
       "key": "menu.provider.micmode.noone",
@@ -5447,8 +5539,8 @@
       "value": "Teleport this player to your location."
     },
     {
-      "key": "menu.individualPlayer.shout.enable",
-      "value": "Enable Shout Mode"
+      "key": "menu.individualPlayer.announce.enable",
+      "value": "Enable Announce Mode"
     },
     {
       "key": "menu.individualPlayer.fullquality.enable",
@@ -5459,12 +5551,32 @@
       "value": "Disable Full-Quality Broadcast"
     },
     {
+      "key": "menu.individualPlayer.announce.disable",
+      "value": "Disable Announce Mode"
+    },
+    {
+      "key": "menu.individualPlayer.announce.description",
+      "value": "Toggle non-spatialized broadcast voice for this player."
+    },
+    {
+      "key": "menu.individualPlayer.shout.description",
+      "value": "Toggle shout mode for this player - double range and louder, still spatial."
+    },
+    {
+      "key": "menu.individualPlayer.shout.enable",
+      "value": "Enable Shout Mode"
+    },
+    {
+      "key": "menu.individualPlayer.shout.enable.tooltip",
+      "value": "Let this player's voice carry twice as far and louder, while staying spatial."
+    },
+    {
       "key": "menu.individualPlayer.shout.disable",
       "value": "Disable Shout Mode"
     },
     {
-      "key": "menu.individualPlayer.shout.description",
-      "value": "Toggle non-spatialized broadcast voice for this player."
+      "key": "menu.individualPlayer.shout.disable.tooltip",
+      "value": "Return this player's voice to its normal range and level."
     },
     {
       "key": "menu.individualPlayer.muteVoice",
@@ -6225,6 +6337,10 @@
     {
       "key": "library.shareable.image",
       "value": "Shared Image"
+    },
+    {
+      "key": "library.shareable.dollyTrack",
+      "value": "Shared Dolly Track"
     },
     {
       "key": "library.shareable.other",
@@ -7133,6 +7249,14 @@
     {
       "key": "settings.microphone.talkToNoOne.tooltip",
       "value": "Adds a \"No One\" step to the mic mode button next to mute. Your microphone stays on so your avatar’s mouth keeps moving, but nobody hears you."
+    },
+    {
+      "key": "settings.admin.title.showShoutOnMenuBar",
+      "value": "Show Shout On Menu Bar"
+    },
+    {
+      "key": "settings.admin.title.showShoutOnMenuBar.tooltip",
+      "value": "Adds Shout to the mic-mode button. Shout carries your voice twice as far and louder, and stays fully spatial, so people still hear where you are."
     },
     {
       "key": "settings.microphone.muteBehavior.title",
@@ -8339,6 +8463,10 @@
       "value": "Chat Text Size"
     },
     {
+      "key": "settings.chat.duration",
+      "value": "Chat Message Duration"
+    },
+    {
       "key": "settings.chat.raycast.title",
       "value": "Raycast Line"
     },
@@ -9332,7 +9460,7 @@
     },
     {
       "key": "settings.bodyTracking.anat.chestIkTarget.description",
-      "value": "Places the chest at its own target instead of leaving it wherever the head solve happens to put it, so the torso follows your real chest (or a chest tracker) more faithfully. The head stays exactly on the headset."
+      "value": "With a chest tracker, pulls the chest bone onto the tracker's position instead of leaving it wherever the head solve happens to put it. The head keeps priority and stays on the headset. Does nothing without a chest tracker."
     },
     {
       "key": "settings.bodyTracking.anat.legSwivelSmoothing.title",
@@ -11299,8 +11427,12 @@
       "value": "Background Opacity"
     },
     {
-      "key": "mediaPlayer.resync",
-      "value": "Resync"
+      "key": "mediaPlayer.resyncLocal",
+      "value": "Local Resync"
+    },
+    {
+      "key": "mediaPlayer.resyncEveryone",
+      "value": "Resync Everyone"
     },
     {
       "key": "mediaPlayer.advanced",
@@ -14237,12 +14369,16 @@
       "value": "Copies all fields to clipboard."
     },
     {
-      "key": "settings.admin.title.shout",
-      "value": "Shout"
+      "key": "settings.admin.title.announce",
+      "value": "Announce"
     },
     {
-      "key": "settings.admin.title.showShoutOnMenuBar",
-      "value": "Show Shout On Menu Bar"
+      "key": "settings.admin.title.audioModes",
+      "value": "Audio Modes"
+    },
+    {
+      "key": "settings.admin.title.showAnnounceOnMenuBar",
+      "value": "Show Announce On Menu Bar"
     },
     {
       "key": "settings.admin.title.globalContentLocks",
@@ -16049,6 +16185,14 @@
       "value": "Avatar Limits"
     },
     {
+      "key": "settings.admin.title.locomotionPolicy",
+      "value": "Instance Locomotion"
+    },
+    {
+      "key": "settings.admin.title.locomotionPolicy.description",
+      "value": "Movement values every player in this instance runs with. Saved to the server and sent to each player as they join, so anyone arriving later gets them too. Leave a field switched off to let players keep their own value. A moderator override on one player still wins over this."
+    },
+    {
       "key": "settings.admin.opusFrameDuration",
       "value": "Opus Frame Duration"
     },
@@ -16207,6 +16351,14 @@
     {
       "key": "settings.admin.locomotion.runSpeed",
       "value": "Run Speed (m/s)"
+    },
+    {
+      "key": "settings.admin.locomotion.gravity.override",
+      "value": "Override Gravity"
+    },
+    {
+      "key": "settings.admin.locomotion.gravity",
+      "value": "Gravity Strength (m/s²)"
     },
     {
       "key": "settings.admin.locomotion.mode",
@@ -16445,28 +16597,52 @@
       "value": "Send message?"
     },
     {
-      "key": "settings.admin.confirm.shoutDisable.body",
+      "key": "settings.admin.confirm.announceDisable.body",
       "value": "Disable non-spatialized broadcast voice for this player?"
     },
     {
-      "key": "settings.admin.confirm.shoutDisable.confirm",
+      "key": "settings.admin.confirm.announceDisable.confirm",
       "value": "Disable"
     },
     {
-      "key": "settings.admin.confirm.shoutDisable.title",
-      "value": "Disable shout mode?"
+      "key": "settings.admin.confirm.announceDisable.title",
+      "value": "Disable announce mode?"
+    },
+    {
+      "key": "settings.admin.confirm.announceEnable.body",
+      "value": "Enable non-spatialized broadcast voice for this player?"
+    },
+    {
+      "key": "settings.admin.confirm.announceEnable.confirm",
+      "value": "Enable"
+    },
+    {
+      "key": "settings.admin.confirm.announceEnable.title",
+      "value": "Enable announce mode?"
+    },
+    {
+      "key": "settings.admin.confirm.shoutEnable.title",
+      "value": "Enable shout mode?"
     },
     {
       "key": "settings.admin.confirm.shoutEnable.body",
-      "value": "Enable non-spatialized broadcast voice for this player?"
+      "value": "Give this player double voice range and more level, with the audio still spatial?"
     },
     {
       "key": "settings.admin.confirm.shoutEnable.confirm",
       "value": "Enable"
     },
     {
-      "key": "settings.admin.confirm.shoutEnable.title",
-      "value": "Enable shout mode?"
+      "key": "settings.admin.confirm.shoutDisable.title",
+      "value": "Disable shout mode?"
+    },
+    {
+      "key": "settings.admin.confirm.shoutDisable.body",
+      "value": "Return this player's voice to its normal range and level?"
+    },
+    {
+      "key": "settings.admin.confirm.shoutDisable.confirm",
+      "value": "Disable"
     },
     {
       "key": "settings.admin.confirm.teleportAll.body",
@@ -18021,6 +18197,26 @@
       "value": "The presets folder could not be read. See the log."
     },
     {
+      "key": "camera.dollyPreset.share",
+      "value": "Share"
+    },
+    {
+      "key": "camera.dollyPreset.share.tooltip",
+      "value": "Put this track in the room as an orb. Anyone who takes it keeps their own copy of the track; it does not touch the one you have laid out."
+    },
+    {
+      "key": "camera.dollyPreset.shared",
+      "value": "Placed \"{0}\" for the room to take."
+    },
+    {
+      "key": "camera.dollyPreset.error.shareTooLarge",
+      "value": "This track is too large to share."
+    },
+    {
+      "key": "camera.dollyPreset.error.shareOffline",
+      "value": "Join a server to share a track."
+    },
+    {
       "key": "settings.microphone.test.title",
       "value": "Test Microphone"
     },
@@ -18351,6 +18547,14 @@
     {
       "key": "settings.graphics.renderer.restart.later",
       "value": "Later"
+    },
+    {
+      "key": "settings.controls.questControllerFix",
+      "value": "Quest Controller Fix"
+    },
+    {
+      "key": "settings.controls.questControllerFix.tooltip",
+      "value": "On, the avatar hand on Quest Touch controllers over SteamVR is anchored to a fixed wrist, so resting a thumb on the stick or face buttons no longer tilts the hand and laser. Finger poses still follow the touch sensors. Only affects Quest controllers in SteamVR mode."
     }
   ]
 }
