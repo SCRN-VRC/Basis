@@ -323,7 +323,7 @@ namespace Basis.BasisUI
         public const float FOG_BLUR_ITERATIONS_MIN = 0f;
         public const float FOG_BLUR_ITERATIONS_MAX = 4f;
 
-        public static BasisSettingsBinding<bool> VolumetricFogTemporal = new("volumetricfogtemporal", new BasisPlatformDefault<bool>(true));
+        public static BasisSettingsBinding<bool> VolumetricFogTemporal = new("volumetricfogtemporal", new BasisPlatformDefault<bool>(false));
         public static BasisSettingsBinding<bool> VolumetricFogFroxels = new("volumetricfogfroxels", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<bool> VolumetricFogAnalyticDepth = new("volumetricfoganalyticdepth", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<bool> VolumetricFogScaleSteps = new("volumetricfogscalesteps", new BasisPlatformDefault<bool>(true));
@@ -1071,14 +1071,7 @@ namespace Basis.BasisUI
         public static BasisSettingsBinding<bool> UsePerfLimitCilboxBehaviours = new("useperflimitcilboxbehaviours", new BasisPlatformDefault<bool>(true));
         public static BasisSettingsBinding<float> MaxPerfCilboxBehaviours = new("maxperfcilboxbehaviours", new BasisPlatformDefault<float> { windows = 5, android = 2, ios = 2, linux = 5, other = 5 });
 
-        public static BasisSettingsBinding<float> AvatarMeshLOD = new("avatarmeshlod", new BasisPlatformDefault<float>
-        {
-            windows = 0.05f,
-            android = 0.1f,
-            ios = 0.1f,
-            linux = 0.05f,
-            other = 0.05f
-        });
+        public static BasisSettingsBinding<float> AvatarMeshLOD = new("avatarmeshlod", new BasisPlatformDefault<float>(0.01f));
 
         // Skins remote avatars with fewer bone influences per vertex as they drop through the mesh
         // LOD levels (4 / 2 / 1 influences). Distant avatars are left on the full influence set

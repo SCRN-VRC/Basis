@@ -34,6 +34,7 @@ namespace Basis.Scripts.Device_Management.Devices.OpenVR
         public EVRCompositorError result;
         public Vector3 LeftRaycastOffset = new Vector3(0, 0, 0.06f);
         public Vector3 RightRaycastOffset = new Vector3(0, 0, 0.06f);
+        public override bool AppliesDeviceOffsetAtSource => true;
         public void Initialize(OpenVRDevice device, string UniqueID, string UnUniqueID, string subSystems, bool AssignTrackedRole, BasisBoneTrackedRole basisBoneTrackedRole, SteamVR_Input_Sources SteamVR_Input_Sources)
         {
             HandBiasSplay = -0.8f;
@@ -131,21 +132,21 @@ namespace Basis.Scripts.Device_Management.Devices.OpenVR
             {
                 return;
             }
+            SteamVR_Action_Skeleton skeleton;
             switch (inputSource)
             {
                 case SteamVR_Input_Sources.LeftHand:
-                    {
-                        SteamVR_Action_Skeleton leftHand = SteamVR_Actions.default_SkeletonLeftHand;
-                        UpdateHandPose(BasisLocalPlayer.Instance.LocalHandDriver.LeftHand, leftHand, isLeft: true);
-                        break;
-                    }
+                    skeleton = SteamVR_Actions.default_SkeletonLeftHand;
+                    break;
                 case SteamVR_Input_Sources.RightHand:
-                    {
-                        SteamVR_Action_Skeleton rightHand = SteamVR_Actions.default_SkeletonRightHand;
-                        UpdateHandPose(BasisLocalPlayer.Instance.LocalHandDriver.RightHand, rightHand, isLeft: false);
-                        break;
-                    }
+                    skeleton = SteamVR_Actions.default_SkeletonRightHand;
+                    break;
+                default:
+                    return;
             }
+            bool isLeft = TryGetRole(out BasisBoneTrackedRole role) ? role == BasisBoneTrackedRole.LeftHand : inputSource == SteamVR_Input_Sources.LeftHand;
+            var handDriver = BasisLocalPlayer.Instance.LocalHandDriver;
+            UpdateHandPose(isLeft ? handDriver.LeftHand : handDriver.RightHand, skeleton, isLeft);
         }
         private void UpdateHandPose(BasisFingerPose hand, SteamVR_Action_Skeleton skeletonAction, bool isLeft)
         {
@@ -166,7 +167,7 @@ namespace Basis.Scripts.Device_Management.Devices.OpenVR
             // ------- SPLAY (pairwise 0..1) -> per-finger [-1..1] with your bias
             float[] pairSplays = skeletonAction.GetFingerSplays();
 
-            if (pairSplays != null && pairSplays.Length == SteamVR_Skeleton_FingerSplayIndexes.enumArray.Length &&
+            if (hasRoleAssigned && !IgnoresFingers && pairSplays != null && pairSplays.Length == SteamVR_Skeleton_FingerSplayIndexes.enumArray.Length &&
                 curls != null && curls.Length == SteamVR_Skeleton_FingerIndexes.enumArray.Length)
             {
                 float thumbIndex = pairSplays[SteamVR_Skeleton_FingerSplayIndexes.thumbIndex];
@@ -198,8 +199,9 @@ namespace Basis.Scripts.Device_Management.Devices.OpenVR
             BoneRotations = skeletonAction.boneRotations;
 
             // Raw device pose in *unscaled* world space
-            ComputeUnscaledDeviceCoord(ref UnscaledDeviceCoord, devicePose.mDeviceToAbsoluteTracking.GetPosition());
-            UnscaledDeviceCoord.rotation = devicePose.mDeviceToAbsoluteTracking.GetRotation();
+            ComputeUnscaledDeviceCoord(ref PhysicalDeviceCoord, devicePose.mDeviceToAbsoluteTracking.GetPosition());
+            PhysicalDeviceCoord.rotation = devicePose.mDeviceToAbsoluteTracking.GetRotation();
+            ResolveUnscaledFromPhysical(true);
 
             if (RenderModelAnchor != null)
             {

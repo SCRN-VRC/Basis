@@ -2463,6 +2463,14 @@
       "value": "Type a message here to send it to everyone in the world."
     },
     {
+      "key": "settings.chat.message.mutedByModerator",
+      "value": "A moderator muted your text chat."
+    },
+    {
+      "key": "settings.chat.message.lockedByServer",
+      "value": "Text chat is locked on this server."
+    },
+    {
       "key": "settings.chat.textSize.tooltip",
       "value": "How large chat text appears above players."
     },
@@ -4719,6 +4727,90 @@
       "value": "Fused — driving {0}"
     },
     {
+      "key": "trackerLinking.deviceOffsets",
+      "value": "Tracker & Controller Offsets"
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.tooltip",
+      "value": "Adjust where a tracker or controller sits compared to the real device, with sliders or by grabbing it in VR."
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.device",
+      "value": "Device"
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.device.tooltip",
+      "value": "The tracker or controller to adjust. Offsets are saved per device model and body part, and come back whenever that kind of device drives the same part again."
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.none",
+      "value": "No trackers or controllers connected"
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.positionX",
+      "value": "Position X"
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.positionY",
+      "value": "Position Y"
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.positionZ",
+      "value": "Position Z"
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.position.tooltip",
+      "value": "Slides the device along its own axes, in real-world meters."
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.rotationX",
+      "value": "Rotation X"
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.rotationY",
+      "value": "Rotation Y"
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.rotationZ",
+      "value": "Rotation Z"
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.rotation.tooltip",
+      "value": "Turns the device around its own axes: X tilts it up and down, Y turns it left and right, Z rolls it."
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.grabPosition",
+      "value": "Grab Position"
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.grabPosition.description",
+      "value": "Pick the axes a grab can slide the device along, then squeeze grip with a free hand near its handle. The blue ball marks where the device really is. The offset saves when you let go."
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.grabRotation",
+      "value": "Grab Rotation"
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.grabRotation.description",
+      "value": "Pick the axes a grab can turn the device around. Holding a handle with both hands gives finer control."
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.grabAxis.tooltip",
+      "value": "Lets a grab change this axis. Turn on more than one axis to edit them together, and turn them all off to stop editing."
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.grab.unavailable",
+      "value": "Needs a tracked hand to grab with"
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.reset",
+      "value": "Reset Offset"
+    },
+    {
+      "key": "trackerLinking.deviceOffsets.reset.tooltip",
+      "value": "Clears the offset for the selected device."
+    },
+    {
       "key": "menu.exit.dialog.title",
       "value": "Basis VR"
     },
@@ -5875,6 +5967,22 @@
       "value": "Mute this player's text chat and typing for everyone. Enforced by the server and kept across rejoins until a moderator unmutes them."
     },
     {
+      "key": "menu.individualPlayer.rename",
+      "value": "Rename"
+    },
+    {
+      "key": "menu.individualPlayer.rename.description",
+      "value": "The new display name for this player. It lasts until they reconnect."
+    },
+    {
+      "key": "menu.individualPlayer.applyRename",
+      "value": "Apply Name"
+    },
+    {
+      "key": "menu.individualPlayer.applyRename.description",
+      "value": "Changes this player's name for everyone on the server."
+    },
+    {
       "key": "menu.individualPlayer.message",
       "value": "Message"
     },
@@ -6733,6 +6841,22 @@
     {
       "key": "library.dialog.add.error.unknown",
       "value": "Unknown validation error."
+    },
+    {
+      "key": "library.dialog.add.error.unreachable.title",
+      "value": "BEE File Unreachable"
+    },
+    {
+      "key": "library.dialog.add.error.unreachable",
+      "value": "Could not download the BEE file from {0}: {1}"
+    },
+    {
+      "key": "library.dialog.add.error.tlsHandshake",
+      "value": "Could not open a secure connection to {0}. The host must support TLS 1.2; hosts that only allow TLS 1.3 cannot be reached."
+    },
+    {
+      "key": "library.dialog.add.error.blockedAddress",
+      "value": "{0} resolves to a non-public address ({1}) on this network. Basis only downloads from public addresses; a local DNS entry for a self-hosted server can cause this."
     },
     {
       "key": "library.drop.notice.noPassword",
@@ -11203,6 +11327,10 @@
       "value": "{0} is already running. Restart Basis to use {1} instead."
     },
     {
+      "key": "settings.platform.standaloneNoDesktop",
+      "value": "This is a standalone headset, there is no desktop display to switch to."
+    },
+    {
       "key": "settings.remoteAudio.remotePlayers",
       "value": "Remote Players"
     },
@@ -13487,6 +13615,30 @@
       "value": "Errors"
     },
     {
+      "key": "notifications.pending.count",
+      "value": "Pending ({0})"
+    },
+    {
+      "key": "notifications.pending.description",
+      "value": "Prompts still waiting on an answer. Select one to open or dismiss it."
+    },
+    {
+      "key": "notifications.history.count",
+      "value": "History ({0})"
+    },
+    {
+      "key": "notifications.history.description",
+      "value": "Answered and dismissed prompts. Select one for details."
+    },
+    {
+      "key": "notifications.clearHistory.tooltip",
+      "value": "Remove every answered notification. Pending ones are kept."
+    },
+    {
+      "key": "notifications.clearHistory.confirm",
+      "value": "Remove every answered notification? Pending ones are kept."
+    },
+    {
       "key": "settings.tab.performancelimits",
       "value": "Performance Limits"
     },
@@ -14745,6 +14897,18 @@
     {
       "key": "settings.admin.title.lockSharedImages.description",
       "value": "Stops non-admin players from sharing new image pickups, and from receiving images shared while this is on. Images already shared stay until removed. Admins are unaffected."
+    },
+    {
+      "key": "settings.admin.title.lockGifs",
+      "value": "Lock GIFs"
+    },
+    {
+      "key": "settings.admin.title.lockGifs.tooltip",
+      "value": "Stop GIFs animating for non-admin players. They see each GIF's first frame, and animation resumes when this is turned off. Admins are unaffected."
+    },
+    {
+      "key": "settings.admin.title.lockGifs.description",
+      "value": "Stops GIFs animating for non-admin players: every GIF shows its first frame, GIFs they share stay still until the lock is lifted, and the server stops relaying GIF animation data from them. Animation resumes when this is turned off. Admins are unaffected."
     },
     {
       "key": "settings.admin.title.lockTextChat",
@@ -16941,6 +17105,22 @@
       "value": "Put the selected player onto the selected avatar. They can change back at any time."
     },
     {
+      "key": "settings.admin.renameField",
+      "value": "New Name"
+    },
+    {
+      "key": "settings.admin.renameField.tooltip",
+      "value": "The display name to give this player. It lasts until they reconnect."
+    },
+    {
+      "key": "settings.admin.rename",
+      "value": "Rename Player"
+    },
+    {
+      "key": "settings.admin.rename.tooltip",
+      "value": "Change this player's display name for everyone on the server."
+    },
+    {
       "key": "settings.admin.forceAvatar.applyAll",
       "value": "Force Avatar On Everyone"
     },
@@ -17219,6 +17399,18 @@
     {
       "key": "settings.admin.confirm.forceAvatar.title",
       "value": "Force avatar?"
+    },
+    {
+      "key": "settings.admin.confirm.rename.body",
+      "value": "Change this player's display name for everyone on the server? It lasts until they reconnect."
+    },
+    {
+      "key": "settings.admin.confirm.rename.confirm",
+      "value": "Rename"
+    },
+    {
+      "key": "settings.admin.confirm.rename.title",
+      "value": "Rename player?"
     },
     {
       "key": "settings.admin.confirm.forceAvatarAll.body",
@@ -19243,6 +19435,126 @@
     {
       "key": "settings.controls.questControllerFix.tooltip",
       "value": "On, the avatar hand on Quest Touch controllers over SteamVR is anchored to a fixed wrist, so resting a thumb on the stick or face buttons no longer tilts the hand and laser. Finger poses still follow the touch sensors. Only affects Quest controllers in SteamVR mode."
+    },
+    {
+      "key": "trackerLinking.deviceOverrides",
+      "value": "Controllers & Devices"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.tooltip",
+      "value": "Pick which connected device is your left and right hand, or stop a device, or part of one, from being used."
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.none",
+      "value": "No controllers or trackers connected"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.hand",
+      "value": "Hand"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.hand.tooltip",
+      "value": "Which hand this device drives. Only offered on devices that already report themselves as a hand. Automatic uses the hand the runtime reports; a hand picked here wins over that, even when another device claims the same hand."
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.hand.auto",
+      "value": "Automatic"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.hand.auto.tooltip",
+      "value": "Use the hand the runtime reports for this device."
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.hand.left",
+      "value": "Left Hand"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.hand.left.tooltip",
+      "value": "Treat this device as the left hand, whatever the runtime says. Another device of the same kind that also claims the left hand steps aside."
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.hand.right",
+      "value": "Right Hand"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.hand.right.tooltip",
+      "value": "Treat this device as the right hand, whatever the runtime says. Another device of the same kind that also claims the right hand steps aside."
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.ignore",
+      "value": "Ignore Device"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.ignore.tooltip",
+      "value": "Stop using this device entirely: no body role, no buttons, no pointer. It stays listed here so it can be turned back on."
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.parts",
+      "value": "Ignore Parts"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.parts.description",
+      "value": "Keep the device but drop the highlighted parts of it."
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.parts.tooltip",
+      "value": "Red parts are ignored. Pose: position and rotation. Buttons: triggers, grips and face buttons. Sticks: thumbsticks and trackpads. Fingers: finger tracking. Pointer: the laser used for menus and grabbing."
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.parts.pose",
+      "value": "Pose"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.parts.pose.tooltip",
+      "value": "Stop this device from moving its body part. Its buttons, sticks and pointer keep working, so another device can supply the position instead."
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.parts.buttons",
+      "value": "Buttons"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.parts.buttons.tooltip",
+      "value": "Ignore the triggers, grips and face buttons on this device. Useful for a controller with a stuck or broken button."
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.parts.sticks",
+      "value": "Sticks"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.parts.sticks.tooltip",
+      "value": "Ignore the thumbsticks and trackpads on this device. Useful for a controller with stick drift."
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.parts.fingers",
+      "value": "Fingers"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.parts.fingers.tooltip",
+      "value": "Ignore finger tracking from this device, so another device can supply the finger poses."
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.parts.pointer",
+      "value": "Pointer"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.parts.pointer.tooltip",
+      "value": "Hide this device's laser and stop it from clicking menus or grabbing objects."
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.status.ignored",
+      "value": "Ignored"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.status.unassigned",
+      "value": "Not driving anything"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.status.poseIgnored",
+      "value": "{0}, pose ignored"
+    },
+    {
+      "key": "trackerLinking.deviceOverrides.status.override",
+      "value": "override"
     }
   ]
 }
