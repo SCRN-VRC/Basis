@@ -116,21 +116,35 @@ the host or the domain, in the same `BasisTrustedUrls` list the rest of the
 client keeps. If **Play** is pressed while the prompt is up, playback starts
 once the user accepts.
 
-Two routes skip the prompt. A URL typed into the Media Players panel opens
-straight away, since the user chose it, and followers in shared playback load
-whatever the owner chose without being asked. A page URL prompts once, for the
-page; the stream a resolver extracts from it does not prompt again.
+No route skips the prompt. A URL typed into the Media Players panel is asked
+about over the panel, even with do-not-disturb on. A follower in shared playback
+is asked about each untrusted URL the owner shares; while it waits, its screen
+is stopped and it keeps the owner's state, so accepting later lands it at the
+owner's position. A follower that declines is not asked again about that URL
+while the room stays on it, and pressing **Play** or **Local Resync** asks
+again. A page URL prompts once, for the page; the stream a resolver extracts
+from it does not prompt again. Re-opening a URL already accepted on the same
+player (a resync, a source that ended, a player woken under the session cap)
+does not prompt.
 
-Cilbox props can open URLs through the prompting routes only. `OpenResolved`
-and `SetSubtitleTracks` are not available to them, and avatar and prop content
-has **Play On Start** cleared on load.
+Cilbox props can open URLs through the prompting routes only, and can call only
+the player's public methods. `OpenResolved` and `SetSubtitleTracks` are not
+available to them, and avatar and prop content has **Play On Start** cleared on
+load.
 
 ## Video output
 
 `BasisVideoMaterialOutput` sets the video on one or more renderers' materials
 (`TargetRenderer` and `AdditionalTargets`; `_BaseMap` on URP, `_MainTex`
 otherwise, or `TexturePropertyName`). `BasisVideoDisplay` sets it on a uGUI
-`RawImage` and can drive an `AspectRatioFitter`.
+`RawImage` and can drive an `AspectRatioFitter`. `BasisVideoTextureOutput`
+copies it into a `RenderTexture` (`TargetTexture`) each frame the player
+presents one, for anything that samples a texture instead of drawing a screen,
+such as a lighting system's colour source. The copy fills the target, only the
+flips below apply to it, and the target holds `ClearColor` while there is no
+video. A target assigned or re-created while it runs is filled at once. A
+`CustomRenderTexture` target must not have a material assigned, or its update
+draws over the copy.
 
 Aspect, stereo eye and flips are applied to texture coordinates; the mesh is
 not resized. `AspectMode`:
@@ -303,7 +317,8 @@ Advanced.
 ## Scripting
 
 Everything below is on `BasisMediaPlayer` unless it says otherwise. The
-companions are an output (`BasisVideoMaterialOutput` or `BasisVideoDisplay`),
+companions are an output (`BasisVideoMaterialOutput`, `BasisVideoDisplay` or
+`BasisVideoTextureOutput`),
 `BasisMediaPlayerAudio` for sound and `BasisMediaPlayerNetworking` for shared
 playback; the sections above cover each.
 
@@ -537,4 +552,5 @@ librist staged first).
 [`Native~/TESTING.md`](Native~/TESTING.md) covers prerequisites and testing.
 [`TESTING.md`](TESTING.md) has the checks for the Unity side, and
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) the licences of what the
-package includes.
+package includes. After a change to `Native~/Cargo.lock`, update the licence
+files and bake the licence manifest as that file describes.

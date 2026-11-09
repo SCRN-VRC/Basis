@@ -255,11 +255,7 @@ namespace UnityEditor.Rendering.Universal
                 {
                     // FSR overrides TAA CAS settings. Disable this setting when FSR is enabled.
                     bool disableSharpnessControl = UniversalRenderPipeline.asset != null
-#if ENABLE_UPSCALER_FRAMEWORK
                         ? UniversalRenderPipeline.asset.IsUpscalerUsed(UniversalRenderPipeline.k_UpscalerId_FSR1)
-#else
-                        ? (UniversalRenderPipeline.asset.upscalingFilter == UpscalingFilterSelection.FSR)
-#endif
                         : false;
                     using var disable = new EditorGUI.DisabledScope(disableSharpnessControl);
 
@@ -319,7 +315,9 @@ namespace UnityEditor.Rendering.Universal
             
             static void OcclusionCullingWithWarningTileOnlyMode(UniversalRenderPipelineSerializedCamera serialized, Editor owner)
             {
+                #pragma warning disable CS0618
                 DisplayTileOnlyModeWarning(serialized.baseCameraSettings.occlusionCulling, p => p.boolValue, CameraUI.Rendering.Styles.occlusionCulling, serialized);
+                #pragma warning restore CS0618
             }
         }
     }

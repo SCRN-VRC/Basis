@@ -143,6 +143,24 @@ namespace UnityEditor.Rendering.Universal.Tools
             protected override List<MaterialUpgrader> upgraders => new();
         }
 
+        // Records whether searches have to complete synchronously while it scans
+        class SynchronousFlagConverter : IRenderPipelineConverter
+        {
+            public static bool synchronousDuringScan;
+
+            public void Scan(Action<List<IRenderPipelineConverterItem>> onScanFinish)
+            {
+                synchronousDuringScan = SearchServiceUtils.synchronous;
+                onScanFinish(new List<IRenderPipelineConverterItem>());
+            }
+
+            public Status Convert(IRenderPipelineConverterItem item, out string message)
+            {
+                message = null;
+                return Status.Success;
+            }
+        }
+
         class ThrowingScanConverter : IRenderPipelineConverter
         {
             public void Scan(Action<List<IRenderPipelineConverterItem>> onScanFinish)
@@ -217,6 +235,37 @@ namespace UnityEditor.Rendering.Universal.Tools
             Assert.AreEqual("Completed", scanFile.status);
             Assert.AreEqual(1, scanFile.convertersCompleted);
             CollectionAssert.AreEqual(new[] { "DeferredItem" }, scanFile.converters[0].items.ConvertAll(item => item.name));
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ScanToFile_SynchronousFlagIsOnlySetWhileScanning(bool synchronous)
+        {
+            SynchronousFlagConverter.synchronousDuringScan = !synchronous;
+
+            var filePath = Converters.ScanToFile(new List<Type> { typeof(SynchronousFlagConverter) },
+                "ConverterScanSynchronousTest.json", null, synchronous);
+            File.Delete(filePath);
+
+            Assert.AreEqual(synchronous, SynchronousFlagConverter.synchronousDuringScan);
+            Assert.IsFalse(SearchServiceUtils.synchronous, "The synchronous flag must not outlive the scan.");
+        }
+
+        [Test]
+        public void ScanToFile_ScanAlreadyInProgress_DoesNotLeaveSynchronousFlagSet()
+        {
+            Converters.ScanToFile(new List<Type> { typeof(DeferredScanConverter) }, "ConverterScanBusyTest.json");
+
+            try
+            {
+                Assert.Throws<InvalidOperationException>(() => Converters.ScanToFile(
+                    new List<Type> { typeof(ScanOnlyConverter) }, "ConverterScanBusyTest2.json", null, true));
+                Assert.IsFalse(SearchServiceUtils.synchronous, "A scan which could not start must not leave the flag set.");
+            }
+            finally
+            {
+                Converters.CancelScan();
+            }
         }
 
         [Test]
@@ -318,6 +367,27 @@ namespace UnityEditor.Rendering.Universal.Tools
         }
 #endif
 
+#if !PIXEL_PERFECT_2D_EXISTS
+        // Without the Pixel Perfect package the Pixel Perfect Camera converter has nothing to search for.
+        [Test]
+        public void ScanToFile_PixelPerfectCameraConverterWithoutPixelPerfectPackage_FinishesScan()
+        {
+            string finishedStatus = null;
+            var filePath = Converters.ScanToFile(new List<Type> { typeof(BuiltInPixelPerfectCameraConverter) },
+                "ConverterScanPixelPerfectTest.json", status => finishedStatus = status);
+
+            Assert.IsFalse(Converters.IsScanInProgress, "The Pixel Perfect Camera converter must not leave the scan hanging.");
+            Assert.AreEqual("Completed", finishedStatus);
+
+            var scanFile = ReadScanFile(filePath);
+            File.Delete(filePath);
+
+            Assert.AreEqual("Completed", scanFile.status);
+            Assert.AreEqual("PixelPerfectCamera", scanFile.converters[0].converterType);
+            Assert.That(scanFile.converters[0].items, Is.Null.Or.Empty);
+        }
+#endif
+
         [Test]
         public void ScanToFile_NoConverterCanBeCreated_ReportsFailure()
         {
@@ -358,19 +428,6 @@ namespace UnityEditor.Rendering.Universal.Tools
         {
             bool ok = Converters.RunInBatchMode(new List<Type>() { typeof(NotAConverterType) });
             Assert.IsFalse(ok);
-        }
-
-        [Test]
-        public void RunInBatchMode_LogsUsageWarning()
-        {
-            LogAssert.Expect(
-                LogType.Warning,
-                "Using this API can lead to incomplete or unpredictable conversion outcomes. " +
-                "For reliable results, please perform the conversion via the dedicated window: " +
-                "Window > Rendering > Render Pipeline Converter."
-            );
-
-            bool _ = Converters.RunInBatchMode(new List<Type>() {});
         }
 
         public static IEnumerable<TestCaseData> TestCases()
@@ -433,6 +490,8 @@ namespace UnityEditor.Rendering.Universal.Tools
                  {
                     typeof(BuiltInToURP2DRenderSettingsConverter),
                     typeof(BuiltInToURP2DReadonlyMaterialConverter),
+                    typeof(BuiltInToURP2DShaderConverter),
+                    typeof(BuiltInPixelPerfectCameraConverter),
                  }
             ).SetName("{m}(BuiltInToURP2D - When Using Exclusive filter with no converters. The filter returns everything)");
 

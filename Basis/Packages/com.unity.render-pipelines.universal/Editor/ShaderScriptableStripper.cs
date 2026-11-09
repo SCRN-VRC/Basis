@@ -222,6 +222,7 @@ namespace UnityEditor.Rendering.Universal
         LocalKeyword m_LightLayers;
         LocalKeyword m_DecalLayers;
         LocalKeyword m_WriteRenderingLayers;
+        LocalKeyword m_BasisSurfaceMRT;
         LocalKeyword m_RenderPassEnabled;
         LocalKeyword m_DebugDisplay;
         LocalKeyword m_DBufferMRT1;
@@ -240,7 +241,7 @@ namespace UnityEditor.Rendering.Universal
         LocalKeyword m_FogVolumetric;
         LocalKeyword m_TransparentReceiveFog;
         LocalKeyword m_SurfaceTypeTransparent;
-        LocalKeyword m_LightFalloffLinear;
+        LocalKeyword m_LightFalloffQuadratic;
         LocalKeyword m_LensDistortion;
         LocalKeyword m_ChromaticAberration;
         LocalKeyword m_BloomLQ;
@@ -306,6 +307,7 @@ namespace UnityEditor.Rendering.Universal
             m_LightLayers = TryGetLocalKeyword(shader, ShaderKeywordStrings.LightLayers);
             m_DecalLayers = TryGetLocalKeyword(shader, ShaderKeywordStrings.DecalLayers);
             m_WriteRenderingLayers = TryGetLocalKeyword(shader, ShaderKeywordStrings.WriteRenderingLayers);
+            m_BasisSurfaceMRT = TryGetLocalKeyword(shader, "_BASIS_SURFACE_MRT");
             m_RenderPassEnabled = TryGetLocalKeyword(shader, ShaderKeywordStrings.RenderPassEnabled);
             m_DebugDisplay = TryGetLocalKeyword(shader, ShaderKeywordStrings.DEBUG_DISPLAY);
             m_DBufferMRT1 = TryGetLocalKeyword(shader, ShaderKeywordStrings.DBufferMRT1);
@@ -324,7 +326,7 @@ namespace UnityEditor.Rendering.Universal
             m_FogVolumetric = TryGetLocalKeyword(shader, ShaderKeywordStrings.FogVolumetric);
             m_TransparentReceiveFog = TryGetLocalKeyword(shader, ShaderKeywordStrings.TransparentReceiveFog);
             m_SurfaceTypeTransparent = TryGetLocalKeyword(shader, ShaderKeywordStrings._SURFACE_TYPE_TRANSPARENT);
-            m_LightFalloffLinear = TryGetLocalKeyword(shader, ShaderKeywordStrings.LightFalloffLinear);
+            m_LightFalloffQuadratic = TryGetLocalKeyword(shader, ShaderKeywordStrings.LightFalloffQuadratic);
             m_DepthAsInputAttachment = TryGetLocalKeyword(shader, ShaderKeywordStrings.DEPTH_AS_INPUT_ATTACHMENT);
             m_DepthAsInputAttachmentMSAA = TryGetLocalKeyword(shader, ShaderKeywordStrings.DEPTH_AS_INPUT_ATTACHMENT_MSAA);
 
@@ -824,6 +826,11 @@ namespace UnityEditor.Rendering.Universal
             return false;
         }
 
+        internal static bool IsBasisSurfaceMRTStrippedTarget(BuildTarget target)
+        {
+            return target == BuildTarget.Android || target == BuildTarget.iOS || target == BuildTarget.WebGL || target == BuildTarget.VisionOS;
+        }
+
         internal bool StripUnusedFeatures_WriteRenderingLayers(ref IShaderScriptableStrippingData strippingData, ref ShaderStripTool<ShaderFeatures> stripTool)
         {
             // Rendering layers are not supported on gl
@@ -896,9 +903,9 @@ namespace UnityEditor.Rendering.Universal
             return false;
         }
 
-        internal bool StripUnusedFeatures_LightFalloffLinear(ref ShaderStripTool<ShaderFeatures> stripTool)
+        internal bool StripUnusedFeatures_LightFalloffQuadratic(ref ShaderStripTool<ShaderFeatures> stripTool)
         {
-            return stripTool.StripMultiCompileKeepOffVariant(m_LightFalloffLinear, ShaderFeatures.LightFalloffLinear);
+            return stripTool.StripMultiCompileKeepOffVariant(m_LightFalloffQuadratic, ShaderFeatures.LightFalloffQuadratic);
         }
 
         internal bool StripUnusedFeatures_ProbesVolumes(ref ShaderStripTool<ShaderFeatures> stripTool)
@@ -1099,6 +1106,9 @@ namespace UnityEditor.Rendering.Universal
             if (StripUnusedFeatures_WriteRenderingLayers(ref strippingData, ref stripTool))
                 return true;
 
+            if (strippingData.IsKeywordEnabled(m_BasisSurfaceMRT) && IsBasisSurfaceMRTStrippedTarget(EditorUserBuildSettings.activeBuildTarget))
+                return true;
+
             if (StripUnusedFeatures_AccurateGbufferNormals(ref strippingData, ref stripTool))
                 return true;
 
@@ -1111,7 +1121,7 @@ namespace UnityEditor.Rendering.Universal
             if (StripUnusedFeatures_VolumetricFog(ref strippingData, ref stripTool))
                 return true;
 
-            if (StripUnusedFeatures_LightFalloffLinear(ref stripTool))
+            if (StripUnusedFeatures_LightFalloffQuadratic(ref stripTool))
                 return true;
 
             if (StripUnusedFeatures_ProbesVolumes(ref stripTool))

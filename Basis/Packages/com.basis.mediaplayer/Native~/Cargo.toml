@@ -20,6 +20,7 @@ members = [
     "media-testkit",
     "media-engine",
     "media-present",
+    "media-capture",
     "media-ffi",
     "bm-probe",
 ]
@@ -49,6 +50,7 @@ media-diag = { path = "media-diag" }
 media-testkit = { path = "media-testkit" }
 media-engine = { path = "media-engine" }
 media-present = { path = "media-present" }
+media-capture = { path = "media-capture" }
 proptest = "1"
 clap = { version = "4", features = ["derive"] }
 re_mp4 = "0.5.1"
@@ -72,3 +74,4 @@ codegen-units = 1
 [patch.crates-io]
 retina = { path = "third_party/retina" }
 matroska-demuxer = { path = "third_party/matroska-demuxer" }
+re_mp4 = { path = "third_party/re_mp4" }

@@ -1,3 +1,4 @@
+using Unity.Scripting.LifecycleManagement;
 using UnityEngine;
 using System.Collections.Generic;
 using System;
@@ -6,8 +7,9 @@ using Basis.Scripts.Networking.NetworkedAvatar;
 
 namespace Cilbox
 {
+	[AutoStaticsCleanup]
 	[CilboxTarget]
-	public class CilboxSceneBasis : CilboxBasisCommon
+	public partial class CilboxSceneBasis : CilboxBasisCommon
 	{
 		static readonly HashSet<string> extraWhiteListType = new HashSet<string>(){
 			// TUBE world-script additions (Cilbox conversion)
@@ -30,6 +32,9 @@ namespace Cilbox
 			"Basis.Scripts.BasisSdk.Interactions.BasisInteractableButton",
 			"Basis.Scripts.BasisSdk.Interactions.BasisInteractableButton+ClickEvent",
 			"Basis.Scripts.BasisSdk.Interactions.BasisSeat",
+			"Basis.Scripts.BasisSdk.Interactions.BasisSeatLockMode",
+			"Basis.Scripts.BasisSdk.Interactions.BasisSeatPose",
+			"Basis.Scripts.BasisSdk.Interactions.BasisInteractableObject+BasisAutoHold",
 			"Basis.BasisImageDownloader",
 			"Basis.IBasisImageDownload",
 			"Basis.BasisStringDownloader",
@@ -194,6 +199,7 @@ namespace Cilbox
 		static readonly HashSet<string> extraWhiteListFields = new HashSet<string>(){
 			// TUBE world-script additions (Cilbox conversion)
 			"Basis.Scripts.Drivers.BasisLocalCameraDriver.CameraInstance",
+			"Basis.Scripts.BasisSdk.Interactions.BasisInteractableObject.AutoHold",
 
 			// SteamAudioSource tuning fields for spatialized announce (issue #911). Curated
 			// safe set: excludes native handles (reflectionsIR IntPtr), baked-data refs,
@@ -324,6 +330,13 @@ namespace Cilbox
 			{ typeof(Basis.Shims.BasisPlatformEventShim), new HashSet<string>{
 				nameof(Basis.Shims.BasisPlatformEventShim.Rebind),
 				} },
+			{ typeof(Basis.Shims.BasisLanguageEventShim), new HashSet<string>{
+				nameof(Basis.Shims.BasisLanguageEventShim.Rebind),
+				} },
+			{ typeof(Basis.Shims.BasisExternalLinkShim), new HashSet<string>{
+				nameof(Basis.Shims.BasisExternalLinkShim.Open),
+				nameof(Basis.Shims.BasisExternalLinkShim.IsValidUrl),
+				} },
 			{ typeof(Basis.Scripts.BasisSdk.Interactions.BasisSeat), new HashSet<string>{
 				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.OccupantRotationRangeDegrees)}",
 				$"set_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.OccupantRotationRangeDegrees)}",
@@ -333,12 +346,47 @@ namespace Cilbox
 				nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.TurnOccupant),
 				nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.SetOccupantYaw),
 				nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.ResetOccupantYaw),
+				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.HipsLock)}",
+				$"set_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.HipsLock)}",
+				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.LeftFootLock)}",
+				$"set_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.LeftFootLock)}",
+				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.RightFootLock)}",
+				$"set_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.RightFootLock)}",
+				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.OccupantOffset)}",
+				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.OccupantOffsetLimit)}",
+				$"set_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.OccupantOffsetLimit)}",
+				nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.SetOccupantOffset),
+				nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.ResetOccupantOffset),
+				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.Pose)}",
+				$"set_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.Pose)}",
+				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.LeftHandTarget)}",
+				$"set_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.LeftHandTarget)}",
+				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.RightHandTarget)}",
+				$"set_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.RightHandTarget)}",
+				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.LeftHandLock)}",
+				$"set_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.LeftHandLock)}",
+				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.RightHandLock)}",
+				$"set_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.RightHandLock)}",
+				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.LeftFootTarget)}",
+				$"set_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.LeftFootTarget)}",
+				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.RightFootTarget)}",
+				$"set_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.RightFootTarget)}",
+				nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.SetHandTargets),
+				nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.SetFootTargets),
+				nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.ClearLimbTargets),
 				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.HasOccupant)}",
 				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.IsAvailable)}",
 				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.IsLocalPlayerSeated)}",
 				nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.TryGetOccupant),
 				nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.TrySeatLocalPlayer),
 				nameof(Basis.Scripts.BasisSdk.Interactions.BasisSeat.EjectLocalPlayer),
+				} },
+			{ typeof(Basis.Scripts.BasisSdk.Interactions.BasisPickupInteractable), new HashSet<string>{
+				nameof(Basis.Scripts.BasisSdk.Interactions.BasisPickupInteractable.Drop),
+				} },
+			{ typeof(Basis.Scripts.BasisSdk.Interactions.BasisInteractableObject), new HashSet<string>{
+				$"get_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisInteractableObject.InteractableEnabled)}",
+				$"set_{nameof(Basis.Scripts.BasisSdk.Interactions.BasisInteractableObject.InteractableEnabled)}",
 				} },
 			// Restrict BasisDeviceManagement to the single mode query the menu uses.
 			{ typeof(Basis.Scripts.Device_Management.BasisDeviceManagement), new HashSet<string>{ "IsCurrentModeVR" } },
@@ -366,6 +414,11 @@ namespace Cilbox
 				nameof(BasisLocalPlayer.GetGravityValue),
 				nameof(BasisLocalPlayer.SetGravityValue),
 				nameof(BasisLocalPlayer.GetMovementMode),
+				nameof(BasisLocalPlayer.GetAvatarEyeHeight),
+				nameof(BasisLocalPlayer.SetAvatarEyeHeight),
+				nameof(BasisLocalPlayer.SetAvatarEyeHeightByMultiplier),
+				nameof(BasisLocalPlayer.GetAvatarEyeHeightMinimum),
+				nameof(BasisLocalPlayer.GetAvatarEyeHeightMaximum),
 				nameof(BasisLocalPlayer.SetJumpHeightOverride),
 				nameof(BasisLocalPlayer.SetWalkSpeedOverride),
 				nameof(BasisLocalPlayer.SetRunSpeedOverride),
@@ -630,7 +683,7 @@ namespace Cilbox
 		protected override HashSet<string> ExtraWhiteListFields => extraWhiteListFields;
 		protected override Dictionary<Type, HashSet<string>> ExtraMethodWhitelist => extraMethodWhitelist;
 
-		static readonly HashSet<string> mergedWhiteListType = MergeTypes(extraWhiteListType);
+		[NoAutoStaticsCleanup] static readonly HashSet<string> mergedWhiteListType = MergeTypes(extraWhiteListType);
 		public static HashSet<string> GetWhiteListTypes() => mergedWhiteListType;
 	}
 }

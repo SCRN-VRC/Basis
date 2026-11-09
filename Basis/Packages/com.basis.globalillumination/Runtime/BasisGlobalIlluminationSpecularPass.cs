@@ -1,3 +1,4 @@
+using Unity.Scripting.LifecycleManagement;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
@@ -38,15 +39,16 @@ public sealed partial class BasisGlobalIlluminationPass
     /// diffuse is also on. It is a fullscreen pass at trace resolution against a trace that walks a BVH, so
     /// it does not show up next to the dispatch it feeds.</para>
     /// </summary>
-    public sealed class SpecularPass : ScriptableRenderPass
+    [AutoStaticsCleanup]
+    public sealed partial class SpecularPass : ScriptableRenderPass
     {
-        private static readonly ProfilingSampler samplerPrepass = new ProfilingSampler("Basis GI Specular Prepass");
-        private static readonly ProfilingSampler samplerTrace = new ProfilingSampler("Basis GI Specular Trace");
-        private static readonly ProfilingSampler samplerResolve = new ProfilingSampler("Basis GI Specular Resolve");
-        private static readonly ProfilingSampler samplerTemporal = new ProfilingSampler("Basis GI Specular Temporal");
-        private static readonly ProfilingSampler samplerBlur = new ProfilingSampler("Basis GI Specular Blur");
-        private static readonly ProfilingSampler samplerUpsample = new ProfilingSampler("Basis GI Specular Upsample");
-        private static readonly ProfilingSampler samplerPublish = new ProfilingSampler("Basis GI Specular Publish");
+        [NoAutoStaticsCleanup] private static readonly ProfilingSampler samplerPrepass = new ProfilingSampler("Basis GI Specular Prepass");
+        [NoAutoStaticsCleanup] private static readonly ProfilingSampler samplerTrace = new ProfilingSampler("Basis GI Specular Trace");
+        [NoAutoStaticsCleanup] private static readonly ProfilingSampler samplerResolve = new ProfilingSampler("Basis GI Specular Resolve");
+        [NoAutoStaticsCleanup] private static readonly ProfilingSampler samplerTemporal = new ProfilingSampler("Basis GI Specular Temporal");
+        [NoAutoStaticsCleanup] private static readonly ProfilingSampler samplerBlur = new ProfilingSampler("Basis GI Specular Blur");
+        [NoAutoStaticsCleanup] private static readonly ProfilingSampler samplerUpsample = new ProfilingSampler("Basis GI Specular Upsample");
+        [NoAutoStaticsCleanup] private static readonly ProfilingSampler samplerPublish = new ProfilingSampler("Basis GI Specular Publish");
 
         public static float GpuMs =>
             samplerPrepass.gpuElapsedTime + samplerTrace.gpuElapsedTime + samplerResolve.gpuElapsedTime +
@@ -125,14 +127,14 @@ public sealed partial class BasisGlobalIlluminationPass
         }
 
         /// <summary>
-        /// Which backend the reflections run on. The volume's Mode decides, exactly as it does for the
-        /// diffuse gather: Ray Traced reflects what is off screen too, Screen Space walks the depth buffer
+        /// Which backend the reflections run on. Their own Mode decides, the same way the diffuse gather's
+        /// does: Ray Traced reflects what is off screen too, Screen Space walks the depth buffer
         /// and runs on any GPU - which matters, because Screen Space is the default shipping mode and a GPU
         /// with no ray tracing used to mean no reflections at all rather than cheaper ones.
         /// </summary>
         public static bool ScreenSpaceReflections(BasisGlobalIlluminationSettings settings, bool rayTracingAvailable)
         {
-            return !settings.IsRayTraced() || !rayTracingAvailable;
+            return !settings.IsSpecularRayTraced() || !rayTracingAvailable;
         }
 
         /// <summary>
@@ -275,6 +277,7 @@ public sealed partial class BasisGlobalIlluminationPass
                     passData.previousViewProjection = previousViewProjection;
                     previousViewProjection[0] = history.PreviousSpecularViewProjection[0];
                     previousViewProjection[1] = history.PreviousSpecularViewProjection[1];
+                    passData.skipEye = -1f;
                     // Pooled PassData again: the temporal stage binds motion and the traced depth buffer
                     // whenever their handles look valid, and this pass records earlier in the frame than the
                     // diffuse one that also sets them - so anything left unset here is a handle from a graph
@@ -331,6 +334,8 @@ public sealed partial class BasisGlobalIlluminationPass
                 // this pass shares that stage and must not inherit the diffuse composite's mask handle.
                 passData.lightmapMask = TextureHandle.nullHandle;
                 passData.lightmapMaskValid = false;
+                passData.surface = TextureHandle.nullHandle;
+                passData.surfaceValid = false;
                 builder.SetRenderAttachment(published, 0, AccessFlags.WriteAll);
                 builder.UseTexture(denoiseSource);
                 builder.UseTexture(historyWriteStats);
@@ -694,6 +699,7 @@ public sealed partial class BasisGlobalIlluminationPass
     /// Enqueued only when the screen space backend will run; the ray traced backend relights its hits from
     /// the light list and never reads a colour buffer.
     /// </summary>
+    [NoAutoStaticsCleanup]
     public sealed class SpecularColorCapturePass : ScriptableRenderPass
     {
         private static readonly ProfilingSampler samplerCapture = new ProfilingSampler("Basis GI Specular Prior Color");

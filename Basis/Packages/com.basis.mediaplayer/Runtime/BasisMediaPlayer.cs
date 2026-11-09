@@ -1,3 +1,4 @@
+using Unity.Scripting.LifecycleManagement;
 using System;
 using System.Buffers;
 using System.Globalization;
@@ -19,8 +20,10 @@ using UnityEngine.Rendering;
 ///
 /// It draws nothing on its own. The video texture reaches the world through
 /// an output sink (<see cref="BasisVideoMaterialOutput"/> for a renderer,
-/// <see cref="BasisVideoDisplay"/> for a uGUI RawImage), which owns aspect,
-/// projection, stereo eye and the frame-origin correction.
+/// <see cref="BasisVideoDisplay"/> for a uGUI RawImage,
+/// <see cref="BasisVideoTextureOutput"/> for a RenderTexture), which owns the
+/// frame-origin correction and whichever of aspect, projection and stereo eye
+/// it offers.
 ///
 /// It makes no sound on its own. Audio belongs to
 /// <see cref="BasisMediaPlayerAudio"/> on the same GameObject, which
@@ -32,9 +35,10 @@ using UnityEngine.Rendering;
 // snapshot without being one of the registered consumers below (a component in
 // another package, a test harness's own Update) still sees this frame's values
 // rather than the previous frame's.
+[AutoStaticsCleanup]
 [DefaultExecutionOrder(-100)]
 [AddComponentMenu("Basis/Basis Media Player")]
-public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
+public partial class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
 {
     /// <summary>The authored URL: a stream, a file path or a page URL.</summary>
     [Tooltip("http(s) URL or absolute file path.")]
@@ -93,6 +97,13 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
 
     [Tooltip("Silence the audio sink beside this player without stopping it.")]
     public bool Mute;
+
+    [Tooltip("List this player in the Media Players menu. Off for players the client feeds itself, such as a screen share.")]
+    public bool ListInMediaMenu = true;
+
+    public bool IsPushStream { get; private set; }
+
+    public ulong PushHandle => _open && IsPushStream ? _handle : 0;
 
     [Tooltip("Log this player's own actions to the Console: state changes, seeks, loops, the sleep timer. Engine events are logged regardless.")]
     public bool VerboseLogging;
@@ -162,14 +173,14 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
     bool _playRequestedWhileApprovalPending;
     string _pendingApprovalUrl = string.Empty;
     int _urlApprovalRequestId;
-    Action _pendingApprovalDeclined;
+    Action<bool> _pendingApprovalDeclined;
     string _approvedUrl;
     Texture _texture;
     Texture2D _artwork;
     bool _artworkRead;
-    /// Whether _texture is the cover art rather than a decode target. The
-    /// engine presents into a video texture every frame; art is a still it
-    /// never touches, so the render event must not be issued for it.
+    /// Whether the outputs hold the cover art. Art stays on them until the
+    /// source's first picture is presented, so the engine may already be
+    /// drawing into a video texture in _texture while this is true.
     bool _textureIsArtwork;
     /// Whether _texture has been handed to the outputs. A video texture is
     /// registered with the engine as soon as the frame size is known, while
@@ -325,7 +336,7 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
 
     /// <summary>Video frames presented this session.</summary>
     public long PresentedFrameCount { get; private set; }
-    internal Texture Texture => _textureShown ? _texture : null;
+    internal Texture Texture => _textureIsArtwork ? _artwork : _textureShown ? _texture : null;
 
     /// <summary>Cover art the container carried, decoded, or null. Audio-only
     /// sources with art drive it onto the output texture, so a screen shows
@@ -861,7 +872,7 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
         // tick; defaults do not, so a prefab's own sink settings stand.
         _volumeSent = Mathf.Approximately(Volume, 1f) ? 1f : float.NaN;
         _muteSent = false;
-        BasisMediaPlayerRegistry.Add(this);
+        if (ListInMediaMenu) BasisMediaPlayerRegistry.Add(this);
     }
 
     void OnEnable() => _frameTick.Arm();
@@ -929,28 +940,21 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
     /// user has not trusted (<see cref="BasisTrustedUrls"/>) is shown to
     /// them first and opens only if they accept.
     /// </summary>
-    public void LoadUrl(string sourceUrl)
+    public void LoadUrl(string sourceUrl) => LoadUrl(sourceUrl, false);
+
+    internal void LoadUrl(string sourceUrl, bool viewerAsked)
     {
         if (!PrepareUserUrl(ref sourceUrl))
             return;
         if (!IsApproved(sourceUrl))
         {
-            RequestUrlApproval(sourceUrl, OpenPreparedUrl);
+            RequestUrlApproval(sourceUrl, OpenPreparedUrl, viewerAsked: viewerAsked);
             return;
         }
         OpenPreparedUrl(sourceUrl);
     }
 
-    /// <summary>
-    /// <see cref="LoadUrl"/> without the consent prompt, for a URL the
-    /// user has already answered for: one they typed into the menu, or the
-    /// one the shared-playback owner chose for the room.
-    /// </summary>
-    internal void LoadApprovedUrl(string sourceUrl)
-    {
-        if (PrepareUserUrl(ref sourceUrl))
-            OpenPreparedUrl(sourceUrl);
-    }
+    internal bool NeedsApproval(string sourceUrl) => !IsApproved(BasisMediaUrlRouter.NormalizeUrl(sourceUrl));
 
     bool PrepareUserUrl(ref string sourceUrl)
     {
@@ -1023,21 +1027,23 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
     bool IsApproved(string sourceUrl)
         => !string.IsNullOrWhiteSpace(sourceUrl)
            && (string.Equals(sourceUrl, _approvedUrl, StringComparison.Ordinal)
-               || BasisTrustedUrls.IsTrusted(sourceUrl));
+               || BasisTrustedUrls.IsTrusted(sourceUrl)
+               || BasisMediaClipProtocol.IsClipUrl(sourceUrl));
 
     /// <summary>
     /// Calls <paramref name="open"/> with the normalised URL once the user has
     /// approved it (at once when it is trusted or already approved on this
     /// player), or <paramref name="declined"/> when the URL is refused, the
     /// user says no, nobody can be asked, or another open supersedes the
-    /// question. Exactly one of the two runs. Shared playback uses this to ask
-    /// before it announces a URL to the room.
+    /// question; it is passed true only when the user said no. Exactly one of
+    /// the two runs. Shared playback uses this to ask before it announces a URL
+    /// to the room, and before it opens one the room announced.
     /// </summary>
-    internal void WhenApproved(string sourceUrl, Action<string> open, Action declined)
+    internal void WhenApproved(string sourceUrl, Action<string> open, Action<bool> declined, bool viewerAsked)
     {
         if (!PrepareUserUrl(ref sourceUrl))
         {
-            declined?.Invoke();
+            declined?.Invoke(false);
             return;
         }
         if (IsApproved(sourceUrl))
@@ -1045,16 +1051,16 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
             open(sourceUrl);
             return;
         }
-        RequestUrlApproval(sourceUrl, open, declined);
+        RequestUrlApproval(sourceUrl, open, declined, viewerAsked);
     }
 
-    void RequestUrlApproval(string sourceUrl, Action<string> open, Action declined = null)
+    void RequestUrlApproval(string sourceUrl, Action<string> open, Action<bool> declined = null, bool viewerAsked = false)
     {
         ClearPendingUrlApproval();
         if (!Uri.TryCreate(sourceUrl, UriKind.Absolute, out Uri uri))
         {
             BasisDebug.LogWarning("[BasisMedia] refused invalid URL.", BasisDebug.LogTag.Video);
-            declined?.Invoke();
+            declined?.Invoke(false);
             return;
         }
 
@@ -1066,7 +1072,7 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
         // late result would otherwise open and take the prompt down with it.
         LoadGeneration++;
 
-        if (!BasisNotificationCenter.RouteToNotifications)
+        if (viewerAsked ? !BasisMainMenu.Instance : !BasisNotificationCenter.RouteToNotifications)
             BasisMainMenu.Open();
 
         BasisMenuURLPromptPanel panel = BasisMenuURLPromptPanel.CreateNew(
@@ -1080,12 +1086,12 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
                     return;
 
                 bool playAfterApproval = _playRequestedWhileApprovalPending;
-                Action onDeclined = _pendingApprovalDeclined;
+                Action<bool> onDeclined = _pendingApprovalDeclined;
                 _pendingApprovalDeclined = null;
                 ClearPendingUrlApproval();
                 if (!response.Accepted)
                 {
-                    onDeclined?.Invoke();
+                    onDeclined?.Invoke(true);
                     return;
                 }
 
@@ -1110,12 +1116,12 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
                 if (playAfterApproval)
                     Play();
             },
-            divertible: true);
+            divertible: !viewerAsked);
 
         // Null is also what a prompt diverted to the notification list
         // returns; that one is still pending. With nothing to divert to and
         // no menu to show it in (a headless client), nobody can answer.
-        if (panel == null && !BasisNotificationCenter.RouteToNotifications
+        if (panel == null && (viewerAsked || !BasisNotificationCenter.RouteToNotifications)
             && _urlApprovalPending && _urlApprovalRequestId == requestId)
         {
             BasisDebug.LogWarning(
@@ -1129,13 +1135,13 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
     {
         if (!_urlApprovalPending && !_playRequestedWhileApprovalPending)
             return;
-        Action declined = _pendingApprovalDeclined;
+        Action<bool> declined = _pendingApprovalDeclined;
         _pendingApprovalDeclined = null;
         _urlApprovalPending = false;
         _playRequestedWhileApprovalPending = false;
         _pendingApprovalUrl = string.Empty;
         _urlApprovalRequestId++;
-        declined?.Invoke();
+        declined?.Invoke(false);
     }
 
     /// <summary>
@@ -1274,6 +1280,31 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
     /// <summary>Open a file on this machine by path. A
     /// <c>file://</c> prefix is accepted and dropped: the engine takes bare
     /// paths. Drops any split-pair audio source a previous open set.</summary>
+    public bool LoadPushStream(string label)
+    {
+        if (!BasisMediaNative.PushSupported)
+        {
+            LastErrorMessage = "this media engine build cannot play pushed streams";
+            State = BmState.Error;
+            return false;
+        }
+        AutoPlayOnSourceAssigned = true;
+        OpenStreams(BasisMediaNative.PushScheme + label, null);
+        return _open;
+    }
+
+    public unsafe int PushVideo(byte[] data, int length, long ptsUs, bool key, int width, int height)
+    {
+        if (!_open || !IsPushStream || data == null || length <= 0 || length > data.Length) return -2;
+        fixed (byte* p = data) return BasisMediaNative.bm_session_push_video(_handle, p, (UIntPtr)length, ptsUs, key ? 1u : 0u, (uint)width, (uint)height);
+    }
+
+    public unsafe int PushAudio(byte[] data, int length, long ptsUs, int sampleRate, int channels)
+    {
+        if (!_open || !IsPushStream || data == null || length <= 0 || length > data.Length) return -2;
+        fixed (byte* p = data) return BasisMediaNative.bm_session_push_audio(_handle, p, (UIntPtr)length, ptsUs, (uint)sampleRate, (uint)channels);
+    }
+
     public void LoadLocalPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -1387,7 +1418,7 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
         }
     }
 
-    static readonly BasisBitrateTrack[] NoBitrateTracks = Array.Empty<BasisBitrateTrack>();
+    [NoAutoStaticsCleanup] static readonly BasisBitrateTrack[] NoBitrateTracks = Array.Empty<BasisBitrateTrack>();
 
     /// <summary>Always empty: the engine has no managed bitrate ladder (a
     /// resolver picks the rung before the open; the engine picks an HLS
@@ -1546,6 +1577,7 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
             return;
         }
         ClearPendingUrlApproval();
+        IsPushStream = sourceUrl != null && sourceUrl.StartsWith(BasisMediaNative.PushScheme, StringComparison.OrdinalIgnoreCase);
         audioUrl = sourceAudioUrl;
         if (!reopen)
         {
@@ -1565,6 +1597,13 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
         // the source it described.
         if (!reopen) Media = null;
         EndSession();
+        if (Application.platform == RuntimePlatform.WebGLPlayer)
+        {
+            LastErrorMessage = "the media player is not available in the web player";
+            BasisDebug.LogWarning($"[BasisMedia] {LastErrorMessage}", BasisDebug.LogTag.Video);
+            State = BmState.Error;
+            return;
+        }
         if (!_abiChecked)
         {
             uint abi = BasisMediaNative.bm_abi_version();
@@ -1586,7 +1625,7 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
             return;
         }
 #else
-        if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.Direct3D11
+        if (!BasisMediaNative.CpuPresent && SystemInfo.graphicsDeviceType != GraphicsDeviceType.Direct3D11
             && SystemInfo.graphicsDeviceType != GraphicsDeviceType.Direct3D12)
         {
             LastErrorMessage = $"needs Direct3D 11 or 12, running on {SystemInfo.graphicsDeviceType}";
@@ -1676,6 +1715,15 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
         var json = new StringBuilder(sourceUrl.Length + 96);
         json.Append("{\"url\":");
         AppendJsonString(json, sourceUrl);
+        if (IsPushStream)
+        {
+            if (DecodePreference == BmDecodePreference.HardwareOnly)
+                json.Append(",\"decode_preference\":\"hardware_only\"");
+            else if (DecodePreference == BmDecodePreference.SoftwareOnly)
+                json.Append(",\"decode_preference\":\"software_only\"");
+            json.Append('}');
+            return json.ToString();
+        }
         if (!string.IsNullOrEmpty(audioUrl))
         {
             json.Append(",\"audio_url\":");
@@ -1893,7 +1941,7 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
         System.Threading.Volatile.Write(ref _syncRatePpm, 0);
         System.Threading.Volatile.Write(ref _avOffsetUs, int.MinValue);
         _eventsDroppedSeen = 0;
-        bool hadTexture = _textureShown;
+        bool hadTexture = _textureShown || _textureIsArtwork;
         SetOutputTexture(null);
         _textureIsArtwork = false;
         _textureShown = false;
@@ -2191,9 +2239,14 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
         // reconnect, an encoder change, a variant switch), and the output has
         // to follow: Direct3D refuses to copy into a texture of another size,
         // and the Vulkan pass would smear or crop.
-        bool resized = _texture != null && !_textureIsArtwork && snapshot.Width > 0
+        // Art shown before the frame size was known makes way for the video at
+        // its first frame.
+        bool engineTexture = _texture != null && !ReferenceEquals(_texture, _artwork);
+        bool resized = engineTexture && snapshot.Width > 0
             && (_texture.width != (int)snapshot.Width || _texture.height != (int)snapshot.Height);
-        if ((_texture == null || resized) && snapshot.Width > 0)
+        if (!engineTexture && snapshot.Width > 0)
+            _textureShown = false;
+        if ((!engineTexture || resized) && snapshot.Width > 0)
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             // Vulkan graphics contract (normative in the ABI header):
@@ -2210,7 +2263,7 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
 #else
             var texture = new Texture2D((int)snapshot.Width, (int)snapshot.Height, TextureFormat.BGRA32, false);
             SetOutputTexture(texture);
-            BasisMediaNative.bm_session_set_output_texture(_handle, texture.GetNativeTexturePtr());
+            if (!BasisMediaNative.CpuPresent) BasisMediaNative.bm_session_set_output_texture(_handle, texture.GetNativeTexturePtr());
 #endif
             // Sinks still hold the texture just retired, so they move now
             // rather than wait for a first frame they have already seen.
@@ -2221,10 +2274,11 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
         if (_texture != null && !_textureShown && snapshot.FramesPresented > 0)
         {
             _textureShown = true;
+            _textureIsArtwork = false;
             OnOutputTextureChanged?.Invoke(_texture);
         }
 
-        if (_texture != null && !_textureIsArtwork)
+        if (_texture != null && !ReferenceEquals(_texture, _artwork))
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             // Camera.AddCommandBuffer is silently ignored under URP;
@@ -2249,12 +2303,35 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
                 Graphics.ExecuteCommandBuffer(_commandBuffer);
             }
 #else
-            _commandBuffer.Clear();
-            _commandBuffer.IssuePluginEventAndData(BasisMediaNative.bm_render_event_func(),
-                BasisMediaNative.RenderEventPresent, (IntPtr)_handle);
-            Graphics.ExecuteCommandBuffer(_commandBuffer);
+            if (BasisMediaNative.CpuPresent)
+            {
+                PresentOnCpu();
+            }
+            else
+            {
+                _commandBuffer.Clear();
+                _commandBuffer.IssuePluginEventAndData(BasisMediaNative.bm_render_event_func(),
+                    BasisMediaNative.RenderEventPresent, (IntPtr)_handle);
+                Graphics.ExecuteCommandBuffer(_commandBuffer);
+            }
 #endif
         }
+    }
+
+    unsafe void PresentOnCpu()
+    {
+        if (!(_texture is Texture2D texture)) return;
+        var pixels = texture.GetPixelData<byte>(0);
+        int got;
+        try
+        {
+            got = BasisMediaNative.bm_session_take_bgra(_handle, (byte*)Unity.Collections.LowLevel.Unsafe.NativeArrayUnsafeUtility.GetUnsafePtr(pixels), (UIntPtr)pixels.Length, out _, out _);
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return;
+        }
+        if (got == 1) texture.Apply(false, false);
     }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -2393,7 +2470,7 @@ public class BasisMediaPlayer : MonoBehaviour, IBasisPcmSource
         _artwork = texture;
 
         // A source with pictures of its own owns the output; art fills it
-        // only when there is no video to show.
+        // until there is video to show.
         if (snapshot.Width == 0 && _texture == null)
         {
             SetOutputTexture(_artwork);

@@ -1,3 +1,4 @@
+using Unity.Scripting.LifecycleManagement;
 using Basis.Scripts.BasisSdk.Players;
 using Basis.Scripts.Device_Management;
 using Basis.Scripts.Device_Management.Devices;
@@ -9,39 +10,49 @@ using UnityEngine;
 using Basis.IK;
 namespace Basis.Scripts.Avatar
 {
-    public static class BasisAvatarIKStageCalibration
+    [AutoStaticsCleanup]
+    public static partial class BasisAvatarIKStageCalibration
     {
-        public static class BasisHintBiasStore
+        [AutoStaticsCleanup]
+        public static partial class BasisHintBiasStore
         {
             public static readonly Dictionary<BasisBoneTrackedRole, Vector3> LocalOffset = new();
 
-            public static void Set(BasisBoneTrackedRole role, Vector3 localOffset) => LocalOffset[role] = localOffset;
-            public static bool TryGet(BasisBoneTrackedRole role, out Vector3 localOffset) => LocalOffset.TryGetValue(role, out localOffset);
+            public static void Set(BasisBoneTrackedRole role, Vector3 localOffset) => LocalOffset[role] = localOffset / SizeRatio();
+            public static bool TryGet(BasisBoneTrackedRole role, out Vector3 localOffset)
+            {
+                if (LocalOffset.TryGetValue(role, out localOffset))
+                {
+                    localOffset *= SizeRatio();
+                    return true;
+                }
+                return false;
+            }
             public static void Clear() => LocalOffset.Clear();
+            static float SizeRatio()
+            {
+                float ratio = BasisHeightDriver.AvatarEyeHeight * BasisHeightDriver.AppliedUpScale / BasisHeightDriver.FallbackHeightInMeters;
+                return float.IsNaN(ratio) || float.IsInfinity(ratio) || ratio <= 1e-4f ? 1f : ratio;
+            }
         }
 
-        // Per-role limb bend-plane normal captured in the tracker's local frame at calibration. Consumed by
-        // BasisLocalRigDriver via BasisTrackerBendNormalCore.ResolveWorldNormal so the knee bend plane follows
-        // the lower-leg tracker's rotation instead of a fixed hips-frame axis (flip-free, natural bending).
-        public static class BasisBendNormalStore
-        {
-            public static readonly Dictionary<BasisBoneTrackedRole, Vector3> LocalAxis = new();
-
-            public static void Set(BasisBoneTrackedRole role, Vector3 localAxis) => LocalAxis[role] = localAxis;
-            public static bool TryGet(BasisBoneTrackedRole role, out Vector3 localAxis) => LocalAxis.TryGetValue(role, out localAxis);
-            public static void Clear() => LocalAxis.Clear();
-        }
-
-        public static class BasisLimbRollStore
+        [AutoStaticsCleanup]
+        public static partial class BasisLimbRollStore
         {
             public static readonly Dictionary<BasisBoneTrackedRole, Quaternion> TrackerToBone = new();
+            public static readonly Dictionary<BasisBoneTrackedRole, Quaternion> TrackerToBody = new();
 
             public static void Set(BasisBoneTrackedRole role, Quaternion trackerToBone) => TrackerToBone[role] = trackerToBone;
             public static bool TryGet(BasisBoneTrackedRole role, out Quaternion trackerToBone) => TrackerToBone.TryGetValue(role, out trackerToBone);
-            public static void Clear() => TrackerToBone.Clear();
+            public static void Clear()
+            {
+                TrackerToBone.Clear();
+                TrackerToBody.Clear();
+            }
         }
 
-        public static class ConstellationDebug
+        [AutoStaticsCleanup]
+        public static partial class ConstellationDebug
         {
             public class DebugSample
             {
@@ -131,12 +142,14 @@ namespace Basis.Scripts.Avatar
         public static void FullBodyCalibration()
         {
             BasisCalibrationDebugRecorder.Begin("fbt_recalib");
+            // Decide Auto's mode once for the whole pass: trackers are unassigned below and reassigned
+            // mid-way, and letting Auto follow that would change DeviceScale after the offsets lock in.
+            BasisHeightDriver.HoldAutoResolution(HasFbTrackerCandidates());
             try
             {
                 BasisHeightDriver.OnAvatarFBCalibration();//avatar height is good,player height is needed
                 HasFBIKTrackers = false;
                 BasisHintBiasStore.Clear();
-                BasisBendNormalStore.Clear();
                 BasisLimbRollStore.Clear();
                 BasisDeviceManagement.UnassignFBTrackers();
                 BasisLocalPlayer.Instance.LocalBoneDriver.SimulateAndApplyWithoutLerp(BasisLocalPlayer.Instance);
@@ -236,11 +249,22 @@ namespace Basis.Scripts.Avatar
                 BasisLocalHeightCalculator.CalculatePlayerHipHeight();
                 BasisHeightDriver.ApplyScaleAndHeight();
 
+                // The guess only misses when calibration assigned no hips/legs despite having trackers
+                // (or the reverse). Then follow the real assignment, as before.
+                if (BasisHeightDriver.ReleaseAutoResolution())
+                {
+                    BasisHeightDriver.ApplyScaleAndHeight();
+                }
+
                 OnFullBodyCalibrated?.Invoke();
             }
             finally
             {
+                BasisHeightDriver.ReleaseAutoResolution();
                 BasisCalibrationDebugRecorder.Flush();
+                // Sample the live solve for a few frames after the bind, so drift between the
+                // calibration capture and what the rig actually does afterwards shows up.
+                BasisCalibrationDebugRecorder.RuntimeBegin("fbt_post");
             }
         }
 
@@ -332,6 +356,63 @@ namespace Basis.Scripts.Avatar
                 && rig.TryGetFittedTposeLocalScaled(bone, out boneTpose);
         }
 
+        /// <summary>
+        /// Where calibration will attach <paramref name="role"/>, in the player-root frame: the avatar's
+        /// T-pose bone, anchored to the head's flattened facing (the same frame DriveTpose places the
+        /// root in), plus that head-aligned body rotation. Prefers the fitted rest skeleton, then the raw
+        /// load-time snapshot. Feet/toes sit on the floor. Reads only the head, so the virtual spine's
+        /// lagging torso yaw never leaks in. Shared by CalculateOffset and the T-pose lock-in guides so
+        /// what the guides show is exactly what a bind captures.
+        /// </summary>
+        public static bool TryGetCalibrationReference(BasisBoneTrackedRole role, out Vector3 localPosition, out Quaternion localRotation)
+        {
+            localPosition = Vector3.zero;
+            localRotation = Quaternion.identity;
+            BasisLocalPlayer player = BasisLocalPlayer.Instance;
+            BasisLocalBoneControl headControl = BasisLocalBoneDriver.HeadControl;
+            BasisLocalAvatarDriver avatarDriver = player != null ? player.LocalAvatarDriver : null;
+            if (headControl == null || avatarDriver == null)
+            {
+                return false;
+            }
+
+            var headWorld = headControl.OutgoingWorldData;
+            Vector3 headTpose, boneTpose;
+            if (!TryGetFittedTposePositions(role, out headTpose, out boneTpose))
+            {
+                // Anchor derived from the head (the same math DriveTpose uses to PLACE the avatar
+                // root), not read from the live root: reading the root is only valid in the instant
+                // after DriveTpose ran, and is wrong for captures outside a T-posed calibration
+                // (device-reconnect restores, T-pose-free calibration).
+                if (!BasisLocalAvatarDriver.HasTposeBoneSnapshot || !BasisLocalAvatarDriver.TposeBoneSnapshot.TryGetValue(role, out var bind))
+                {
+                    return false;
+                }
+                float avatarScale = avatarDriver.ScaleAvatarModification != null ? avatarDriver.ScaleAvatarModification.ApplyScale : 1f;
+                if (float.IsNaN(avatarScale) || float.IsInfinity(avatarScale) || avatarScale <= 1e-6f) avatarScale = 1f;
+                headTpose = headControl.TposeLocalScaled.position;
+                boneTpose = bind.position * avatarScale;
+            }
+
+            BasisCalibrationMath.ComputeTposeAnchor(headWorld.position, headWorld.rotation, headTpose, out Vector3 anchorPos, out Quaternion anchorRot);
+            Matrix4x4 playerToWorld = BasisLocalPlayer.localToWorldMatrix;
+            localPosition = playerToWorld.inverse.MultiplyPoint3x4(anchorPos + anchorRot * boneTpose);
+            localRotation = Quaternion.Inverse(playerToWorld.rotation) * anchorRot;
+            return true;
+        }
+
+        public static bool TryGetUnscaledHeadFromEye(out Vector3 headFromEye)
+        {
+            headFromEye = Vector3.zero;
+            BasisLocalBoneControl head = BasisLocalBoneDriver.HeadControl, eye = BasisLocalBoneDriver.EyeControl;
+            float deviceScale = BasisHeightDriver.DeviceScale;
+            if (head == null || eye == null || !head.HasTarget || head.Owner == null || head.Owner.Controls == null || head.TargetIndex >= head.Owner.Controls.Length || head.Owner.Controls[head.TargetIndex] != eye || head.HasTracked == BasisHasTracked.HasTracker || !(deviceScale > 1e-6f) || float.IsInfinity(deviceScale))
+            {
+                return false;
+            }
+            headFromEye = (Vector3)head.ScaledOffset / deviceScale;
+            return float.IsFinite(headFromEye.x) && float.IsFinite(headFromEye.y) && float.IsFinite(headFromEye.z);
+        }
         public static void ReprojectTrackerOffsetsForCurrentAvatar()
         {
             BasisLocalPlayer player = BasisLocalPlayer.Instance;
@@ -380,9 +461,17 @@ namespace Basis.Scripts.Avatar
                     boneTpose = fittedBoneTpose;
                 }
 
+                Vector3 calibratedHead = input.CalibratedUnscaledHeadPosition;
+                if (input.HasCalibratedHeadFromEye && TryGetUnscaledHeadFromEye(out Vector3 headFromEyeNow))
+                {
+                    calibratedHead += input.CalibratedUnscaledHeadRotation * (headFromEyeNow - input.CalibratedUnscaledHeadFromEye);
+                }
+                // Feet are re-derived from the head like every other tracker. Pinning them to Basis's
+                // floor (raw tracking y = 0) dragged them to the wrong height whenever an external tool
+                // (e.g. OVR Advanced Settings) moved the playspace floor.
                 BasisCalibrationMath.ReprojectInverseOffsetPosition(
                     input.CalibratedUnscaledPosition, input.CalibratedUnscaledRotation,
-                    input.CalibratedUnscaledHeadPosition, input.CalibratedUnscaledHeadRotation,
+                    calibratedHead, input.CalibratedUnscaledHeadRotation,
                     BasisHeightDriver.DeviceScale, BasisInput.OffsetCoords.position, BasisInput.OffsetCoords.rotation,
                     roleHeadTpose, boneTpose,
                     out Vector3 inverseOffsetPosition);
@@ -448,6 +537,21 @@ namespace Basis.Scripts.Avatar
             BasisLocalRigDriver.RecalibratedLeftShoulder = OffsetFromReference(s_refLeftShoulder, rootInv, Mapping.leftShoulder, BasisBoneTrackedRole.LeftShoulder, data.offsetRotationLeftShoulder);
             BasisLocalRigDriver.RecalibratedRightShoulder = OffsetFromReference(s_refRightShoulder, rootInv, Mapping.RightShoulder, BasisBoneTrackedRole.RightShoulder, data.offsetRotationRightShoulder);
             BasisLocalRigDriver.HasRecalibratedRotationOffsets = true;
+            foreach (KeyValuePair<BasisBoneTrackedRole, Quaternion> pair in BasisLimbRollStore.TrackerToBody)
+            {
+                BasisLimbRollStore.Set(pair.Key, pair.Value * PureBind(rootInv, LimbRollBone(Mapping, pair.Key), pair.Key));
+            }
+        }
+        static Transform LimbRollBone(Common.BasisTransformMapping mapping, BasisBoneTrackedRole role)
+        {
+            switch (role)
+            {
+                case BasisBoneTrackedRole.LeftLowerLeg: return mapping.LeftLowerLeg;
+                case BasisBoneTrackedRole.RightLowerLeg: return mapping.RightLowerLeg;
+                case BasisBoneTrackedRole.LeftLowerArm: return mapping.leftLowerArm;
+                case BasisBoneTrackedRole.RightLowerArm: return mapping.RightLowerArm;
+                default: return null;
+            }
         }
 
         // Avatar-bind-independent calibration reference: Inverse(boneSimOutgoing) * AnimatorRoot for a
@@ -805,6 +909,69 @@ namespace Basis.Scripts.Avatar
             return false;
         }
 
+        /// <summary>
+        /// Whether a device may compete for a full-body role in calibration. Shared by the classifier's
+        /// sample collection and <see cref="HasFbTrackerCandidates"/> so the two never disagree.
+        /// </summary>
+        private static bool IsFreeFbTrackerCandidate(BasisInput input, BasisInput hmdDevice)
+        {
+            // Screen-touch finger inputs aren't spatial trackers — they never populate
+            // UnscaledDeviceCoord, so they'd only trip the near-origin diagnostic.
+            if (input is BasisTouchInputDevice) return false;
+            // Hand-tracking software publishes its solved hands as roleless SteamVR trackers;
+            // they sit at hand height and would be scored into LowerArm/Shoulder.
+            if (BasisIgnoredCalibrationTrackers.ShouldIgnore(input)) return false;
+            // Never reassign the HMD itself — even if it has no role assigned, its
+            // position would otherwise score against Chest and we'd happily glue the
+            // headset to the player's torso.
+            if (input == hmdDevice) return false;
+
+            // Linked half of a tracker pair — the merged virtual midpoint device
+            // emits the sample for the pair, so the physical bases bail out here
+            // and never compete for a role on their own.
+            if (input.IsLinked) return false;
+
+            if (input.IgnoresPose || input.HasRoleOverride) return false;
+
+            // Devices the matcher pinned to a role (HMD, named hand controllers) keep
+            // their role no matter what.
+            if (input.DeviceMatchSettings != null && input.DeviceMatchSettings.HasTrackedRole) return false;
+
+            // Devices currently bound to a role that the user has not enabled for
+            // calibration (e.g. controllers acting as hands, or shoulders by default)
+            // are off-limits — only roles ticked in the bone editor participate.
+            if (input.TryGetRole(out BasisBoneTrackedRole existing))
+            {
+                if (existing == BasisBoneTrackedRole.CenterEye || existing == BasisBoneTrackedRole.Head) return false;
+                if (!Basis.BasisUI.BasisSettingsDefaults.IsRoleEnabledForCalibration(existing)) return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// True when at least one device will compete for a body role this calibration — in practice,
+        /// hips or legs end up tracked. Read before trackers are unassigned, to pin what Auto resolves to.
+        /// </summary>
+        private static bool HasFbTrackerCandidates()
+        {
+            BasisDeviceManagement manager = BasisDeviceManagement.Instance;
+            if (manager == null)
+            {
+                return false;
+            }
+            BasisObservableList<BasisInput> devices = manager.AllInputDevices;
+            int count = devices.Count;
+            for (int Index = 0; Index < count; Index++)
+            {
+                BasisInput input = devices[Index];
+                if (input != null && IsFreeFbTrackerCandidate(input, null))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private static List<TrackerSample> CollectFreeFbTrackerSamples(Vector3 bodyOrigin, Quaternion bodyRotInv, float eyeHeight, BasisInput hmdDevice)
         {
             List<TrackerSample> samples = new List<TrackerSample>(16);
@@ -818,35 +985,7 @@ namespace Basis.Scripts.Avatar
                     BasisDebug.LogError("Missing Input this should never occur!", BasisDebug.LogTag.IK);
                     continue;
                 }
-                // Screen-touch finger inputs aren't spatial trackers — they never populate
-                // UnscaledDeviceCoord, so they'd only trip the near-origin diagnostic below.
-                if (input is BasisTouchInputDevice) continue;
-                // Hand-tracking software publishes its solved hands as roleless SteamVR trackers;
-                // they sit at hand height and would be scored into LowerArm/Shoulder.
-                if (BasisIgnoredCalibrationTrackers.ShouldIgnore(input)) continue;
-                // Never reassign the HMD itself — even if it has no role assigned, its
-                // position would otherwise score against Chest and we'd happily glue the
-                // headset to the player's torso.
-                if (input == hmdDevice) continue;
-
-                // Linked half of a tracker pair — the merged virtual midpoint device
-                // emits the sample for the pair, so the physical bases bail out here
-                // and never compete for a role on their own.
-                if (input.IsLinked) continue;
-
-                if (input.IgnoresPose || input.HasRoleOverride) continue;
-
-                // Devices the matcher pinned to a role (HMD, named hand controllers) keep
-                // their role no matter what.
-                if (input.DeviceMatchSettings != null && input.DeviceMatchSettings.HasTrackedRole) continue;
-
-                // Devices currently bound to a role that the user has not enabled for
-                // calibration (e.g. controllers acting as hands, or shoulders by default)
-                // are off-limits — only roles ticked in the bone editor participate.
-                if (input.TryGetRole(out BasisBoneTrackedRole existing) && !Basis.BasisUI.BasisSettingsDefaults.IsRoleEnabledForCalibration(existing))
-                {
-                    continue;
-                }
+                if (!IsFreeFbTrackerCandidate(input, hmdDevice)) continue;
 
                 // UnassignFBTrackers() at the top of FullBodyCalibration already cleared any
                 // prior FB role; this is defensive in case a tracker came online late.
@@ -1205,10 +1344,9 @@ namespace Basis.Scripts.Avatar
             //    We store offsets in tracker-local space so they rotate with the tracker at runtime.
             //    Then BasisLocalRigDriver applies: hintPos = rawPos + rawRot * localOffset;
 
-            // Reference rotations of the T-posed chest/hips: derived from the head anchor + the
+            // Reference rotation of the T-posed hips: derived from the head anchor + the
             // load-time bind snapshot (pose-independent), falling back to the live bones — which are
             // only valid when the avatar is physically T-posed (the legacy no-snapshot path).
-            Quaternion chestRefRot = Quaternion.identity;
             Quaternion hipsRefRot = Quaternion.identity;
 
             BasisLocalBoneControl headAnchorControl = BasisLocalBoneDriver.HeadControl;
@@ -1216,10 +1354,6 @@ namespace Basis.Scripts.Avatar
             {
                 var headWorld = headAnchorControl.OutgoingWorldData;
                 BasisCalibrationMath.ComputeTposeAnchor(headWorld.position, headWorld.rotation, headAnchorControl.TposeLocalScaled.position, out _, out Quaternion anchorRot);
-                if (BasisLocalAvatarDriver.TposeBoneSnapshot.TryGetValue(BasisBoneTrackedRole.Chest, out var chestBind))
-                {
-                    chestRefRot = anchorRot * chestBind.rotation;
-                }
                 if (BasisLocalAvatarDriver.TposeBoneSnapshot.TryGetValue(BasisBoneTrackedRole.Hips, out var hipsBind))
                 {
                     hipsRefRot = anchorRot * hipsBind.rotation;
@@ -1227,11 +1361,6 @@ namespace Basis.Scripts.Avatar
             }
             else
             {
-                if (storedRoleTransforms.TryGetValue(BasisBoneTrackedRole.Chest, out var chestT) && chestT != null)
-                {
-                    chestRefRot = chestT.rotation;
-                }
-
                 if (storedRoleTransforms.TryGetValue(BasisBoneTrackedRole.Hips, out var hipsT) && hipsT != null)
                 {
                     hipsRefRot = hipsT.rotation;
@@ -1246,22 +1375,12 @@ namespace Basis.Scripts.Avatar
                 ? 1f
                 : renderedEyeHeight / BasisHeightDriver.FallbackHeightInMeters;
             float kneePush = 0.10f * hs;
-            float headPush = 0.08f * hs;
 
             // Optional clamp so calibration can never store insane offsets
             float maxPush = 0.25f * hs;
-            // Chest-as-head-hint bias (push "up" in chest frame)
-            {
-                var chestCtrl = BasisLocalBoneDriver.ChestControl;
-                Quaternion trackerRot = chestCtrl.OutgoingWorldData.rotation;
-
-                Vector3 worldUp = chestRefRot * Vector3.up;
-                Vector3 localUp = Quaternion.Inverse(trackerRot) * worldUp;
-                Vector3 localOffset = (localUp.sqrMagnitude < 1e-8f ? Vector3.up : localUp.normalized) * headPush;
-                localOffset = Vector3.ClampMagnitude(localOffset, maxPush);
-
-                BasisHintBiasStore.Set(BasisBoneTrackedRole.Chest, localOffset);
-            }
+            // No chest bias: the chest tracker is a position target for the spine solve, not a hint.
+            // A baked "up" push lifted the target off the calibrated chest while hips and head stayed
+            // pinned, so the spine bowed (usually backward) to keep its bone lengths.
             // Knee hints (lower legs) — often better with a touch of forward
             {
                 var lll = BasisLocalBoneDriver.LeftLowerLegControl;
@@ -1278,9 +1397,6 @@ namespace Basis.Scripts.Avatar
 
                     if (lll.HasTracked == BasisHasTracked.HasTracker)
                     {
-                        BasisBendNormalStore.Set(BasisBoneTrackedRole.LeftLowerLeg,
-                            Basis.IK.BasisTrackerBendNormalCore.CaptureLocalAxis(trackerRot, hipsRefRot * Vector3.right));
-
                         CaptureLimbRoll(storedRoleTransforms, BasisBoneTrackedRole.LeftLowerLeg, trackerRot);
                     }
                 }
@@ -1299,9 +1415,6 @@ namespace Basis.Scripts.Avatar
 
                     if (rll.HasTracked == BasisHasTracked.HasTracker)
                     {
-                        BasisBendNormalStore.Set(BasisBoneTrackedRole.RightLowerLeg,
-                            Basis.IK.BasisTrackerBendNormalCore.CaptureLocalAxis(trackerRot, hipsRefRot * Vector3.right));
-
                         CaptureLimbRoll(storedRoleTransforms, BasisBoneTrackedRole.RightLowerLeg, trackerRot);
                     }
                 }
@@ -1336,7 +1449,11 @@ namespace Basis.Scripts.Avatar
         {
             if (storedRoleTransforms.TryGetValue(role, out Transform bone) && bone != null)
             {
-                BasisLimbRollStore.Set(role, Quaternion.Inverse(trackerWorldRot) * bone.rotation);
+                Quaternion trackerToBone = Quaternion.Inverse(trackerWorldRot) * bone.rotation;
+                Common.BasisTransformMapping mapping = BasisLocalAvatarDriver.Mapping;
+                Quaternion rootInv = mapping.HasAnimatorRoot ? Quaternion.Inverse(mapping.AnimatorRoot.rotation) : Quaternion.identity;
+                BasisLimbRollStore.Set(role, trackerToBone);
+                BasisLimbRollStore.TrackerToBody[role] = trackerToBone * Quaternion.Inverse(PureBind(rootInv, bone, role));
             }
         }
         // Helper local function to compute a tracker-local offset vector that points "up and out"
