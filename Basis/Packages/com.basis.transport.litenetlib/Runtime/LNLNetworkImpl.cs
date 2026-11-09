@@ -131,9 +131,16 @@ namespace Basis.Network.Core
             return new LNLNetPeer(request.Accept());
         }
 
+        NetPeer ConnectionRequest.AcceptAwaitingSeal()
+        {
+            BasisPeerCipherLayer layer = new BasisPeerCipherLayer();
+            LiteNetLib.NetPeer accepted = request.Accept(layer);
+            return accepted != null && ReferenceEquals(accepted.InboundPacketLayer, layer) ? new LNLNetPeer(accepted) : null;
+        }
+
         void ConnectionRequest.Reject(NetDataWriter w)
         {
-            request.Reject(w.Data, 0, w.Length, false);
+            request.Reject(w.Data, 0, w.Length, true);
         }
     }
 
@@ -164,6 +171,25 @@ namespace Basis.Network.Core
         {
             get => peer.Tag;
             set => peer.Tag = value;
+        }
+
+        bool NetPeer.SealOutbound(byte[] key)
+        {
+            if (peer.OutboundPacketLayer is BasisPeerCipherLayer reserved && !reserved.HasKey) reserved.SetKey(key);
+            else peer.SetOutboundPacketLayer(new BasisPeerCipherLayer(key));
+            return true;
+        }
+
+        bool NetPeer.RequireSealedInbound(byte[] key)
+        {
+            if (peer.InboundPacketLayer is BasisPeerCipherLayer pending && !pending.HasKey) pending.SetKey(key);
+            else peer.SetInboundPacketLayer(new BasisPeerCipherLayer(key));
+            return true;
+        }
+
+        void NetPeer.ExpectSealedOutbound()
+        {
+            if (peer.OutboundPacketLayer == null) peer.SetOutboundPacketLayer(new BasisPeerCipherLayer());
         }
 
         void NetPeer.Disconnect()
@@ -199,6 +225,11 @@ namespace Basis.Network.Core
         void NetPeer.SendUnreliableRawMerge(byte[] data, int offset, int length, byte channelNumber, int patchOffset, byte patchValue)
         {
             peer.SendUnreliableRawMerge(data, offset, length, channelNumber, patchOffset, patchValue);
+        }
+
+        void NetPeer.SendUnreliableRawMergeBatch(UnreliableRawSend[] sends, int count)
+        {
+            peer.SendUnreliableRawMergeBatch(sends, count);
         }
 
         public override bool Equals(object obj)
@@ -296,6 +327,43 @@ namespace Basis.Network.Core
                 PacketPoolSizePerPeer = lnl.PacketPoolSizePerPeer,
                 PacketPoolSizeMax = lnl.PacketPoolSizeMax
             };
+            ConnectGate = new BasisConnectAttemptGate(Math.Max(0.000001, lnl.ConnectAttemptsPerAddressPerSecond), lnl.ConnectAttemptBurstPerAddress);
+            ApplyProtection(lnl);
+            lock (live) live.Add(new WeakReference<LNLNetManager>(this));
+        }
+        public BasisConnectAttemptGate ConnectGate;
+        public static Func<bool> ConnectCookiePressure;
+        private static readonly System.Collections.Generic.List<WeakReference<LNLNetManager>> live = new System.Collections.Generic.List<WeakReference<LNLNetManager>>();
+        public static void ApplyProtectionToAll()
+        {
+            LNLTransportConfig lnl = BasisTransportConfigStore.Get<LNLTransportConfig>(BasisNetworkStackRegistry.LiteNetLibId);
+            lock (live)
+            {
+                live.RemoveAll(reference => !reference.TryGetTarget(out _));
+                foreach (WeakReference<LNLNetManager> reference in live)
+                {
+                    if (reference.TryGetTarget(out LNLNetManager target)) target.ApplyProtection(lnl);
+                }
+            }
+        }
+        public void ApplyProtection(LNLTransportConfig lnl)
+        {
+            if (manager == null || lnl == null) return;
+            if (lnl.ConnectAttemptsPerAddressPerSecond > 0)
+            {
+                ConnectGate.Configure(lnl.ConnectAttemptsPerAddressPerSecond, lnl.ConnectAttemptBurstPerAddress);
+                manager.ConnectRequestFilter = ConnectGate.TryAdmit;
+            }
+            else
+            {
+                manager.ConnectRequestFilter = null;
+            }
+            manager.MaxHeldFragmentBytesPerPeer = lnl.MaxHeldFragmentMegabytesPerPeer > 0 ? (int)Math.Min(int.MaxValue, lnl.MaxHeldFragmentMegabytesPerPeer * 1024L * 1024L) : int.MaxValue;
+            manager.MaxQueuedChannelBytesPerPeer = lnl.MaxQueuedReliableMegabytesPerPeer > 0 ? lnl.MaxQueuedReliableMegabytesPerPeer * 1024L * 1024L : 0;
+            manager.ShutdownLingerMs = lnl.ShutdownLingerMs > 0 ? lnl.ShutdownLingerMs : lnl.DisconnectTimeout;
+            manager.ConnectCookieMode = lnl.ConnectCookieMode;
+            manager.ConnectCookieAutoRequestsPerSecond = lnl.ConnectCookieAutoRequestsPerSecond;
+            manager.ConnectCookiePressure = () => ConnectCookiePressure?.Invoke() ?? false;
         }
         public void Start(IPAddress IPv4Address, IPAddress IPv6Address, int SetPort)
         {

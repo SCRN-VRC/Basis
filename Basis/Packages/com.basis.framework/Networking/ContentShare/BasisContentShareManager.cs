@@ -1,6 +1,7 @@
 using Unity.Scripting.LifecycleManagement;
 using Basis.BasisUI;
 using Basis.Network.Core;
+using Basis.Scripts.BasisSdk.Players;
 using Basis.Scripts.Device_Management;
 using Basis.Scripts.Device_Management.Devices;
 using Basis.Scripts.Drivers;
@@ -92,6 +93,21 @@ public static partial class BasisContentShareManager
             return;
         }
         await PlaceAndDrop(connectionString, string.Empty, ContentShareType.Server);
+    }
+
+    public static async void DropPortal(string connectionString, int lifetimeSeconds, ContentSharePortal.Style style = ContentSharePortal.Style.Orb)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString) || connectionString.Length > ContentSharePayload.MaxTextLength)
+        {
+            BasisDebug.LogError("Cannot drop a portal without a destination.", BasisDebug.LogTag.Networking);
+            return;
+        }
+        if (!BasisNetworkModeration.LocalPlayerHasNode(BasisPermissions.PermNodes.ContentSharePortal))
+        {
+            BasisDebug.LogWarning("Cannot drop a portal: missing the portal permission on this server.", BasisDebug.LogTag.Networking);
+            return;
+        }
+        await PlaceAndDrop(connectionString, ContentSharePortal.WriteLifetime(lifetimeSeconds, style), ContentShareType.Portal);
     }
 
     /// <summary>
@@ -262,6 +278,7 @@ public static partial class BasisContentShareManager
                 orbKey = WorldOrb;
                 break;
             case ContentShareType.Server:
+            case ContentShareType.Portal:
                 orbKey = ServerOrb;
                 break;
             default:
@@ -320,7 +337,7 @@ public static partial class BasisContentShareManager
 
                 string sphereId = msg.SphereNetID;
                 string shareDetail = string.Empty;
-                if (msg.ContentType == ContentShareType.Server && !string.IsNullOrEmpty(msg.ContentURL))
+                if ((msg.ContentType == ContentShareType.Server || msg.ContentType == ContentShareType.Portal) && !string.IsNullOrEmpty(msg.ContentURL))
                 {
                     int passwordSeparator = msg.ContentURL.IndexOf('#');
                     shareDetail = passwordSeparator >= 0 ? msg.ContentURL.Substring(0, passwordSeparator) : msg.ContentURL;
@@ -333,8 +350,9 @@ public static partial class BasisContentShareManager
                 {
                     Id = sphereId,
                     Kind = ToShareableKind(msg.ContentType),
-                    Title = shareDetail,
-                    SharerName = serverMsg.SharerDisplayName,
+                    // From the sharer's client; the Library renders it as rich text.
+                    Title = BasisContentShareText.Plain(shareDetail),
+                    SharerName = Sphere.CreatorSafeDisplayName,
                     Protected = serverMsg.SharerProtected,
                     Actions = RemoveActions(sphereId, Sphere),
                 });
@@ -350,6 +368,8 @@ public static partial class BasisContentShareManager
         if (BasisNetworkConnection.TryGetLocalPlayerID(out ushort localId) && localId == sharerId) return true;
         return !sharerProtected && !BasisNetworkModeration.GlobalContentRemovalLocked;
     }
+
+    public static bool IsLocalSharer(ushort localId, string localUuid, ushort sharerId, string sharerUuid) => localId == sharerId && string.Equals(localUuid, sharerUuid, StringComparison.Ordinal);
 
     private static List<BasisShareableAction> RemoveActions(string sphereId, BasisContentSphere sphere)
     {
@@ -425,7 +445,8 @@ public static partial class BasisContentShareManager
             case ContentShareType.Avatar: return BasisShareableKind.Avatar;
             case ContentShareType.Prop: return BasisShareableKind.Prop;
             case ContentShareType.World: return BasisShareableKind.World;
-            case ContentShareType.Server: return BasisShareableKind.Server;
+            case ContentShareType.Server:
+            case ContentShareType.Portal: return BasisShareableKind.Server;
             default:
                 return BasisContentSharePayloadRegistry.TryGet(type, out BasisContentSharePayloadKind kind)
                     ? kind.ShareableKind

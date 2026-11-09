@@ -81,6 +81,20 @@ namespace Basis.Network.Core
         public NetPeer Accept();
         public NetDataReader Data { get; }
         public IPEndPoint RemoteEndPoint { get; }
+        public NetPeer AcceptAwaitingSeal() => null;
+        public string VerifiedIdentity => null;
+    }
+
+    /// <summary>One entry of <see cref="NetPeer.SendUnreliableRawMergeBatch"/>; fields mean what the
+    /// matching <see cref="NetPeer.SendUnreliableRawMerge"/> parameters do.</summary>
+    public struct UnreliableRawSend
+    {
+        public byte[] Data;
+        public int Offset;
+        public int Length;
+        public byte Channel;
+        public byte PatchValue;
+        public int PatchOffset;
     }
 
     public interface NetPeer
@@ -91,6 +105,21 @@ namespace Basis.Network.Core
         public void Send(byte[] data, byte channelNumber, DeliveryMethod deliveryMethod);
         public void Send(NetDataWriter data, byte channelNumber, DeliveryMethod deliveryMethod);
         public void SendUnreliableRawMerge(byte[] data, int offset, int length, byte channelNumber, int patchOffset = -1, byte patchValue = 0);
+
+        /// <summary>
+        /// <paramref name="count"/> unreliable raw sends from <paramref name="sends"/>, with the same
+        /// delivery as calling <see cref="SendUnreliableRawMerge"/> once per entry in order. A
+        /// transport may override it to queue the whole run as one unit instead of one per message.
+        /// </summary>
+        public void SendUnreliableRawMergeBatch(UnreliableRawSend[] sends, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                ref UnreliableRawSend s = ref sends[i];
+                SendUnreliableRawMerge(s.Data, s.Offset, s.Length, s.Channel, s.PatchOffset, s.PatchValue);
+            }
+        }
+
         public int GetPacketsCountInQueue(byte channel, DeliveryMethod deliveryMethod);
         public int Id { get; }
         public IPAddress Address { get; }
@@ -109,6 +138,23 @@ namespace Basis.Network.Core
         public string StackId => BasisNetworkStackRegistry.LiteNetLibId;
 
         public bool SupportsDirectConnect => true;
+
+        /// <summary>
+        /// Seals everything sent to this peer with <paramref name="key"/> from now on.
+        /// False when the transport cannot, in which case nothing changed.
+        /// </summary>
+        public bool SealOutbound(byte[] key) => false;
+
+        /// <summary>
+        /// Drops user data from this peer that is not sealed with <paramref name="key"/>, from now on,
+        /// and once a sealed message has arrived, anything unsealed at all.
+        /// False when the transport cannot, in which case nothing changed.
+        /// </summary>
+        public bool RequireSealedInbound(byte[] key) => false;
+
+        public void ExpectSealedOutbound()
+        {
+        }
 
         // public readonly NetStatistics Statistics;
     }

@@ -1,3 +1,4 @@
+using Unity.Scripting.LifecycleManagement;
 using System.Collections.Generic;
 using Basis;
 using Basis.Scripts.Settings;
@@ -7,6 +8,7 @@ using Basis.Scripts.Settings;
 /// rather than the framework's BasisSettingsDefaults. Values live in the
 /// user's settings file and are never world content.
 /// </summary>
+[NoAutoStaticsCleanup]
 public static class BasisMediaSettings
 {
     /// <summary>Stored value of <see cref="DecodePreference"/> for
@@ -65,6 +67,12 @@ public static class BasisMediaSettings
     /// which every session reads when it opens.</summary>
     public static BasisSettingsBinding<string> DecodePreference =
         new("mediaplayerdecodepreference", new BasisPlatformDefault<string>(DecodeHardwareWithFallback));
+
+    public static BasisSettingsBinding<bool> ClipAcceptShared =
+        new("mediaclipacceptshared", new BasisPlatformDefault<bool>(true));
+
+    public static BasisSettingsBinding<float> ClipVolume =
+        new("mediaclipvolume", new BasisPlatformDefault<float>(1f));
 
     /// <summary>Touches the binding so the static constructor runs, then pushes
     /// the stored decode preference into the engine.</summary>

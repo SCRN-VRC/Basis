@@ -138,7 +138,7 @@ namespace UnityEngine.Rendering.Universal
             _destroyedMeshesThisFrame.Clear();
         }
 
-        void UpdateMeshRenderers(NativeArray<EntityId> transformChangedIds, NativeArray<Matrix4x4> transformChangedLocalToWorlds, IEnumerable<Object> changed, IEnumerable<EntityId> destroyed, SurfaceCacheWorld world)
+        void UpdateMeshRenderers(NativeArray<EntityId> transformChangedIds, NativeArray<Matrix4x4> transformChangedLocalToWorlds, IReadOnlyList<Object> changed, NativeArray<EntityId> destroyed, SurfaceCacheWorld world)
         {
             using var _ = k_GameObjectInstanceUpdateMarker.Auto();
 
@@ -158,9 +158,9 @@ namespace UnityEngine.Rendering.Universal
                 }
             }
 
-            foreach (var component in changed)
+            for (int i = 0; i < changed.Count; i++)
             {
-                var source = new MeshRendererSource((MeshRenderer)component);
+                var source = new MeshRendererSource((MeshRenderer)changed[i]);
                 _meshRenderers.Refresh(source, _sharedMaterials, world, _renderingLayerMaskFilter);
             }
 
@@ -175,28 +175,30 @@ namespace UnityEngine.Rendering.Universal
             foreach (var record in transformChanged)
                 _entityInstances.UpdateTransform(record.Key, record.LocalToWorld, world);
 
-            foreach (var record in changed)
-                _entityInstances.Refresh(_entityInstances.CreateSource(record, materials), _sharedMaterials, world, _renderingLayerMaskFilter);
-
+            // Remove before adding: an entity that stopped and then resumed being tracked since the last drain has a
+            // destroy and a newer record, and the record must win.
             foreach (var key in destroyed)
                 _entityInstances.TryRemove(key, _sharedMaterials, world);
+
+            foreach (var record in changed)
+                _entityInstances.Refresh(_entityInstances.CreateSource(record, materials), _sharedMaterials, world, _renderingLayerMaskFilter);
         }
 
 #if ENABLE_TERRAIN_MODULE
-        void UpdateTerrains(IEnumerable<Component> transformChanged, IEnumerable<Object> changed, IEnumerable<EntityId> destroyed, IEnumerable<Object> terrainDataChanged, SurfaceCacheWorld world)
+        void UpdateTerrains(IReadOnlyList<Component> transformChanged, IReadOnlyList<Object> changed, NativeArray<EntityId> destroyed, IReadOnlyList<Object> terrainDataChanged, SurfaceCacheWorld world)
         {
             using var _ = k_GameObjectTerrainUpdateMarker.Auto();
 
             Debug.Assert(_dirtyTerrainDataThisFrame.Count == 0);
 
-            foreach (var obj in terrainDataChanged)
-                _dirtyTerrainDataThisFrame.Add(((TerrainData)obj).GetEntityId());
+            for (int i = 0; i < terrainDataChanged.Count; i++)
+                _dirtyTerrainDataThisFrame.Add(((TerrainData)terrainDataChanged[i]).GetEntityId());
 
-            foreach (var component in transformChanged)
-                _terrains.Refresh((Terrain)component, _sharedMaterials, world, true, _renderingLayerMaskFilter);
+            for (int i = 0; i < transformChanged.Count; i++)
+                _terrains.Refresh((Terrain)transformChanged[i], _sharedMaterials, world, true, _renderingLayerMaskFilter);
 
-            foreach (var component in changed)
-                _terrains.Refresh((Terrain)component, _sharedMaterials, world, false, _renderingLayerMaskFilter);
+            for (int i = 0; i < changed.Count; i++)
+                _terrains.Refresh((Terrain)changed[i], _sharedMaterials, world, false, _renderingLayerMaskFilter);
 
             foreach (var entityId in destroyed)
                 _terrains.TryRemove(entityId, _sharedMaterials, world);
@@ -249,15 +251,15 @@ namespace UnityEngine.Rendering.Universal
             }
         }
 
-        void UpdateLights(IEnumerable<Component> transformChanged, IEnumerable<Object> changed, IEnumerable<EntityId> destroyed, SurfaceCacheWorld world)
+        void UpdateLights(IReadOnlyList<Component> transformChanged, IReadOnlyList<Object> changed, NativeArray<EntityId> destroyed, SurfaceCacheWorld world)
         {
             using var _ = k_GameObjectLightUpdateMarker.Auto();
 
-            foreach (var component in transformChanged)
-                _lights.Refresh((Light)component, world, _renderingLayerMaskFilter);
+            for (int i = 0; i < transformChanged.Count; i++)
+                _lights.Refresh((Light)transformChanged[i], world, _renderingLayerMaskFilter);
 
-            foreach (var component in changed)
-                _lights.Refresh((Light)component, world, _renderingLayerMaskFilter);
+            for (int i = 0; i < changed.Count; i++)
+                _lights.Refresh((Light)changed[i], world, _renderingLayerMaskFilter);
 
             foreach (var entityId in destroyed)
                 _lights.TryRemove(entityId, world);

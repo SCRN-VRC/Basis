@@ -236,6 +236,8 @@ public static partial class BasisCameraSettingsReadout
         Row("camera.senderName", "<noparse>" + settings.streamSenderName + "</noparse>");
         Row("camera.directToScreen", OnOff(settings.directToScreen));
         Row("camera.directToScreen.fit", BasisLocalization.Get(BasisCameraDirectToScreen.FitKeys[(int)BasisCameraDirectToScreen.SanitizeFit(settings.directToScreenFit)]));
+        Row("camera.directToScreen.display", BasisCameraDirectToScreen.DisplayLabel(BasisCameraDirectToScreen.SanitizeDisplay(settings.directToScreenDisplay)));
+        AppendRenderPasses(settings);
 
         Section("camera.gif");
         Row("camera.gif.length", Number(settings.gifDurationSeconds) + " s");
@@ -443,7 +445,7 @@ public static partial class BasisCameraSettingsReadout
     }
 
     private static string GiModeLabel(int mode) =>
-        BasisLocalization.Get(mode == 1 ? "settings.graphics.gi.mode.rayTraced" : "settings.graphics.gi.mode.screenSpace");
+        BasisLocalization.Get(mode == 1 ? "settings.graphics.gi.mode.rayTraced" : "settings.graphics.gi.mode.radianceCascades");
 
     private static string GiLayersLabel(int layers)
     {

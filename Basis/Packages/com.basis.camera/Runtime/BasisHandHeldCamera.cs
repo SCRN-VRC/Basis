@@ -126,6 +126,7 @@ public partial class BasisHandHeldCamera : BasisHandHeldCameraInteractable
         BasisCullingCameraRegistry.Unregister(captureCamera);
         BasisMirrorViewerRegistry.Unregister(captureCamera);
         ShutdownDirectToScreen();
+        ReleaseRenderPasses();
         BasisCameraRenderTargets.Release(ref renderTexture);
         ReleaseFocusPeaking();
         ReleaseViewfinderGrid();
@@ -170,7 +171,9 @@ public partial class BasisHandHeldCamera : BasisHandHeldCameraInteractable
         captureCamera.forceIntoRenderTexture = true;
         captureCamera.allowHDR = true;
         captureCamera.allowMSAA = true;
+#pragma warning disable 618
         captureCamera.useOcclusionCulling = true;
+#pragma warning restore 618
         captureCamera.usePhysicalProperties = true;
         captureCamera.targetTexture = renderTexture;
         captureCamera.targetDisplay = 1;
@@ -186,11 +189,13 @@ public partial class BasisHandHeldCamera : BasisHandHeldCameraInteractable
     {
         TickDirectToScreen();
         UpdateRenderGate();
+        TickRenderPasses();
         TickBody();
         TickAutoBrightness();
         TickFocusPeaking();
         TickViewfinderGrid();
         TickVideoOutput();
+        TickPassOutputs();
         TickGifRecorder();
         TickVideoRecorder();
         TickPhotogrammetry();

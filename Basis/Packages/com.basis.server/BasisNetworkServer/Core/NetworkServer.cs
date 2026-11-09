@@ -23,6 +23,9 @@ public static class NetworkServer
     public static NetManager Server;
     public static ConcurrentDictionary<int, NetPeer> AuthenticatedPeers = new();
     public static readonly object AuthenticatedPeerTag = new object();
+    private static readonly byte[] PeerCapabilities = new byte[ushort.MaxValue + 1];
+    public static void SetPeerCapabilities(NetPeer peer, byte capabilities) { if (peer != null && (uint)peer.Id < (uint)PeerCapabilities.Length) PeerCapabilities[peer.Id] = capabilities; }
+    public static bool PeerHasCapability(NetPeer peer, byte capability) => peer != null && (uint)peer.Id < (uint)PeerCapabilities.Length && (PeerCapabilities[peer.Id] & capability) != 0;
     public static Configuration Configuration;
     /// <summary>
     /// Allow-list consulted at <see cref="BasisServerHandle.BasisServerHandleEvents.OnNetworkAccepted"/>
@@ -77,6 +80,27 @@ public static class NetworkServer
     public static IAuth Auth;
     public static IAuthIdentity AuthIdentity;
     public static int HighQualityLength;
+    public static event Action<Configuration> ServerStarted;
+    public static event Action<Configuration> ConfigurationApplied;
+    public static event Action ServerStopping;
+    private static void Raise(Action<Configuration> handlers, Configuration configuration)
+    {
+        if (handlers == null) return;
+        foreach (Action<Configuration> handler in handlers.GetInvocationList())
+        {
+            try { handler(configuration); }
+            catch (Exception ex) { BNL.LogError($"NetworkServer handler {handler.Method.DeclaringType?.FullName}.{handler.Method.Name} failed: {ex.Message}"); }
+        }
+    }
+    private static void Raise(Action handlers)
+    {
+        if (handlers == null) return;
+        foreach (Action handler in handlers.GetInvocationList())
+        {
+            try { handler(); }
+            catch (Exception ex) { BNL.LogError($"NetworkServer handler {handler.Method.DeclaringType?.FullName}.{handler.Method.Name} failed: {ex.Message}"); }
+        }
+    }
     #region Server Entry Point
 
     public static bool StartServer(Configuration configuration)
@@ -103,7 +127,10 @@ public static class NetworkServer
         BasisNetworkServer.Security.BasisAvatarScaleLimitManager.InitializeFromConfig(configuration);
         BasisNetworkServer.Security.BasisLocomotionPolicyManager.InitializeFromConfig(configuration);
         BasisNetworkServer.Security.BasisResourceLimitManager.InitializeFromConfig(configuration);
+        BasisNetworkServer.Security.BasisServerProtectionSettings.RegisterAll();
+        BasisNetworkServer.Security.BasisServerProtectionSettings.ApplyLive(configuration);
         if (!SetupServer(configuration)) return false;
+        BasisNetworkServer.Storage.BasisServerStorage.Start(configuration);
         SubscribeEvents(Configuration);
 
         if (configuration.EnableStatistics)
@@ -116,12 +143,14 @@ public static class NetworkServer
         BasisNetworkContentShare.StartExpiry();
 
         BNL.Log("Server Worker Threads Booted");
+        Raise(ServerStarted, configuration);
         return true;
     }
 
     public static void StopServer()
     {
         if (Server == null) return;
+        Raise(ServerStopping);
         try
         {
             Server.Stop();
@@ -133,6 +162,7 @@ public static class NetworkServer
         BasisNetworkUdpDropMonitor.Stop();
         BasisServerMemoryReclaim.Stop();
         BasisNetworkContentShare.StopExpiry();
+        BasisNetworkServer.Storage.BasisServerStorage.Stop();
         // StartServer builds a fresh AuthIdentity; without this the old one stays subscribed to
         // the static OnAuthReceived event — pinned forever, and handling every auth packet twice.
         // Left non-null so a straggling disconnect event can still resolve UUIDs while stopping.
@@ -148,6 +178,7 @@ public static class NetworkServer
         BasisNetworkContentShare.Reset();
         BasisNetworkPIPCamera.Reset();
         Basis.Network.Server.Generic.BasisNetworkImageCache.Reset();
+        Basis.Network.Server.Generic.BasisNetworkClipCache.Reset();
         Basis.Network.Server.Generic.BasisImageBandwidthGovernor.Reset();
         BasisNetworkServer.BasisServerP2PBroker.Reset();
     }
@@ -234,6 +265,9 @@ public static class NetworkServer
         BasisNetworkServer.Security.BasisAvatarScaleLimitManager.InitializeFromConfig(Configuration);
         BasisNetworkServer.Security.BasisLocomotionPolicyManager.InitializeFromConfig(Configuration);
         BasisNetworkServer.Security.BasisResourceLimitManager.InitializeFromConfig(Configuration);
+        BasisNetworkServer.Storage.BasisServerStorage.ApplyConfiguration(Configuration);
+        BasisNetworkServer.Security.BasisServerProtectionSettings.RegisterAll();
+        BasisNetworkServer.Security.BasisServerProtectionSettings.ApplyLive(Configuration);
 
         if (Server == null) return;
 
@@ -244,6 +278,7 @@ public static class NetworkServer
         BasisNetworkServer.Security.BasisAvatarScaleLimitManager.BroadcastState();
         BasisNetworkServer.Security.BasisLocomotionPolicyManager.BroadcastState();
         BasisNetworkServer.Security.BasisResourceLimitManager.BroadcastState();
+        Raise(ConfigurationApplied, Configuration);
     }
 
     private static void InitializeAuth()

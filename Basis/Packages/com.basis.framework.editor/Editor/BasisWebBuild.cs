@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using Basis.Editor.Localization;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Build;
@@ -9,18 +10,18 @@ using UnityEditor.Build;
 using UnityEditor.Build.Player;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
-using UnityEngine.Rendering;
 
 public static class BasisWebBuild
 {
     private const string ScriptCheckOutput = "Temp/BasisWebScriptCheck";
     private const int Wasm64MaximumMemoryMegabytes = 16384;
-    private static readonly string[] WebDefines = { "SETTINGS_MANAGER_UNIVERSAL", "USE_INPUT_SYSTEM_POSE_CONTROL", "USE_STICK_CONTROL_THUMBSTICKS", "AUDIOLINK", "AUDIOLINK_V1", "BASIS_FRAMEWORK_EXISTS", "LITENETLIB_SPANS", "Basis_VOLUMETRIC_SUPPORTED", "BASIS_DISABLE_MICROPHONE" };
+    private static readonly string[] WebDefines = { "SETTINGS_MANAGER_UNIVERSAL", "USE_INPUT_SYSTEM_POSE_CONTROL", "USE_STICK_CONTROL_THUMBSTICKS", "AUDIOLINK", "AUDIOLINK_V1", "BASIS_FRAMEWORK_EXISTS", "LITENETLIB_SPANS", "Basis_VOLUMETRIC_SUPPORTED" };
+    private static readonly string[] RemovedWebDefines = { "BASIS_DISABLE_MICROPHONE" };
 
     [MenuItem("Basis/Build/Web Player")]
     private static void BuildFromMenu()
     {
-        string folder = EditorUtility.SaveFolderPanel("Web player output folder", Directory.GetCurrentDirectory(), "WebBuild");
+        string folder = EditorUtility.SaveFolderPanel(BasisEditorLocalization.Get("editor.webBuild.outputFolderTitle"), Directory.GetCurrentDirectory(), "WebBuild");
         if (string.IsNullOrEmpty(folder)) return;
         Build(folder);
     }
@@ -29,14 +30,17 @@ public static class BasisWebBuild
     private static void CheckFromMenu()
     {
         int compiled = CompileScripts();
-        EditorUtility.DisplayDialog("Web player scripts", compiled > 0 ? $"{compiled} assemblies compiled for the web player." : "The web player scripts failed to compile. The errors are in the console.", "OK");
+        EditorUtility.DisplayDialog(BasisEditorLocalization.Get("editor.webBuild.scriptsTitle"), compiled > 0 ? BasisEditorLocalization.Get("editor.webBuild.scriptsCompiled", compiled) : BasisEditorLocalization.Get("editor.webBuild.scriptsFailed"), BasisEditorLocalization.Get("editor.common.ok"));
     }
 
     public static void BuildWeb()
     {
         string buildPath = GetArgument("customBuildPath");
         if (string.IsNullOrWhiteSpace(buildPath)) throw new BuildFailedException("Required command line argument '-customBuildPath' was not provided.");
+        string version = GetArgument("buildVersion");
+        if (!string.IsNullOrWhiteSpace(version) && version != "none") PlayerSettings.bundleVersion = version;
         Build(buildPath, Array.IndexOf(Environment.GetCommandLineArgs(), "-webStackTraces") >= 0);
+        Console.WriteLine("Build succeeded!");
     }
 
     public static void CheckWebScripts()
@@ -63,10 +67,9 @@ public static class BasisWebBuild
         PlayerSettings.WebGL.maximumMemorySize = Wasm64MaximumMemoryMegabytes;
         PlayerSettings.WebGL.threadsSupport = false;
         PlayerSettings.WebGL.powerPreference = WebGLPowerPreference.HighPerformance;
-        PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.WebGL, false);
-        PlayerSettings.SetGraphicsAPIs(BuildTarget.WebGL, new[] { GraphicsDeviceType.WebGPU });
+        BasisWebGraphicsAPIs.Apply();
         PlayerSettings.GetScriptingDefineSymbols(NamedBuildTarget.WebGL, out string[] defines);
-        string[] webDefines = defines.Union(WebDefines).ToArray();
+        string[] webDefines = defines.Except(RemovedWebDefines).Union(WebDefines).ToArray();
         if (!webDefines.SequenceEqual(defines)) PlayerSettings.SetScriptingDefineSymbols(NamedBuildTarget.WebGL, webDefines);
     }
 
@@ -92,14 +95,21 @@ public static class BasisWebBuild
             }
             addressableSettings.BuildAddressablesWithPlayerBuild = AddressableAssetSettings.PlayerBuildOption.DoNotBuildWithPlayer;
         }
+        string spatializer = AudioSettings.GetSpatializerPluginName();
         try
         {
+            if (!string.IsNullOrEmpty(spatializer))
+            {
+                AudioSettings.SetSpatializerPluginName(null);
+                Debug.Log($"[BasisWebBuild] spatializer '{spatializer}' cleared for the web player, Unity's built-in 3D audio is used there");
+            }
             BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions { scenes = EditorBuildSettings.scenes.Where(scene => scene.enabled).Select(scene => scene.path).ToArray(), locationPathName = buildPath, target = BuildTarget.WebGL, targetGroup = BuildTargetGroup.WebGL, options = BuildOptions.None });
             Debug.Log($"[BasisWebBuild] Build result={report.summary.result} output={report.summary.outputPath} errors={report.summary.totalErrors} warnings={report.summary.totalWarnings} size={report.summary.totalSize}");
             if (report.summary.result != BuildResult.Succeeded) throw new BuildFailedException($"Player build failed: {report.summary.result}");
         }
         finally
         {
+            if (!string.IsNullOrEmpty(spatializer)) AudioSettings.SetSpatializerPluginName(spatializer);
             if (addressableSettings != null) addressableSettings.BuildAddressablesWithPlayerBuild = originalOption;
         }
     }

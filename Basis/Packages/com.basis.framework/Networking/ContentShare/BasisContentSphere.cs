@@ -1,6 +1,7 @@
 using Unity.Scripting.LifecycleManagement;
 using Basis.BasisUI;
 using Basis.Scripts.BasisSdk.Interactions;
+using Basis.Scripts.BasisSdk.Players;
 using Basis.Scripts.Device_Management.Devices;
 using Basis.Scripts.Networking;
 using Basis.Scripts.TransformBinders.BoneControl;
@@ -29,6 +30,17 @@ public partial class BasisContentSphere : BasisInteractableObject
     public string CreatorDisplayName { get; private set; }
     public bool SharerProtected { get; private set; }
     public bool CanLocalPlayerRemove => BasisContentShareManager.CanLocalPlayerRemove(CreatorPlayerID, SharerProtected);
+    public string CreatorSafeDisplayName
+    {
+        get
+        {
+            if (BasisNetworkPlayers.GetPlayerById(CreatorPlayerID, out var player) && player?.Player != null && player.Player.UUID == CreatorUUID && !string.IsNullOrEmpty(player.SafeDisplayName))
+            {
+                return player.SafeDisplayName;
+            }
+            return BasisRemotePlayer.BuildSafeDisplayName(CreatorDisplayName);
+        }
+    }
 
     /// <summary>
     /// Fired when any content sphere is interacted with.
@@ -45,6 +57,9 @@ public partial class BasisContentSphere : BasisInteractableObject
     public static float BobPhaseOffset = 0.05f;
     public static float RotationSpeed = 30f;
     public static int MaxTitleNameLength = 24;
+    public static float PortalEnterRadius = 0.6f, PortalEnterBelow = 2.2f, PortalEnterAbove = 0.5f, RiftGroundClearance = 0.05f;
+    private bool portalOccupied = true;
+    private BasisContentSharePortalRift rift;
     public Texture2D texture;
     public void Initialize(string sphereNetID, string contentURL, string unlockPassword, ContentShareType contentType, ushort creatorPlayerID, string creatorUUID, string creatorDisplayName, bool sharerProtected)
     {
@@ -63,9 +78,10 @@ public partial class BasisContentSphere : BasisInteractableObject
         // bundle to introspect, so skip the metadata fetch and just show the
         // address as the label. Inline payloads carry the content itself and
         // have nothing to fetch either.
-        if (contentType == ContentShareType.Server)
+        if (contentType == ContentShareType.Server || contentType == ContentShareType.Portal)
         {
             ApplyLocalLabel(ServerAddressLabel());
+            if (contentType == ContentShareType.Portal && ContentSharePortal.TryRead(unlockPassword, out _, out ContentSharePortal.Style style) && style == ContentSharePortal.Style.Rift) BuildRift();
         }
         else if (ContentSharePayload.IsPayloadType(contentType))
         {
@@ -84,6 +100,25 @@ public partial class BasisContentSphere : BasisInteractableObject
         }
     }
 
+    private void BuildRift()
+    {
+        Material source = Renderer != null ? Renderer.sharedMaterials[Mathf.Clamp(MaterialIndex, 0, Renderer.sharedMaterials.Length - 1)] : null;
+        if (source == null) return;
+        Renderer labelRenderer = Label != null ? Label.GetComponent<Renderer>() : null;
+        foreach (Renderer child in GetComponentsInChildren<Renderer>(true))
+        {
+            if (child != labelRenderer) child.enabled = false;
+        }
+        foreach (Collider child in GetComponentsInChildren<Collider>(true)) child.enabled = false;
+        transform.rotation = Quaternion.identity;
+        rift = BasisContentSharePortalRift.Create(transform, source);
+        float extent = (BasisContentSharePortalRift.Radius + BasisContentSharePortalRift.RimWidth + BasisContentSharePortalRift.RimJitter) * transform.lossyScale.y;
+        float groundY = Physics.Raycast(_restPosition + Vector3.up * 0.5f, Vector3.down, out RaycastHit hit, 3f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) ? hit.point.y : _restPosition.y - 0.25f;
+        Vector3 center = new Vector3(_restPosition.x, Mathf.Max(_restPosition.y, groundY + extent + RiftGroundClearance), _restPosition.z);
+        rift.transform.position = center;
+        RefreshColliders();
+        if (Label != null) Label.transform.position = center + Vector3.up * (extent + 0.2f);
+    }
     private string ServerAddressLabel()
     {
         string display = ContentURL ?? string.Empty;
@@ -104,7 +139,7 @@ public partial class BasisContentSphere : BasisInteractableObject
         {
             Label.text = string.IsNullOrEmpty(detail)
                 ? GetContentTypeName()
-                : $"{GetContentTypeName()}\n{ClampName(detail)}";
+                : $"{GetContentTypeName()}\n{LabelName(detail)}";
         }
 
         if (Renderer != null)
@@ -125,17 +160,20 @@ public partial class BasisContentSphere : BasisInteractableObject
     {
         _restPosition = transform.position;
         _bobPhase = UnityEngine.Random.value * Mathf.PI * 2f;
+        BasisContentSphereBillboardDriver.RegisterSphere(this);
     }
-    private void Update()
+    internal bool Bobs => rift == null;
+    internal bool WatchesPortalEntry => rift != null || ContentType == ContentShareType.Portal;
+    internal Vector3 RestPosition => _restPosition;
+    internal float BobPhase { get => _bobPhase; set => _bobPhase = value; }
+    internal void UpdatePortalEntry()
     {
-        var DeltaTime = Time.deltaTime;
-        // Gentle hover/bob animation
-        _bobPhase += DeltaTime * BobPhaseClock;
-        float bobOffset = Mathf.Sin(_bobPhase) * BobPhaseOffset;
-        transform.position = _restPosition + Vector3.up * bobOffset;
-
-        // Slow rotation
-        transform.Rotate(Vector3.up, RotationSpeed * DeltaTime, Space.World);
+        BasisLocalPlayer local = BasisLocalPlayer.Instance;
+        if (local == null) return;
+        Vector3 offset = local.transform.position - _restPosition;
+        bool inside = offset.x * offset.x + offset.z * offset.z <= PortalEnterRadius * PortalEnterRadius && offset.y >= -PortalEnterBelow && offset.y <= PortalEnterAbove;
+        if (inside && !portalOccupied) WasPressed();
+        portalOccupied = inside;
     }
     private async Task LoadMetadataImageAsync(CancellationToken cancellationToken)
     {
@@ -173,7 +211,7 @@ public partial class BasisContentSphere : BasisInteractableObject
                 string bundleName = wrapper.LoadableBundle.BasisBundleConnector.BasisBundleDescription?.AssetBundleName;
                 if (!string.IsNullOrEmpty(bundleName) && Label != null)
                 {
-                    Label.text = $"{GetContentTypeName()}\n{ClampName(bundleName)}";
+                    Label.text = $"{GetContentTypeName()}\n{LabelName(bundleName)}";
                 }
             }
             else
@@ -194,7 +232,7 @@ public partial class BasisContentSphere : BasisInteractableObject
             string sharedName = wrapper.LoadableBundle.BasisBundleConnector.BasisBundleDescription?.AssetBundleName;
             if (!string.IsNullOrEmpty(sharedName))
             {
-                BasisShareableRegistry.SetDetail(SphereNetID, ClampName(sharedName));
+                BasisShareableRegistry.SetDetail(SphereNetID, LabelName(sharedName));
             }
         }
         catch (OperationCanceledException) { }
@@ -205,6 +243,7 @@ public partial class BasisContentSphere : BasisInteractableObject
     }
     public override void OnDestroy()
     {
+        BasisContentSphereBillboardDriver.UnregisterSphere(this);
         if (Label != null)
         {
             BasisContentSphereBillboardDriver.Unregister(Label.transform);
@@ -224,6 +263,12 @@ public partial class BasisContentSphere : BasisInteractableObject
         }
         return value.Substring(0, MaxTitleNameLength).TrimEnd() + "...";
     }
+
+    /// <summary>
+    /// A name another client supplied (a payload label, a bundle name, a server address), clamped
+    /// and escaped for a label that renders rich text.
+    /// </summary>
+    private static string LabelName(string value) => BasisContentShareText.Plain(ClampName(value));
     /// <summary>
     /// Constructs a BasisLoadableBundle from this sphere's metadata.
     /// </summary>
@@ -253,21 +298,25 @@ public partial class BasisContentSphere : BasisInteractableObject
         string title = BasisLocalization.Get(ShareableTitleKey());
 
         string sharerLine;
-        bool hasName = !string.IsNullOrEmpty(CreatorDisplayName);
+        string safeName = CreatorSafeDisplayName;
+        bool hasName = !string.IsNullOrEmpty(safeName);
         bool hasUUID = !string.IsNullOrEmpty(CreatorUUID);
+        // The DID is whatever the sharer's client sent, so it is escaped before going into
+        // markup: otherwise it could restyle the dialog or fake a "verified" line.
+        string safeUUID = BasisContentShareText.Plain(CreatorUUID);
         // Render the UUID/DID at half size via TMP rich text — the full DID is
         // long enough to wrap and dominate the dialog when shown at body size.
         if (hasName && hasUUID)
         {
-            sharerLine = BasisLocalization.Get("library.shareable.sharedBy", $"{CreatorDisplayName} <size=50%>({CreatorUUID})</size>");
+            sharerLine = BasisLocalization.Get("library.shareable.sharedBy", $"{safeName} <size=50%>({safeUUID})</size>");
         }
         else if (hasName)
         {
-            sharerLine = BasisLocalization.Get("library.shareable.sharedBy", CreatorDisplayName);
+            sharerLine = BasisLocalization.Get("library.shareable.sharedBy", safeName);
         }
         else if (hasUUID)
         {
-            sharerLine = BasisLocalization.Get("library.shareable.sharedBy", $"<size=50%>{CreatorUUID}</size>");
+            sharerLine = BasisLocalization.Get("library.shareable.sharedBy", $"<size=50%>{safeUUID}</size>");
         }
         else
         {
@@ -279,6 +328,21 @@ public partial class BasisContentSphere : BasisInteractableObject
             BasisContentShareText.Present(this, title, sharerLine);
             return;
         }
+        if (ContentType == ContentShareType.Folder)
+        {
+            BasisContentShareFolder.Present(this, title, sharerLine);
+            return;
+        }
+        if (ContentType == ContentShareType.Setting)
+        {
+            BasisContentShareSetting.Present(this, title, sharerLine);
+            return;
+        }
+        if (ContentType == ContentShareType.Portal)
+        {
+            BasisContentSharePortal.Present(this, title, sharerLine);
+            return;
+        }
 
         string description;
         if (ContentType == ContentShareType.Server)
@@ -286,12 +350,12 @@ public partial class BasisContentSphere : BasisInteractableObject
             string addrLine = ContentURL ?? string.Empty;
             if (SavedServerStore.TryParseConnectionString(addrLine, out string a, out ushort p, out bool _, out string _))
                 addrLine = $"{a}:{p}";
-            description = $"{sharerLine}\n\n{BasisLocalization.Get("content.share.addServer", addrLine)}";
+            description = $"{sharerLine}\n\n{BasisLocalization.Get("content.share.addServer", BasisContentShareText.Plain(addrLine))}";
         }
         else if (ContentSharePayload.IsPayloadType(ContentType))
         {
             string detail = BasisContentSharePayloadRegistry.Describe(ContentType, ContentURL);
-            string named = string.IsNullOrEmpty(detail) ? typeName : $"\"{ClampName(detail)}\"";
+            string named = string.IsNullOrEmpty(detail) ? typeName : $"\"{LabelName(detail)}\"";
             string question = ContentType != ContentShareType.DollyTrack
                 ? BasisLocalization.Get("content.share.save.payload", named, typeName)
                 : string.IsNullOrEmpty(detail)
@@ -407,9 +471,10 @@ public partial class BasisContentSphere : BasisInteractableObject
             }
         }
 
+        string sharerName = CreatorSafeDisplayName;
         entries.Add(new SavedServerEntry
         {
-            DisplayName = string.IsNullOrEmpty(CreatorDisplayName) ? string.Empty : $"Shared by {CreatorDisplayName}",
+            DisplayName = string.IsNullOrEmpty(sharerName) ? string.Empty : $"Shared by {sharerName}",
             Address = address,
             Port = port,
             HasPassword = !string.IsNullOrEmpty(password),
@@ -431,6 +496,7 @@ public partial class BasisContentSphere : BasisInteractableObject
             case ContentShareType.Prop: return new Color(0.3f, 1.0f, 0.5f, 1f);
             case ContentShareType.World: return new Color(1.0f, 0.6f, 0.2f, 1f);
             case ContentShareType.Server: return new Color(0.8f, 0.4f, 1.0f, 1f);
+            case ContentShareType.Portal: return new Color(0.2f, 0.9f, 1.0f, 1f);
             default:
                 return BasisContentSharePayloadRegistry.TryGet(ContentType, out BasisContentSharePayloadKind colorKind)
                     ? colorKind.Color
@@ -447,6 +513,9 @@ public partial class BasisContentSphere : BasisInteractableObject
         ContentShareType.DollyTrack => "library.shareable.dollyTrack",
         ContentShareType.Link => "library.shareable.link",
         ContentShareType.Text => "library.shareable.text",
+        ContentShareType.Folder => "library.shareable.folder",
+        ContentShareType.Setting => "library.shareable.setting",
+        ContentShareType.Portal => "library.shareable.portal",
         _ => "library.shareable.other",
     };
 
@@ -458,6 +527,7 @@ public partial class BasisContentSphere : BasisInteractableObject
             case ContentShareType.Prop: return BasisLocalization.Get("content.share.type.prop");
             case ContentShareType.World: return BasisLocalization.Get("content.share.type.world");
             case ContentShareType.Server: return BasisLocalization.Get("content.share.type.server");
+            case ContentShareType.Portal: return BasisLocalization.Get("content.share.type.portal");
             default:
                 return BasisContentSharePayloadRegistry.TryGet(ContentType, out BasisContentSharePayloadKind nameKind)
                     ? (string.IsNullOrEmpty(nameKind.NameKey) ? nameKind.Name : BasisLocalization.Get(nameKind.NameKey))

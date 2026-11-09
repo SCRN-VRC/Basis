@@ -1,3 +1,4 @@
+using Unity.Scripting.LifecycleManagement;
 using System;
 using Basis.Editor.Localization;
 using Basis.Scripts.BasisSdk;
@@ -12,6 +13,7 @@ using static BasisAvatarValidator;
 using Basis.Scripts.BasisSdk.Players;
 
 [CustomEditor(typeof(BasisAvatar))]
+[NoAutoStaticsCleanup]
 public partial class BasisAvatarSDKInspector : Editor
 {
     private const string PendingTestInEditorAvatarIdSessionKey = "BasisAvatarSDKInspector.PendingTestInEditorAvatarId";
@@ -119,6 +121,7 @@ public partial class BasisAvatarSDKInspector : Editor
         if (visualTree != null)
         {
             uiElementsRoot = visualTree.CloneTree();
+            BasisEditorLocalization.LocalizeTree(uiElementsRoot, "sdk.uxml.avatar.");
             rootElement.Add(uiElementsRoot);
             BasisAvatarValidator = new BasisAvatarValidator(Avatar, rootElement);
             Button button = BasisSDKCommonInspector.DocumentationButton(rootElement, BasisEditorLocalization.Get("sdk.avatar.documentation.button"));
@@ -410,6 +413,7 @@ public partial class BasisAvatarSDKInspector : Editor
             BasisEditorLocalization.Get("sdk.avatar.icon.generate"),
             BasisEditorLocalization.Get("sdk.avatar.icon.generate.tooltip"),
             () => BasisIconCapture.CaptureGameObject(Avatar.gameObject, BasisIconCapture.AvatarYaw, BasisIconCapture.AvatarPitch));
+        BasisSDKCommonInspector.CreateAuthorshipFoldout(BasisSDKCommonInspector.ResolveDescriptionContainer(uiElementsRoot), serializedObject);
         avatarBundleButton.clicked += () => EventCallbackAvatarBundle(assetBundleObject.selectedTargets, Avatar.BasisBundleDescription.AssetBundleIcon);
 
 

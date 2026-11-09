@@ -8,5 +8,8 @@ public enum BasisShareableKind
     DollyTrack,
     Link,
     Text,
-    Other
+    Folder,
+    Setting,
+    Other,
+    Video
 }

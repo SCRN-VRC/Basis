@@ -15,10 +15,12 @@
     <!-- GpuLz4Experiment only; nothing the server ships uses it. -->
     <PackageReference Include="ILGPU" Version="1.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\BasisNetworkCore\BasisNetworkCore.csproj" />
+    <ProjectReference Include="..\BasisNetworkClient\BasisNetworkClient.csproj" />
     <ProjectReference Include="..\BasisNetworkServer\BasisNetworkServer.csproj" />
     <!-- Present so the runtime lookup under test has something to find; never referenced in code. -->
     <ProjectReference Include="..\BasisNetworkCompute\BasisNetworkCompute.csproj" />

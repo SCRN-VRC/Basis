@@ -1,6 +1,8 @@
+using Unity.Scripting.LifecycleManagement;
 using System.Collections.Generic;
 using UnityEditor;
 
+[NoAutoStaticsCleanup]
 public class BasisSDKConstants
 {
     // Common base paths
@@ -26,6 +28,7 @@ public class BasisSDKConstants
     public static readonly string BuildOptionsFields = "BuildFields";
     public static readonly string ContentTagsSection = "contenttags";
     public static readonly string ContentTagsFields = "ContentTagFields";
+    public static readonly string DescriptionSection = "description";
 
     #region Avatar
     public static readonly string AvataruxmlPath = $"{BasePath}{AvatarFile}";
@@ -121,4 +124,8 @@ public class BasisSDKConstants
         BuildTarget.Android,
         BuildTarget.iOS,
     };
+    public static ScriptingImplementation ScriptingBackendFor(BuildTarget target)
+    {
+        return BuildPipeline.GetBuildTargetGroup(target) == BuildTargetGroup.Standalone ? ScriptingImplementation.CoreCLR : ScriptingImplementation.IL2CPP;
+    }
 }

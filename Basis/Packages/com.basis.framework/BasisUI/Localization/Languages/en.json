@@ -1619,6 +1619,162 @@
       "value": "Where the picture sits down the window when there are bars above and below, or which part of the shot is kept when it is cropped to fill. 50% is centred, 100% is the top."
     },
     {
+      "key": "camera.directToScreen.display",
+      "value": "Output Window"
+    },
+    {
+      "key": "camera.directToScreen.display.description",
+      "value": "Which window the feed goes to. The main window shows it in place of the headset mirror while you are in VR. Any other display opens its own window on that monitor, which works in VR and on desktop. A window opened on another monitor stays open (black) until Basis restarts."
+    },
+    {
+      "key": "camera.directToScreen.display.main",
+      "value": "Main Window"
+    },
+    {
+      "key": "camera.directToScreen.display.window",
+      "value": "Display {0}"
+    },
+    {
+      "key": "camera.directToScreen.presentingWindow",
+      "value": "Showing in its own window on display {0}."
+    },
+    {
+      "key": "camera.directToScreen.displayNotConnected",
+      "value": "Display {0} is not connected. Plug in another monitor or pick the main window."
+    },
+    {
+      "key": "camera.passes",
+      "value": "Render Passes"
+    },
+    {
+      "key": "camera.passes.output",
+      "value": "Output"
+    },
+    {
+      "key": "camera.passes.output.description",
+      "value": "What this camera shows and sends out: the picture, one render pass in its place, or a quad view of all of them. It applies to the viewfinder, Direct To Screen, the live output, recordings and photos."
+    },
+    {
+      "key": "camera.passes.output.picture",
+      "value": "Picture"
+    },
+    {
+      "key": "camera.passes.output.picture.tooltip",
+      "value": "The finished picture, exactly as the camera shoots it."
+    },
+    {
+      "key": "camera.passes.output.depth",
+      "value": "Depth"
+    },
+    {
+      "key": "camera.passes.output.depth.tooltip",
+      "value": "Distance from the lens: near is white, fading to black at the depth range. EXR photos keep the real distance in metres."
+    },
+    {
+      "key": "camera.passes.output.normals",
+      "value": "Normals"
+    },
+    {
+      "key": "camera.passes.output.normals.tooltip",
+      "value": "Which way each surface faces, as the camera sees it: red points right, green points up and blue faces the lens. EXR photos keep the raw -1 to 1 values."
+    },
+    {
+      "key": "camera.passes.output.mask",
+      "value": "Mask"
+    },
+    {
+      "key": "camera.passes.output.mask.tooltip",
+      "value": "Players and props in white on black, cut away wherever the world is in front of them. Use it as a matte to lift them out of the shot."
+    },
+    {
+      "key": "camera.passes.output.motion",
+      "value": "Motion"
+    },
+    {
+      "key": "camera.passes.output.motion.tooltip",
+      "value": "How each pixel moved since the last frame: the colour is the direction and its strength is the speed. EXR photos keep the movement in pixels."
+    },
+    {
+      "key": "camera.passes.output.quad",
+      "value": "Quad View"
+    },
+    {
+      "key": "camera.passes.output.quad.tooltip",
+      "value": "Picture, depth, normals and mask in one frame, a quarter each: picture top left, depth top right, normals bottom left, mask bottom right."
+    },
+    {
+      "key": "camera.passes.depthRange",
+      "value": "Depth Range"
+    },
+    {
+      "key": "camera.passes.depthRange.description",
+      "value": "How far away the depth pass reaches black. A shorter range spends more of the grey scale on what is close to the camera."
+    },
+    {
+      "key": "camera.passes.separate",
+      "value": "Separate Outputs"
+    },
+    {
+      "key": "camera.passes.separate.tooltip",
+      "value": "Also send each chosen pass on its own: its own Spout, Syphon or virtual camera feed (or web stream) beside the live output, and its own file beside every photo."
+    },
+    {
+      "key": "camera.passes.depth",
+      "value": "Depth"
+    },
+    {
+      "key": "camera.passes.depth.description",
+      "value": "Send the depth pass on its own."
+    },
+    {
+      "key": "camera.passes.normals",
+      "value": "Normals"
+    },
+    {
+      "key": "camera.passes.normals.description",
+      "value": "Send the normals pass on its own."
+    },
+    {
+      "key": "camera.passes.mask",
+      "value": "Mask"
+    },
+    {
+      "key": "camera.passes.mask.description",
+      "value": "Send the player and prop mask on its own."
+    },
+    {
+      "key": "camera.passes.motion",
+      "value": "Motion"
+    },
+    {
+      "key": "camera.passes.motion.description",
+      "value": "Send the motion pass on its own. It adds a motion vector pass to the camera's render."
+    },
+    {
+      "key": "camera.passes.status.none",
+      "value": "Choose at least one pass to send separately."
+    },
+    {
+      "key": "camera.passes.status.photos",
+      "value": "Every photo also saves {0} as separate files. Switch on Live Output to stream them as well."
+    },
+    {
+      "key": "camera.passes.status.line",
+      "value": "{0}: {1}"
+    },
+    {
+      "key": "camera.passes.status.failed",
+      "value": "{0} could not start: {1}"
+    },
+    {
+      "key": "camera.passes.status.starting",
+      "value": "{0}: starting"
+    },
+    {
+      "key": "camera.passes.unavailable",
+      "value": "Render passes are unavailable: their shaders are missing from this build."
+    },
+    {
       "key": "camera.streamResolution",
       "value": "Stream Resolution"
     },
@@ -2523,10 +2679,6 @@
       "value": "Show debug visual markers in the world for diagnostics."
     },
     {
-      "key": "settings.developer.skeletonLines.tooltip",
-      "value": "Draw lines along avatar bones to visualize the skeleton."
-    },
-    {
       "key": "settings.developer.calibrationSpheres.tooltip",
       "value": "Show spheres marking body calibration points."
     },
@@ -2627,14 +2779,6 @@
       "value": "Render gizmos for every camera, so photos, streams and mirrors show them too. Off by default, gizmos sit on the layer the handheld camera culls, so only your own view shows them."
     },
     {
-      "key": "settings.general.networking.jitterBufferOverride.tooltip",
-      "value": "Manually set the network jitter buffer instead of automatic."
-    },
-    {
-      "key": "settings.general.networking.jitterBuffer.tooltip",
-      "value": "How many packets to buffer to smooth out network jitter."
-    },
-    {
       "key": "settings.developer.voiceRange.enable.tooltip",
       "value": "Show a visual indicator of your voice broadcast range."
     },
@@ -2699,10 +2843,6 @@
       "value": "On: remote players using face tracking stop audio lip sync (visemes), so only their tracked mouth shows. Off: both combined."
     },
     {
-      "key": "settings.developer.audioDebug.enable.tooltip",
-      "value": "Show debugging information about remote players' audio."
-    },
-    {
       "key": "settings.developer.audioDebug.source.tooltip",
       "value": "Show details about each remote player's audio source."
     },
@@ -2725,10 +2865,6 @@
     {
       "key": "settings.developer.audioDebug.viseme.tooltip",
       "value": "Show viseme and mouth-shape data driven by remote audio."
-    },
-    {
-      "key": "settings.developer.avatarDataDebug.enable.tooltip",
-      "value": "Show debugging information about remote avatar data."
     },
     {
       "key": "settings.developer.avatarDataDebug.receive.tooltip",
@@ -2943,14 +3079,6 @@
       "value": "Fastest the elbow may swing around the arm, in degrees per second."
     },
     {
-      "key": "settings.bodyTracking.armSwivelSwitchDwell.title",
-      "value": "Elbow Switch Delay"
-    },
-    {
-      "key": "settings.bodyTracking.armSwivelSwitchDwell.title.tooltip",
-      "value": "Seconds a clearly better elbow direction on the other side of the arm must persist before the elbow moves there."
-    },
-    {
       "key": "settings.bodyTracking.armPriorWeight.title",
       "value": "Natural Pose Weight"
     },
@@ -3043,10 +3171,6 @@
       "value": "Largest angle the hips may twist away from the chest."
     },
     {
-      "key": "settings.bodyTracking.vspineTorsoYawDeadzoneVR.title.tooltip",
-      "value": "Head turn the torso ignores in VR before it follows; glances inside it stay in the neck."
-    },
-    {
       "key": "settings.bodyTracking.moveBodyBackWhenCrouching.title.tooltip",
       "value": "How far your body shifts backward as you crouch down."
     },
@@ -3095,10 +3219,6 @@
       "value": "How quickly the torso turns to catch up with your head."
     },
     {
-      "key": "settings.bodyTracking.vspineTorsoYawPlayInVR.title.tooltip",
-      "value": "Apply virtual torso turning while playing in VR."
-    },
-    {
       "key": "settings.bodyTracking.smoothingStrength.title.tooltip",
       "value": "Overall amount of motion smoothing applied to tracking."
     },
@@ -3121,14 +3241,6 @@
     {
       "key": "settings.bodyTracking.derivativeCutoff.title.tooltip",
       "value": "Smoothing applied to motion speed to steady the filter."
-    },
-    {
-      "key": "settings.bodyTracking.anat.legSwivelSmoothing.title.tooltip",
-      "value": "Stop the legs twisting when you stand still."
-    },
-    {
-      "key": "settings.bodyTracking.anat.trackerBendNormal.title.tooltip",
-      "value": "Bend the knee the way your leg tracker is actually facing."
     },
     {
       "key": "settings.bodyTracking.debugInfo.tooltip",
@@ -3267,14 +3379,6 @@
       "value": "How much quieter players outside your hearing cone become."
     },
     {
-      "key": "settings.remoteAudio.bufferedFrames.tooltip",
-      "value": "Voice frames buffered before playback; higher resists network jitter but adds delay."
-    },
-    {
-      "key": "settings.remoteAudio.clipBuffer.tooltip",
-      "value": "Size of the per-player audio buffer; higher is smoother but adds latency."
-    },
-    {
       "key": "settings.general.limitAudio.tooltip",
       "value": "Cap how many remote players can play audio at once to save performance."
     },
@@ -3385,14 +3489,6 @@
     {
       "key": "settings.remoteAudio.transmissionSurfaces.tooltip",
       "value": "How many walls sound can pass through before being silenced."
-    },
-    {
-      "key": "settings.remoteAudio.limitLipSync.tooltip",
-      "value": "Cap how many players get neural lip sync to save performance."
-    },
-    {
-      "key": "settings.remoteAudio.lipSyncSlots.tooltip",
-      "value": "Maximum number of players whose mouths animate to their voice at once."
     },
     {
       "key": "ui.advanced.tooltip",
@@ -4267,6 +4363,18 @@
       "value": "Mirror Settings"
     },
     {
+      "key": "menu.content.source.world",
+      "value": "Added by the world: {0}"
+    },
+    {
+      "key": "menu.content.source.prop",
+      "value": "Added by the prop: {0}"
+    },
+    {
+      "key": "menu.content.source.avatar",
+      "value": "Added by your avatar: {0}"
+    },
+    {
       "key": "menu.provider.cameraSettings",
       "value": "Camera Settings"
     },
@@ -4383,10 +4491,6 @@
       "value": "Connected Trackers"
     },
     {
-      "key": "trackerLinking.connectorTrackers",
-      "value": "Show Connector Trackers"
-    },
-    {
       "key": "trackerLinking.connectorTrackers.description",
       "value": "Show the per-tracker linking and role-override list. Hide it once your trackers are paired and roled — the tab stays compact for routine use."
     },
@@ -4397,10 +4501,6 @@
     {
       "key": "trackerLinking.advanced.description",
       "value": "Show the fusion tuning sliders. Defaults work for typical hip-belt setups; only flip this on if you understand the tradeoffs."
-    },
-    {
-      "key": "trackerLinking.tuning.title",
-      "value": "Fusion Tuning"
     },
     {
       "key": "trackerLinking.tuning.description",
@@ -4743,6 +4843,10 @@
       "value": "from SlimeVR"
     },
     {
+      "key": "calibration.summary.source.estimated",
+      "value": "estimated from your height"
+    },
+    {
       "key": "calibration.summary.source.fallback",
       "value": "a generic default — nothing measured yet"
     },
@@ -4787,6 +4891,10 @@
       "value": "You have been measuring shorter than the size on record for a while. If someone else used this headset, press Measure Me."
     },
     {
+      "key": "calibration.summary.floorLow",
+      "value": "Your VR floor looks about {0} too low. Basis corrected your size for it, but setting the floor in your VR software gives the best fit."
+    },
+    {
       "key": "calibration.avatarNudge",
       "value": "This Avatar's Size"
     },
@@ -4815,16 +4923,12 @@
       "value": "Keep watching your real height and arm span while you play, and resize the avatar when a better measurement turns up. Your reach in particular can only be measured once you actually reach out, which you have rarely done at the moment an avatar loads. Turn this off to use only what was measured when you last calibrated."
     },
     {
-      "key": "settings.calibration.armToHeightRatio",
-      "value": "Arm To Height Ratio"
+      "key": "settings.calibration.remeasureHeightOnCalibration",
+      "value": "Re-measure Me On Calibrate"
     },
     {
-      "key": "settings.calibration.armToHeightRatio.tooltip",
-      "value": "Scale the avatar by a percentage between your two measurements instead of a single scaling mode: 0% uses eye height, 100% uses arm distance, and values outside that range keep going in the same direction. Overrides Avatar Scaling Mode while enabled."
-    },
-    {
-      "key": "settings.calibration.armToHeightRatio.slider.tooltip",
-      "value": "Percentage between the two measurements: 0% scales by eye height, 100% by arm distance. Negative pushes past eye height, above 100% pushes past arm distance."
+      "key": "settings.calibration.remeasureHeightOnCalibration.tooltip",
+      "value": "Measure your height and arm span again every time you calibrate. Stand up straight and look ahead when you do, or the avatar will be sized from a slouch. Turn this off to keep your current size, so calibrating doesn't shift your view. Use Measure Me to update your size by hand."
     },
     {
       "key": "calibration.decreaseHeight",
@@ -4997,6 +5101,42 @@
     {
       "key": "network.avatarLocalOnly.body",
       "value": "This avatar is loaded from a file on your computer and isn't hosted anywhere the other players can reach, so nobody else on this server can download it. You will see it normally; everyone else will see a placeholder. Upload it and load it from a URL for other players to see it. Built-in avatars are unaffected — every client already has those."
+    },
+    {
+      "key": "network.avatarShare.title",
+      "value": "Share Your Avatar?"
+    },
+    {
+      "key": "network.avatarShare.body",
+      "value": "This avatar is loaded from a file on your computer, and nobody else on this server can download it. Share it through this server? Each player receives only the parts their device needs, and only while you are connected. If you say no, you keep wearing it and everyone else sees a placeholder."
+    },
+    {
+      "key": "network.avatarShare.accept",
+      "value": "Share"
+    },
+    {
+      "key": "network.avatarShare.deny",
+      "value": "Not Now"
+    },
+    {
+      "key": "network.avatarShare.failed.disabled",
+      "value": "This server does not share avatars from local files."
+    },
+    {
+      "key": "network.avatarShare.failed.tooLarge",
+      "value": "This avatar is larger than this server will share."
+    },
+    {
+      "key": "network.avatarShare.failed.generic",
+      "value": "Sharing this avatar through the server did not work."
+    },
+    {
+      "key": "network.legacyServer.title",
+      "value": "Server Out Of Date"
+    },
+    {
+      "key": "network.legacyServer.body",
+      "value": "This server is running an older version of Basis (network protocol v{0}). You joined in compatibility mode, which uses its older, less secure login. Ask the server owner to update."
     },
     {
       "key": "menu.servers.list.default",
@@ -5343,10 +5483,6 @@
       "value": "Allow grabbing and pulling jiggle physics between you and this player, in both directions. Turning this off immediately releases any grab they have on you. Blocking a player always prevents grabbing."
     },
     {
-      "key": "menu.individualPlayer.enableInteractions",
-      "value": "Enable Interactions"
-    },
-    {
       "key": "menu.individualPlayer.disableInteractions",
       "value": "Disable Interactions"
     },
@@ -5425,10 +5561,6 @@
     {
       "key": "menu.individualPlayer.directConnection.request",
       "value": "Request Direct Connection"
-    },
-    {
-      "key": "menu.individualPlayer.directConnection.cancel",
-      "value": "Cancel Direct Connection"
     },
     {
       "key": "menu.individualPlayer.directConnection.requesting",
@@ -5565,10 +5697,6 @@
     {
       "key": "menu.individualPlayer.chat.description",
       "value": "Control chat message visibility for this player."
-    },
-    {
-      "key": "menu.individualPlayer.showChat",
-      "value": "Show Chat"
     },
     {
       "key": "menu.individualPlayer.hideChat",
@@ -5928,7 +6056,7 @@
     },
     {
       "key": "menu.individualPlayer.audioDebug.description",
-      "value": "Live audio chain diagnostics. Toggle sections in Settings > Developer."
+      "value": "Live audio chain diagnostics."
     },
     {
       "key": "menu.individualPlayer.showAudioDebug",
@@ -5968,7 +6096,7 @@
     },
     {
       "key": "menu.individualPlayer.avatarDataDebug.description",
-      "value": "Live avatar network/interpolation diagnostics. Toggle sections in Settings > Developer."
+      "value": "Live avatar network/interpolation diagnostics."
     },
     {
       "key": "menu.individualPlayer.showAvatarDataDebug",
@@ -6005,6 +6133,10 @@
     {
       "key": "library.tab.avatars",
       "value": "Avatars"
+    },
+    {
+      "key": "library.tab.folders",
+      "value": "Folders"
     },
     {
       "key": "library.tab.instantiated",
@@ -6191,6 +6323,30 @@
       "value": "Face The Player"
     },
     {
+      "key": "library.dialog.details.section.authorship",
+      "value": "Author & License"
+    },
+    {
+      "key": "library.dialog.details.section.authorship.description",
+      "value": "Provided by the creator and not verified."
+    },
+    {
+      "key": "library.dialog.details.author",
+      "value": "Author"
+    },
+    {
+      "key": "library.dialog.details.contact",
+      "value": "Contact"
+    },
+    {
+      "key": "library.dialog.details.license",
+      "value": "License"
+    },
+    {
+      "key": "library.dialog.details.credits",
+      "value": "Credits"
+    },
+    {
       "key": "library.dialog.details.none",
       "value": "(none)"
     },
@@ -6293,6 +6449,54 @@
     {
       "key": "library.addNewContent",
       "value": "Add New Content"
+    },
+    {
+      "key": "library.folder.new",
+      "value": "New Folder"
+    },
+    {
+      "key": "library.folder.addTo",
+      "value": "Add to Folder"
+    },
+    {
+      "key": "library.folder.inOne",
+      "value": "Folder: {0}"
+    },
+    {
+      "key": "library.folder.inMany",
+      "value": "Folders: {0}"
+    },
+    {
+      "key": "library.folder.rename",
+      "value": "Rename"
+    },
+    {
+      "key": "library.folder.renameTitle",
+      "value": "Rename Folder"
+    },
+    {
+      "key": "library.folder.editItems",
+      "value": "Edit Items"
+    },
+    {
+      "key": "library.folder.empty",
+      "value": "This folder is empty. Use Edit Items to add content from your library."
+    },
+    {
+      "key": "library.folder.items",
+      "value": "Items in this folder: {0}"
+    },
+    {
+      "key": "library.folder.sharedDefaultName",
+      "value": "Shared Folder"
+    },
+    {
+      "key": "library.folder.disabled.nothingToShare",
+      "value": "Nothing in this folder can be shared. Local files and built-in items only exist on this device."
+    },
+    {
+      "key": "library.folder.disabled.tooLarge",
+      "value": "This folder is too big to share in one go. Remove some items and try again. One share holds up to {0} items."
     },
     {
       "key": "library.pinned",
@@ -6525,6 +6729,14 @@
     {
       "key": "library.instantiated.static.adminTooltip",
       "value": "Admin-locked — no one can move this item, and only a moderator can unlock it. Click to unlock."
+    },
+    {
+      "key": "library.instantiated.saveToServer.tooltip",
+      "value": "Save to server. This item stays here after the server restarts, where it is now. Admins only."
+    },
+    {
+      "key": "library.instantiated.saveToServer.savedTooltip",
+      "value": "Saved to server: this item loads again after a restart. Click to stop saving it; it stays until removed."
     },
     {
       "key": "library.instantiated.static.noPermission",
@@ -6791,6 +7003,46 @@
       "value": "Are you sure you want to share this {0} with everyone on the server?"
     },
     {
+      "key": "library.dialog.folderName.body",
+      "value": "Give this folder a name."
+    },
+    {
+      "key": "library.dialog.folderName.field",
+      "value": "Folder Name"
+    },
+    {
+      "key": "library.dialog.folderName.placeholder",
+      "value": "Enter folder name"
+    },
+    {
+      "key": "library.dialog.removeFolder.body",
+      "value": "Delete this folder? The items in it stay in your library."
+    },
+    {
+      "key": "library.dialog.shareFolder.body",
+      "value": "Share this folder and everything in it ({0}) with everyone on the server? Anyone can save it to their library. You choose where to place it next."
+    },
+    {
+      "key": "library.dialog.shareFolder.skipped",
+      "value": "Left out: {0}. Local files and built-in items cannot be loaded by other players."
+    },
+    {
+      "key": "library.dialog.folderItems.title",
+      "value": "Edit Items: {0}"
+    },
+    {
+      "key": "library.dialog.folderItems.body",
+      "value": "Choose which items this folder holds. Press an item to add it or take it out."
+    },
+    {
+      "key": "library.dialog.folderItems.done",
+      "value": "Done ({0} selected)"
+    },
+    {
+      "key": "library.dialog.itemFolders.body",
+      "value": "Press a folder to put this item in it or take it out."
+    },
+    {
       "key": "library.dialog.legacy.title",
       "value": "Specify Content Type"
     },
@@ -6880,7 +7132,7 @@
     },
     {
       "key": "settings.general.showDeveloperTab.tooltip",
-      "value": "Add the Developer tab to Settings. It holds diagnostics, gizmos, and debug tools that are not needed for normal use."
+      "value": "Show developer options throughout the menu, each in the tab it belongs to. They include diagnostics, gizmos, and debug tools that are not needed for normal use."
     },
     {
       "key": "settings.audio.title",
@@ -6893,10 +7145,6 @@
     {
       "key": "settings.graphics.title",
       "value": "Graphics Settings"
-    },
-    {
-      "key": "settings.developer.title",
-      "value": "Developer & Debug"
     },
     {
       "key": "settings.developer.showFrameTimeMs",
@@ -6931,6 +7179,10 @@
       "value": "Chat"
     },
     {
+      "key": "settings.tab.chatui",
+      "value": "Chat & UI"
+    },
+    {
       "key": "settings.tab.bodytracking",
       "value": "Body Tracking"
     },
@@ -6945,10 +7197,6 @@
     {
       "key": "settings.tab.downloadsurls",
       "value": "Downloads & URLs"
-    },
-    {
-      "key": "settings.tab.developer",
-      "value": "Developer"
     },
     {
       "key": "settings.tab.admin",
@@ -7253,22 +7501,6 @@
     {
       "key": "settings.general.networking.p2pAvatarRate.fpsWarning",
       "value": "Running at ~{0} FPS, below the selected {1} Hz. Avatar sync can't exceed your framerate - pick a rate near it."
-    },
-    {
-      "key": "settings.general.networking.jitterBufferOverride",
-      "value": "Override Buffer Depth"
-    },
-    {
-      "key": "settings.general.networking.jitterBufferOverride.description",
-      "value": "Manually set how many packets remote players stay behind by. Leave off for the default adaptive cushion."
-    },
-    {
-      "key": "settings.general.networking.jitterBuffer",
-      "value": "Buffer Depth (packets)"
-    },
-    {
-      "key": "settings.general.networking.jitterBuffer.description",
-      "value": "Packets to stay behind by. Higher absorbs more network jitter at the cost of latency. 2 is default; raise on flaky connections, lower on LAN."
     },
     {
       "key": "settings.general.networking.directConnections",
@@ -7611,10 +7843,6 @@
       "value": "Microphone"
     },
     {
-      "key": "settings.microphone.group.description",
-      "value": "Microphone Related Settings"
-    },
-    {
       "key": "settings.microphone.volume",
       "value": "Microphone Volume"
     },
@@ -7679,10 +7907,6 @@
       "value": "Limiter"
     },
     {
-      "key": "settings.microphone.limiter.description",
-      "value": "Prevents clipping by soft-limiting peaks."
-    },
-    {
       "key": "settings.microphone.limiter.threshold",
       "value": "Limit Threshold"
     },
@@ -7691,28 +7915,12 @@
       "value": "Limit Knee"
     },
     {
-      "key": "settings.microphone.denoiser.title",
-      "value": "Denoiser Tuning"
-    },
-    {
-      "key": "settings.microphone.denoiser.description",
-      "value": "Adjust denoiser blend and makeup gain."
-    },
-    {
       "key": "settings.microphone.denoiser.wet",
       "value": "Denoise Wet"
     },
     {
       "key": "settings.microphone.denoiser.makeup",
       "value": "Denoise Makeup (dB)"
-    },
-    {
-      "key": "settings.microphone.agc.title",
-      "value": "AGC Tuning"
-    },
-    {
-      "key": "settings.microphone.agc.description",
-      "value": "Target loudness and responsiveness (only applies when AGC is enabled)."
     },
     {
       "key": "settings.microphone.agc.targetRms",
@@ -7733,10 +7941,6 @@
     {
       "key": "settings.microphone.noiseGate.title",
       "value": "Noise Gate"
-    },
-    {
-      "key": "settings.microphone.noiseGate.description",
-      "value": "Mutes audio below a threshold to cut background noise."
     },
     {
       "key": "settings.microphone.noiseGate.enable",
@@ -7773,6 +7977,18 @@
     {
       "key": "settings.graphics.quality.title",
       "value": "Quality"
+    },
+    {
+      "key": "settings.graphics.group.display",
+      "value": "Display"
+    },
+    {
+      "key": "settings.graphics.group.foveated",
+      "value": "Foveated Rendering"
+    },
+    {
+      "key": "settings.graphics.group.avatars",
+      "value": "Avatars"
     },
     {
       "key": "settings.graphics.quality.description",
@@ -8060,7 +8276,7 @@
     },
     {
       "key": "settings.graphics.memoryAllocation",
-      "value": "Memory Allocation"
+      "value": "Texture Memory Budget"
     },
     {
       "key": "settings.graphics.resolution",
@@ -8072,7 +8288,7 @@
     },
     {
       "key": "settings.graphics.overrides.title",
-      "value": "Overrides"
+      "value": "Effect Overrides"
     },
     {
       "key": "settings.graphics.mirrorQuality.title",
@@ -8604,7 +8820,7 @@
     },
     {
       "key": "settings.graphics.gi.mode.tooltip",
-      "value": "Screen Space bounces light using what the camera already drew, so anything off screen or behind you contributes nothing. Ray Traced traces the world itself and shades what it hits with the real lights and glowing materials, which costs more and needs a graphics card with ray tracing - without one it falls back to Screen Space."
+      "value": "Radiance Cascades bounces light through a 3D copy of the world around you, so light from behind you and round corners still counts, and it runs on any desktop graphics card. Ray Traced traces the world itself and shades what it hits with the real lights, which costs more and needs a graphics card with ray tracing. Without one it runs as Radiance Cascades."
     },
     {
       "key": "settings.graphics.gi.mode.screenSpace",
@@ -8613,6 +8829,86 @@
     {
       "key": "settings.graphics.gi.mode.rayTraced",
       "value": "Ray Traced"
+    },
+    {
+      "key": "settings.graphics.gi.bounceFeedback",
+      "value": "Bounce Strength"
+    },
+    {
+      "key": "settings.graphics.gi.bounceFeedback.tooltip",
+      "value": "How much of the light that has already bounced may bounce again. At zero every surface gets a single bounce; higher carries light further into corners and around doorways, settling over a few frames. Needs the temporal filter."
+    },
+    {
+      "key": "settings.graphics.gi.worldSpace",
+      "value": "World Space GI"
+    },
+    {
+      "key": "settings.graphics.gi.worldSpace.tooltip",
+      "value": "Trace the bounce through a 3D voxel copy of the world around you, so light from behind you, round corners and from things hidden behind others still bounces. The screen pass stays on top for fine detail."
+    },
+    {
+      "key": "settings.graphics.gi.worldLevels",
+      "value": "World Range"
+    },
+    {
+      "key": "settings.graphics.gi.worldLevels.tooltip",
+      "value": "How many nested voxel levels surround you. Each doubles the reach: three at 0.2 m voxels cover about 13, 26 and 51 metres."
+    },
+    {
+      "key": "settings.graphics.gi.worldVoxelSize",
+      "value": "Voxel Size"
+    },
+    {
+      "key": "settings.graphics.gi.worldVoxelSize.tooltip",
+      "value": "Size of the finest voxels, in metres. Smaller keeps thin walls solid and small objects bouncing; larger reaches further for the same cost."
+    },
+    {
+      "key": "settings.graphics.gi.cascadeOverride",
+      "value": "Override Cascades"
+    },
+    {
+      "key": "settings.graphics.gi.cascadeOverride.tooltip",
+      "value": "Set the probe layout by hand instead of from Quality. Goes past Ultra, at a matching cost."
+    },
+    {
+      "key": "settings.graphics.gi.cascadeSpacing",
+      "value": "Probe Spacing"
+    },
+    {
+      "key": "settings.graphics.gi.cascadeSpacing.tooltip",
+      "value": "How far apart the nearest probes sit, in traced pixels. Smaller gives sharper contact light and costs more: each halving is about four times the work."
+    },
+    {
+      "key": "settings.graphics.gi.cascadeCount",
+      "value": "Cascades"
+    },
+    {
+      "key": "settings.graphics.gi.cascadeCount.tooltip",
+      "value": "How many probe layers the light is gathered through. Each reaches four times further than the one below it and together they reach Ray Length, so more cascades put finer detail close to surfaces."
+    },
+    {
+      "key": "settings.graphics.gi.cascadeSteps",
+      "value": "Interval Steps"
+    },
+    {
+      "key": "settings.graphics.gi.cascadeSteps.tooltip",
+      "value": "How many depth samples each probe ray takes over its stretch. Higher catches thin objects that would otherwise let light leak through, and costs more."
+    },
+    {
+      "key": "settings.graphics.gi.cascadeMergeFix",
+      "value": "Leak-Free Merge"
+    },
+    {
+      "key": "settings.graphics.gi.cascadeMergeFix.tooltip",
+      "value": "Each probe traces to exactly where the next layer's probes start looking, instead of leaving that stretch untraced. Stops light leaking through thin walls and the rings around bright lights, at about four times the tracing cost. Quality turns it on at Ultra."
+    },
+    {
+      "key": "settings.graphics.gi.mode.radianceCascades",
+      "value": "Radiance Cascades"
+    },
+    {
+      "key": "settings.graphics.gi.mode.radianceCascades.tooltip",
+      "value": "Bounces light through a 3D copy of the world around you, smoothly and without grain. Runs on any graphics card with compute shaders, DirectX 11 included."
     },
     {
       "key": "settings.graphics.gi.advanced",
@@ -8779,6 +9075,14 @@
       "value": "A second, wider blur pass. Removes the low frequency blotching a small blur leaves behind, for one more pass over the traced buffer."
     },
     {
+      "key": "settings.graphics.gi.alternateEyes",
+      "value": "Update Eyes In Turn"
+    },
+    {
+      "key": "settings.graphics.gi.alternateEyes.tooltip",
+      "value": "In VR, gathers bounce light for one eye each frame and reuses the last result for the other. Saves up to half the cost with a small loss of accuracy."
+    },
+    {
       "key": "settings.graphics.gi.temporalFilter",
       "value": "Temporal Filter"
     },
@@ -8905,6 +9209,14 @@
     {
       "key": "settings.graphics.reflections.enable.tooltip",
       "value": "Reflect the room in smooth surfaces in place of the static reflection probe. Works on its own, with or without global illumination. Costs real frame time, so it is off by default."
+    },
+    {
+      "key": "settings.graphics.reflections.world",
+      "value": "World Reflections"
+    },
+    {
+      "key": "settings.graphics.reflections.world.tooltip",
+      "value": "Shiny surfaces reflect the light that World Space GI has gathered instead of the static reflection probe, so a glossy floor indoors shows the room rather than the sky. Needs World Space GI. Screen space and ray traced reflections still draw on top where they find a surface."
     },
     {
       "key": "settings.graphics.reflections.solution",
@@ -9679,10 +9991,6 @@
       "value": "Fine-tune rendering, LOD, and performance options."
     },
     {
-      "key": "settings.graphics.advanced.showAdvanced",
-      "value": "Advanced Settings"
-    },
-    {
       "key": "settings.graphics.renderScale",
       "value": "Render Scale"
     },
@@ -9692,7 +10000,7 @@
     },
     {
       "key": "settings.graphics.foveated",
-      "value": "Foveated Percentage"
+      "value": "Foveation Strength"
     },
     {
       "key": "settings.graphics.fov",
@@ -9708,7 +10016,7 @@
     },
     {
       "key": "settings.graphics.localHeadBlendShapes",
-      "value": "Head Gets BlendShapes"
+      "value": "First-Person Facial Expressions"
     },
     {
       "key": "settings.graphics.localHeadBlendShapes.description",
@@ -10003,14 +10311,6 @@
       "value": "Save the world name and the camera's position/rotation so the exact viewpoint can be reconstructed. Off by default."
     },
     {
-      "key": "settings.controls.gameplay.title",
-      "value": "Gameplay & Input"
-    },
-    {
-      "key": "settings.controls.gameplay.description",
-      "value": "General controls and comfort settings."
-    },
-    {
       "key": "settings.controls.dominantHand",
       "value": "Dominant Hand"
     },
@@ -10084,15 +10384,11 @@
     },
     {
       "key": "settings.controls.actionBindings.title",
-      "value": "Action Bindings ({0})"
+      "value": "Action Bindings"
     },
     {
       "key": "settings.controls.actionBindings.description",
       "value": "Choose an action to edit its bound roles."
-    },
-    {
-      "key": "settings.controller.selectAction.title",
-      "value": "Select Action For {0}"
     },
     {
       "key": "settings.avatarStats.deviceManagerUnavailable",
@@ -10105,6 +10401,42 @@
     {
       "key": "settings.controls.roles",
       "value": "Roles"
+    },
+    {
+      "key": "settings.controls.movement.title",
+      "value": "Movement"
+    },
+    {
+      "key": "settings.controls.movement.description",
+      "value": "How your character starts and stops."
+    },
+    {
+      "key": "settings.controls.movementSettle",
+      "value": "Velocity Settle"
+    },
+    {
+      "key": "settings.controls.movementSettle.tooltip",
+      "value": "Letting go of movement slows you down instead of stopping you instantly. Coasting moves your view, so it can feel uncomfortable in VR."
+    },
+    {
+      "key": "settings.controls.movementSettle.desktopOnly",
+      "value": "Desktop Only"
+    },
+    {
+      "key": "settings.controls.movementSettle.always",
+      "value": "Always"
+    },
+    {
+      "key": "settings.controls.movementSettle.off",
+      "value": "Off"
+    },
+    {
+      "key": "settings.controls.movementSettleTime",
+      "value": "Settle Time (seconds)"
+    },
+    {
+      "key": "settings.controls.movementSettleTime.tooltip",
+      "value": "How long you take to come to a stop after letting go."
     },
     {
       "key": "settings.controls.desktopInputInVR",
@@ -10267,6 +10599,38 @@
       "value": "Slider on a Thumbstick"
     },
     {
+      "key": "settings.controls.general.title",
+      "value": "General"
+    },
+    {
+      "key": "settings.controls.general.description",
+      "value": "Hand preference and the basics for how you play."
+    },
+    {
+      "key": "settings.controls.turning.title",
+      "value": "Turning"
+    },
+    {
+      "key": "settings.controls.turning.description",
+      "value": "How the thumbstick turns you."
+    },
+    {
+      "key": "settings.controls.thumbsticks.title",
+      "value": "Thumbsticks"
+    },
+    {
+      "key": "settings.controls.thumbsticks.description",
+      "value": "Menu scrolling speed and stick deadzones."
+    },
+    {
+      "key": "settings.controls.keyboardBindings.title",
+      "value": "Keyboard Bindings"
+    },
+    {
+      "key": "settings.controls.keyboardBindings.description",
+      "value": "Click a key to change it, then press the new key. Press Escape to cancel."
+    },
+    {
       "key": "settings.controls.joystickBind.description",
       "value": "Hand one slider to a thumbstick, so a value can be tuned while looking at what it changes instead of at the menu. Open any slider's options to take the bind."
     },
@@ -10381,22 +10745,6 @@
     {
       "key": "settings.bodyTracking.disableAnimFbt",
       "value": "Disable Animations in FBT"
-    },
-    {
-      "key": "settings.bodyTracking.butterflyKnees",
-      "value": "Butterfly Knees"
-    },
-    {
-      "key": "settings.bodyTracking.butterflyKnees.tooltip",
-      "value": "With foot trackers (and no knee trackers), tilt your feet outward and pull them in to let your knees fall open — both laying on your back and sitting upright (cross-legged). Default: On"
-    },
-    {
-      "key": "settings.bodyTracking.butterflyKneeMaxOpen.title",
-      "value": "Butterfly Knee Max Open (deg)"
-    },
-    {
-      "key": "settings.bodyTracking.butterflyKneeMaxOpen.title.tooltip",
-      "value": "How far the knees may fall open in the butterfly pose, clamped to the hip's natural range. Default: 60"
     },
     {
       "key": "settings.bodyTracking.playspaceMover.title",
@@ -10731,14 +11079,6 @@
       "value": "Pre-solve that elevates and protracts shoulders based on hand reach."
     },
     {
-      "key": "settings.bodyTracking.section.spineReach.title",
-      "value": "Spine: Reach Limits"
-    },
-    {
-      "key": "settings.bodyTracking.section.spineReach.description",
-      "value": "Caps on hip-to-head bend, struggle blending, and per-frame chest / hip rotation deltas."
-    },
-    {
       "key": "settings.bodyTracking.section.spineBend.title",
       "value": "Spine: Bend Distribution"
     },
@@ -10821,54 +11161,6 @@
     {
       "key": "settings.bodyTracking.upperArmTwist.description",
       "value": "How evenly the upper arm twist bone spreads the elbow's roll along the bone. 1 = even gradient; 0 = off. Default: 1.0"
-    },
-    {
-      "key": "settings.bodyTracking.section.anatomy.title",
-      "value": "Anatomy"
-    },
-    {
-      "key": "settings.bodyTracking.section.anatomy.description",
-      "value": "IK refinements modeled on real biomechanics."
-    },
-    {
-      "key": "settings.bodyTracking.anat.spineRom.title",
-      "value": "Anatomical Spine Limits"
-    },
-    {
-      "key": "settings.bodyTracking.anat.spineRom.description",
-      "value": "Holds each spine bone inside the range of motion of the real vertebrae it stands for — the lumbar barely twists, the chest barely folds, the neck is free. Stops impossible spine poses."
-    },
-    {
-      "key": "settings.bodyTracking.anat.legSwivelSmoothing.title",
-      "value": "Leg Swivel Smoothing"
-    },
-    {
-      "key": "settings.bodyTracking.anat.legSwivelSmoothing.description",
-      "value": "Damps the leg's roll about the hip-to-foot axis so a still, near-straight standing leg doesn't twist with tracking jitter. Real turning still tracks without lag."
-    },
-    {
-      "key": "settings.bodyTracking.kneeFootPoleHold.title",
-      "value": "Foot-Pole Knee Hold"
-    },
-    {
-      "key": "settings.bodyTracking.kneeFootPoleHold.description",
-      "value": "Extends the knee-swivel freeze to knees aimed by a foot tracker alone. A knee tracker always gets it; this widens it to the guessed pole, which stops a near-straight standing leg rolling with sway at the cost of a slower release out of the pose. Needs Leg Swivel Smoothing on."
-    },
-    {
-      "key": "settings.bodyTracking.kneeFootPoleConditioning.title",
-      "value": "Foot-Pole Knee Low-Pass"
-    },
-    {
-      "key": "settings.bodyTracking.kneeFootPoleConditioning.description",
-      "value": "Runs the knee-swivel low-pass on knees aimed by a foot tracker alone. Quieter near a straight leg, but adds lag to real shin motion. Needs Leg Swivel Smoothing on."
-    },
-    {
-      "key": "settings.bodyTracking.anat.trackerBendNormal.title",
-      "value": "Tracker Bend Direction"
-    },
-    {
-      "key": "settings.bodyTracking.anat.trackerBendNormal.description",
-      "value": "Bends the knee in the plane your lower-leg tracker is actually facing instead of a fixed body-relative guess, so the knee stops snapping backward and follows your leg as you turn it. Also drops an old upward nudge on the chest so the spine follows your real chest position. Off restores the previous forward-pole behavior."
     },
     {
       "key": "settings.bodyTracking.fbt.description",
@@ -11011,14 +11303,6 @@
       "value": "Maximum rotation delta allowed for the hip bone per frame. Default: 90"
     },
     {
-      "key": "settings.bodyTracking.vspineTorsoYawDeadzoneVR.title",
-      "value": "Torso Yaw Deadzone in VR (deg)"
-    },
-    {
-      "key": "settings.bodyTracking.vspineTorsoYawDeadzoneVR.description",
-      "value": "Head turn the torso ignores in VR before it follows the head; used when Torso Yaw Play In VR is on. Default: 30"
-    },
-    {
       "key": "settings.bodyTracking.moveBodyBackWhenCrouching.title",
       "value": "Move Body Back When Crouching"
     },
@@ -11107,22 +11391,6 @@
       "value": "Fraction of head tilt absorbed by the spine. Default: 0.10"
     },
     {
-      "key": "settings.bodyTracking.vspineChestForwardBias.title",
-      "value": "Chest Forward Bias (m)"
-    },
-    {
-      "key": "settings.bodyTracking.vspineChestForwardBias.description",
-      "value": "Pushes the resting chest position forward of the neck-hips line, giving the chain a natural kyphosis. Scaled by avatar height. Default: 0.025"
-    },
-    {
-      "key": "settings.bodyTracking.vspineHipsYawDeadband.title",
-      "value": "Hips Yaw Deadband (deg)"
-    },
-    {
-      "key": "settings.bodyTracking.vspineHipsYawDeadband.description",
-      "value": "Hips ignore head yaw changes smaller than this many degrees, suppressing HMD micro-jitter. 0 disables. Default: 4"
-    },
-    {
       "key": "settings.bodyTracking.vspineNeckRotationSpeed.title",
       "value": "Neck Rotation Speed"
     },
@@ -11177,14 +11445,6 @@
     {
       "key": "settings.bodyTracking.vspineTorsoYawBlend.description",
       "value": "How quickly the torso eases into and out of following once the head crosses the play cone. Lower = softer, slower blend (removes the click at the edge); higher = snappier. Default: 8"
-    },
-    {
-      "key": "settings.bodyTracking.vspineTorsoYawPlayInVR.title",
-      "value": "Torso Yaw Play In VR"
-    },
-    {
-      "key": "settings.bodyTracking.vspineTorsoYawPlayInVR.description",
-      "value": "When off, the torso follows your head immediately in VR (no yaw play), so the head can't turn independently of the chest. Enable to use the Torso Yaw Play cone in VR too. Desktop always uses the configured play. Default: off"
     },
     {
       "key": "settings.bodyTracking.smoothingStrength.title",
@@ -11337,6 +11597,54 @@
     {
       "key": "settings.myAvatar.noCustomization.description",
       "value": "This avatar does not support any Avatar Customization."
+    },
+    {
+      "key": "settings.myAvatar.face",
+      "value": "Face Tracking"
+    },
+    {
+      "key": "settings.myAvatar.face.description",
+      "value": "Face tracking and expressions for avatars that were not set up for them."
+    },
+    {
+      "key": "settings.myAvatar.autoDetectFaceTracking",
+      "value": "Auto-Detect Face Tracking"
+    },
+    {
+      "key": "settings.myAvatar.autoDetectFaceTracking.description",
+      "value": "Use face tracking on your avatar even when it was not set up for it, by matching its blendshape names. Applies the next time your avatar loads."
+    },
+    {
+      "key": "settings.myAvatar.autoDetectEyeTracking",
+      "value": "Auto-Detect Eye Tracking"
+    },
+    {
+      "key": "settings.myAvatar.autoDetectEyeTracking.description",
+      "value": "Drive your avatar's eyes and eyelids from eye tracking even when it was not set up for it. Applies the next time your avatar loads."
+    },
+    {
+      "key": "settings.myAvatar.idleExpressions",
+      "value": "Idle Expressions"
+    },
+    {
+      "key": "settings.myAvatar.idleExpressions.description",
+      "value": "Show small, natural expressions on avatars when nothing else is driving their face. Applies to every avatar you see."
+    },
+    {
+      "key": "settings.myAvatar.eyeLookRangeOverride",
+      "value": "Override Eye Look Range"
+    },
+    {
+      "key": "settings.myAvatar.eyeLookRangeOverride.description",
+      "value": "Let your avatar's eyes turn further than its built-in limit, which is usually 25 degrees. Affects natural eye movement and eye tracking on your own avatar."
+    },
+    {
+      "key": "settings.myAvatar.eyeLookRange",
+      "value": "Eye Look Range"
+    },
+    {
+      "key": "settings.myAvatar.eyeLookRange.description",
+      "value": "How far your avatar's eyes can turn away from center."
     },
     {
       "key": "settings.myAvatar.overview",
@@ -11771,16 +12079,8 @@
       "value": "Transmission Type"
     },
     {
-      "key": "settings.remoteAudio.lipSync",
-      "value": "Lip Sync"
-    },
-    {
       "key": "settings.remoteAudio.lipSync.description",
       "value": "Controls how many players use neural lip sync (OpenLipSync).\nPlayers beyond this limit get no visemes until a slot frees up."
-    },
-    {
-      "key": "settings.remoteAudio.limitLipSync",
-      "value": "Limit OpenLipSync Slots"
     },
     {
       "key": "settings.developer.visualHelpers.title",
@@ -11867,10 +12167,6 @@
       "value": "Unavailable — Variable Rate Shading requires DirectX 12. Your current graphics API does not support it."
     },
     {
-      "key": "settings.graphics.vrs.title",
-      "value": "Variable Rate Shading"
-    },
-    {
       "key": "settings.graphics.vrs",
       "value": "Gaze Foveated Shading (VR)"
     },
@@ -11907,32 +12203,124 @@
       "value": "Gizmos"
     },
     {
-      "key": "settings.developer.group.gizmos",
-      "value": "Gizmos & Overlays"
+      "key": "trackerLinking.eyeFace",
+      "value": "Eye & Face"
     },
     {
-      "key": "settings.developer.group.tracking",
-      "value": "Tracking & Calibration"
+      "key": "trackerLinking.group.trackersDevices",
+      "value": "Trackers & Devices"
+    },
+    {
+      "key": "trackerLinking.group.calibrationDebug",
+      "value": "Calibration Debug"
     },
     {
       "key": "settings.developer.group.rendering",
       "value": "Rendering & Shaders"
     },
     {
-      "key": "settings.developer.group.network",
-      "value": "Network Tuning"
-    },
-    {
       "key": "settings.developer.group.logging",
       "value": "Logging & Notifications"
     },
     {
-      "key": "settings.developer.group.packages",
-      "value": "Package Tools"
+      "key": "settings.developer.cilboxProfiler.title",
+      "value": "Cilbox Script Performance"
     },
     {
-      "key": "settings.developer.group.remoteDebug",
-      "value": "Remote Player Debug"
+      "key": "settings.developer.cilboxProfiler.description",
+      "value": "Shows which sandboxed scripts take the most time in Update, Awake, OnBeforeRender and every other callback Cilbox runs. ms/frame and Calls average the last second. Each row is that callback's own time; callbacks it triggers get their own rows."
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.enable",
+      "value": "Profile Cilbox Scripts"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.enable.tooltip",
+      "value": "Times every Cilbox script callback while on. Leave it on and load a world to capture Awake and Start. Adds a small cost to each callback."
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.sort",
+      "value": "Sort By"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.sort.tooltip",
+      "value": "Per Frame ranks the last second, Peak the slowest single frame, Total all time since recording started."
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.sort.frame",
+      "value": "Per Frame"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.sort.peak",
+      "value": "Peak"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.sort.total",
+      "value": "Total"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.clear",
+      "value": "Clear"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.clear.tooltip",
+      "value": "Resets the peak and total columns."
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.off",
+      "value": "Turn on Profile Cilbox Scripts to start recording."
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.empty",
+      "value": "No Cilbox script has run since recording started."
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.summary",
+      "value": "{0:0.00} ms per frame across {1} callbacks in {2} sandboxes"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.column.script",
+      "value": "Script"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.column.source",
+      "value": "Source"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.column.frame",
+      "value": "ms/frame"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.column.peak",
+      "value": "Peak ms"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.column.calls",
+      "value": "Calls"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.column.total",
+      "value": "Total ms"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.source.world",
+      "value": "World"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.source.prop",
+      "value": "Prop"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.source.avatar",
+      "value": "Avatar"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.more",
+      "value": "{0} more not shown"
+    },
+    {
+      "key": "settings.developer.cilboxProfiler.graph",
+      "value": "Cilbox time per frame over the last {1:0.0} s, one color per script and grey for everything else. Top line: {0} ms."
     },
     {
       "key": "settings.developer.group.trackingDiagnostics",
@@ -11940,7 +12328,7 @@
     },
     {
       "key": "settings.developer.group.systemInfo",
-      "value": "System Info & Statistics"
+      "value": "Loaded Avatar Statistics"
     },
     {
       "key": "settings.developer.gizmos.description",
@@ -11953,14 +12341,6 @@
     {
       "key": "settings.developer.showGizmos.description",
       "value": "Master switch for the gizmo system. When off, none of the gizmos below are drawn."
-    },
-    {
-      "key": "settings.developer.skeletonLines",
-      "value": "Skeleton Lines"
-    },
-    {
-      "key": "settings.developer.skeletonLines.description",
-      "value": "Draws colored lines connecting tracked bones to their parents — visualizes the skeleton chain."
     },
     {
       "key": "settings.developer.calibrationSpheres",
@@ -12103,19 +12483,19 @@
       "value": "Eye Tracking"
     },
     {
-      "key": "settings.developer.eyeTracking.preferOsc",
+      "key": "trackerLinking.eyeTracking.preferOsc",
       "value": "Prefer Face Tracking Gaze"
     },
     {
-      "key": "settings.developer.eyeTracking.preferOsc.tooltip",
+      "key": "trackerLinking.eyeTracking.preferOsc.tooltip",
       "value": "When both a headset's eye gaze and OSC face tracking are active, use the OSC face tracker for gaze. Turn off to prefer the headset's built-in eye gaze. Eyelid/blink always comes from face tracking."
     },
     {
-      "key": "settings.developer.eyeTracking.autoFoveation",
+      "key": "trackerLinking.eyeTracking.autoFoveation",
       "value": "Auto Gaze Foveation"
     },
     {
-      "key": "settings.developer.eyeTracking.autoFoveation.tooltip",
+      "key": "trackerLinking.eyeTracking.autoFoveation.tooltip",
       "value": "When an eye-tracking headset is detected, ask once to enable gaze-foveated Variable Rate Shading, then remember the choice per headset. Auto-disables when no eye-tracking headset is present (desktop, or a headset without eye tracking)."
     },
     {
@@ -12124,7 +12504,7 @@
     },
     {
       "key": "settings.eyeFoveation.prompt.body",
-      "value": "Your headset reports eye tracking. Enable gaze foveation (Variable Rate Shading) to render in full detail where you look and save GPU elsewhere? You can change this anytime in Settings → Developer → Eye Tracking."
+      "value": "Your headset reports eye tracking. Enable gaze foveation (Variable Rate Shading) to render in full detail where you look and save GPU elsewhere? You can change this anytime in Settings → Tracker Settings → Eye & Face."
     },
     {
       "key": "settings.eyeFoveation.prompt.enable",
@@ -12387,6 +12767,10 @@
       "value": "Spawn or load a prop/scene that contains a Basis Media Player."
     },
     {
+      "key": "mediaPlayer.selector",
+      "value": "Media Player"
+    },
+    {
       "key": "mediaPlayer.playback",
       "value": "Playback"
     },
@@ -12535,6 +12919,14 @@
       "value": "Drive your avatar's face, eyes, fingers and hands from a webcam (experimental)."
     },
     {
+      "key": "settings.mediapipe.section.headFace",
+      "value": "Head & Face"
+    },
+    {
+      "key": "settings.mediapipe.section.armsBody",
+      "value": "Arms & Body"
+    },
+    {
       "key": "settings.mediapipe.enableWebcamTracking",
       "value": "Enable Webcam Tracking"
     },
@@ -12567,11 +12959,11 @@
       "value": "Requested webcam frames per second."
     },
     {
-      "key": "settings.mediapipe.armElbowPoleExperimental",
-      "value": "Arm Elbow Pole (experimental)"
+      "key": "settings.mediapipe.armElbowPole",
+      "value": "Arm Elbow Pole"
     },
     {
-      "key": "settings.mediapipe.armElbowPoleExperimental.description",
+      "key": "settings.mediapipe.armElbowPole.description",
       "value": "Steer the elbow with a pose-driven pole. May interact with full-body tracker calibration; leave off unless arms are tracking well first."
     },
     {
@@ -12703,40 +13095,12 @@
       "value": "Fix the head tilt (ear-to-shoulder) direction."
     },
     {
-      "key": "settings.mediapipe.smoothing.description",
-      "value": "Higher = smoother but more latency."
-    },
-    {
-      "key": "settings.mediapipe.headSmoothing",
-      "value": "Head Smoothing"
-    },
-    {
-      "key": "settings.mediapipe.faceSmoothing",
-      "value": "Face Smoothing"
-    },
-    {
-      "key": "settings.mediapipe.handSmoothing",
-      "value": "Hand Smoothing"
-    },
-    {
-      "key": "settings.mediapipe.fingerSmoothing",
-      "value": "Finger Smoothing"
-    },
-    {
       "key": "settings.mediapipe.chestMotion",
       "value": "Chest Motion"
     },
     {
       "key": "settings.mediapipe.chestMotion.description",
       "value": "How much your torso lean, twist and sway carries into the avatar."
-    },
-    {
-      "key": "settings.mediapipe.elbowRestBias",
-      "value": "Elbow Rest Bias"
-    },
-    {
-      "key": "settings.mediapipe.elbowRestBias.description",
-      "value": "Pulls the elbow toward hanging naturally. The camera guesses elbow depth, so a little bias usually looks better."
     },
     {
       "key": "settings.mediapipe.armHeadAnchor",
@@ -12896,7 +13260,7 @@
     },
     {
       "key": "settings.faceTracking.eyeTracking.description",
-      "value": "Limit and scale eye tracking rotation on this avatar."
+      "value": "Eye tracking for avatars that were not set up for it, and eye rotation limits for this avatar."
     },
     {
       "key": "settings.faceTracking.overrideRotationLimits",
@@ -13083,19 +13447,19 @@
       "value": "Show live connection and bandwidth diagnostics."
     },
     {
-      "key": "settings.developer.calibrationCsv",
+      "key": "trackerLinking.calibrationCsv",
       "value": "Dump Calibration CSV"
     },
     {
-      "key": "settings.developer.calibrationCsv.tooltip",
+      "key": "trackerLinking.calibrationCsv.tooltip",
       "value": "Write a CSV of every calibration stage (scales, positions, rotation eulers and offsets) to persistentDataPath/CalibrationDebug on the next avatar calibration. Use to debug flipped/inverted bones."
     },
     {
-      "key": "settings.developer.calibrationDebug",
+      "key": "trackerLinking.calibrationDebug",
       "value": "Calibration Debug Tools"
     },
     {
-      "key": "settings.developer.calibrationDebug.tooltip",
+      "key": "trackerLinking.calibrationDebug.tooltip",
       "value": "Show the calibration report and lock-in guide controls in the Calibration panel."
     },
     {
@@ -13105,10 +13469,6 @@
     {
       "key": "settings.developer.remoteAudioDebug.description",
       "value": "Controls which audio debug sections appear in per-player panels."
-    },
-    {
-      "key": "settings.developer.audioDebug.enable",
-      "value": "Enable Audio Debug"
     },
     {
       "key": "settings.developer.audioDebug.enable.description",
@@ -13153,10 +13513,6 @@
     {
       "key": "settings.developer.remoteAvatarDebug.description",
       "value": "Controls which avatar data-chain debug sections appear in per-player panels."
-    },
-    {
-      "key": "settings.developer.avatarDataDebug.enable",
-      "value": "Enable Avatar Data Debug"
     },
     {
       "key": "settings.developer.avatarDataDebug.enable.description",
@@ -14348,7 +14704,31 @@
     },
     {
       "key": "settings.cilboxPermissions.description",
-      "value": "Some worlds, props and avatars run scripts that need things the normal script sandbox blocks. Basis asks you before those scripts run. Everything you allowed is listed here. Removing an entry blocks it again and stops that content's scripts straight away."
+      "value": "Some worlds, props and avatars run scripts that need things the normal script sandbox blocks. While Allow Untrusted Permissions is off, those are always blocked. Turn it on and Basis asks you before those scripts run. Everything you allowed is listed here. Removing an entry blocks it again and stops that content's scripts straight away."
+    },
+    {
+      "key": "settings.cilboxPermissions.allowUntrusted",
+      "value": "Allow Untrusted Permissions"
+    },
+    {
+      "key": "settings.cilboxPermissions.allowUntrusted.tooltip",
+      "value": "Lets scripts ask for things the normal script sandbox blocks, like your files, the internet or your microphone. Basis still asks you before any script gets them. Turning this off blocks them every time and stops scripts that are already using them."
+    },
+    {
+      "key": "settings.cilboxPermissions.modelTriangles",
+      "value": "Script Model Triangles (thousands)"
+    },
+    {
+      "key": "settings.cilboxPermissions.modelTriangles.tooltip",
+      "value": "Most triangles each world or prop can build from model files with its scripts. Lower this if loaded models slow your game down. 0 blocks them."
+    },
+    {
+      "key": "settings.cilboxPermissions.modelMemory",
+      "value": "Script Model Memory (MB)"
+    },
+    {
+      "key": "settings.cilboxPermissions.modelMemory.tooltip",
+      "value": "Most memory each world or prop can use for models its scripts build. Lower this if a world runs you out of memory. 0 blocks them."
     },
     {
       "key": "settings.cilboxPermissions.allowed",
@@ -14369,6 +14749,94 @@
     {
       "key": "settings.cilboxPermissions.sessionOnly",
       "value": "Allowed until you close Basis"
+    },
+    {
+      "key": "settings.cilboxPermissions.from",
+      "value": "From {0}"
+    },
+    {
+      "key": "settings.cilboxPermissions.fromYou",
+      "value": "Yours"
+    },
+    {
+      "key": "settings.cilboxPermissions.inServer",
+      "value": "In {0} on {1}"
+    },
+    {
+      "key": "settings.cilboxPermissions.inOffline",
+      "value": "In {0}, offline"
+    },
+    {
+      "key": "settings.cilboxPermissions.review",
+      "value": "Review"
+    },
+    {
+      "key": "settings.cilboxPermissions.review.tooltip",
+      "value": "See who it came from, when and where you allowed it, and what its code does."
+    },
+    {
+      "key": "settings.cilboxPermissions.record.who",
+      "value": "Who"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.what",
+      "value": "What"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.when",
+      "value": "When"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.where",
+      "value": "Where"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.yours",
+      "value": "Yours"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.name",
+      "value": "{0} ({1})"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.id",
+      "value": "Content ID: {0}"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.key",
+      "value": "Script key: {0}"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.asked",
+      "value": "Asked {0} UTC"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.allowed",
+      "value": "Allowed {0} UTC"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.by",
+      "value": "Allowed by {0}"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.kept",
+      "value": "Remembered"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.world",
+      "value": "World: {0}"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.server",
+      "value": "Server: {0}"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.offline",
+      "value": "Offline"
+    },
+    {
+      "key": "settings.cilboxPermissions.record.unknown",
+      "value": "Not recorded"
     },
     {
       "key": "settings.cilboxPermissions.remove",
@@ -14401,6 +14869,22 @@
     {
       "key": "settings.cilboxPermissions.prompt.body",
       "value": "{0} ({1}) wants to do things scripts are normally blocked from doing:"
+    },
+    {
+      "key": "settings.cilboxPermissions.prompt.bodyOwner",
+      "value": "{0} ({2}'s {1}) wants to do things scripts are normally blocked from doing:"
+    },
+    {
+      "key": "settings.cilboxPermissions.prompt.bodyYours",
+      "value": "{0} (your {1}) wants to do things scripts are normally blocked from doing:"
+    },
+    {
+      "key": "settings.cilboxPermissions.prompt.bodySpawned",
+      "value": "{0} ({1} spawned by {2}) wants to do things scripts are normally blocked from doing:"
+    },
+    {
+      "key": "settings.cilboxPermissions.prompt.bodySpawnedYours",
+      "value": "{0} ({1} you spawned) wants to do things scripts are normally blocked from doing:"
     },
     {
       "key": "settings.cilboxPermissions.prompt.allow",
@@ -14500,7 +14984,23 @@
     },
     {
       "key": "settings.cilboxPermissions.cap.storage",
-      "value": "Save data on your computer"
+      "value": "Read and change saved data, including your sign-in key"
+    },
+    {
+      "key": "settings.cilboxPermissions.cap.saves",
+      "value": "Keep its own save data on this device"
+    },
+    {
+      "key": "settings.cilboxPermissions.cap.readSaves",
+      "value": "Read save data other content shared on this device"
+    },
+    {
+      "key": "settings.cilboxPermissions.cap.serverSaves",
+      "value": "Keep save data for you on this server"
+    },
+    {
+      "key": "settings.cilboxPermissions.cap.webRequests",
+      "value": "Connect to websites and send them information"
     },
     {
       "key": "settings.cilboxPermissions.cap.input",
@@ -14541,6 +15041,158 @@
     {
       "key": "settings.cilboxPermissions.cap.other",
       "value": "Use other features scripts can't normally use"
+    },
+    {
+      "key": "settings.cilboxPermissions.prompt.moreInfo",
+      "value": "More Info"
+    },
+    {
+      "key": "settings.cilboxPermissions.review.in",
+      "value": "{0}: {1}"
+    },
+    {
+      "key": "settings.cilboxPermissions.review.unplaced",
+      "value": "Also uses: {0}"
+    },
+    {
+      "key": "settings.cilboxPermissions.review.blocked",
+      "value": "Never allowed"
+    },
+    {
+      "key": "settings.cilboxPermissions.review.blocked.why",
+      "value": "It also tries to use things scripts can never use. These stay blocked whatever you choose, so parts of it may not work."
+    },
+    {
+      "key": "settings.cilboxPermissions.review.header",
+      "value": "Technical details"
+    },
+    {
+      "key": "settings.cilboxPermissions.review.header.why",
+      "value": "Below, each permission lists the script and function that asked for it. These names come from the creator's code and are mostly useful to them."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.openWebPages",
+      "value": "Can open websites in your web browser, outside of Basis."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.quit",
+      "value": "Can close Basis at any time without asking."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.appControl",
+      "value": "Can change how Basis itself runs and read details about it, such as where it keeps files on your computer, which can include your user name."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.files",
+      "value": "Can read, create, change or delete files on your computer, not only files that belong to Basis."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.internet",
+      "value": "Can send and receive data from any server without asking you. Any server it reaches sees your IP address and whatever the script sends it."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.programs",
+      "value": "Can start other programs on your computer, and those programs can do anything you can."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.sandboxEscape",
+      "value": "Can reach code that the script sandbox keeps away from scripts, which can get around every other limit on this list."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.microphone",
+      "value": "Can listen to and record your microphone."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.webcam",
+      "value": "Can turn on your webcam and see what it sees."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.scenes",
+      "value": "Can load or unload worlds and scenes, which can move you somewhere else or break the world you are in."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.yourPlayer",
+      "value": "Can take direct control of your own player, such as moving, teleporting or freezing you."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.localMedia",
+      "value": "Can open video and audio files stored on your computer."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.screenshots",
+      "value": "Can save pictures of what you see to your computer."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.mediaUrls",
+      "value": "Can load video, audio or subtitles from any address without asking first. The server it loads from sees your IP address."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.deviceInfo",
+      "value": "Can read details about your computer or headset, such as its hardware, system, user name or a device ID that stays the same between visits."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.background",
+      "value": "Can run work in the background, outside the time limits that normally stop scripts from slowing down or freezing Basis."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.storage",
+      "value": "Can read and change data that Basis and other content save on this computer. That includes the key that proves who you are to servers, so this content could sign in as you somewhere else."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.saves",
+      "value": "Can keep up to 1 MB of its own save data on this device and read it back on later visits. It cannot reach any other files. Other content that uses the same save name can also read and change that data. It can also publish data that other content can read but not change."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.readSaves",
+      "value": "Can read save data that other content on this device published as read-only, using that content's ID. It cannot change that data or read anything that content kept private."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.serverSaves",
+      "value": "Can keep a small amount of save data tied to your account on the server you are on (16 KB by default, set by the server) and read it back when you return. Only your own data is reachable, never anyone else's. Other content that uses the same save name can also read and change that data."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.webRequests",
+      "value": "Can download from websites and send data to them, which may include your name and player ID. You are asked again about each website before it is first contacted. https only, never your local network; uploads up to 256 KB, downloads up to 4 MB."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.input",
+      "value": "Can read your keyboard, mouse and controllers directly, even while you type into Basis menus."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.addComponents",
+      "value": "Can add built-in components to objects, including kinds scripts are not normally allowed to create."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.graphics",
+      "value": "Can change your graphics and display settings, such as resolution and quality."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.cameras",
+      "value": "Can control cameras, including your view and what cameras capture."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.physics",
+      "value": "Can change physics for everything around you, such as gravity."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.audio",
+      "value": "Can change how all of Basis sounds, such as the overall volume or audio settings."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.basisInternals",
+      "value": "Can use parts of Basis that scripts are normally kept away from. What that allows depends on the part, so check the names below."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.messages",
+      "value": "Can call functions on other objects by name, including parts of Basis, which skips the checks scripts normally go through."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.invoke",
+      "value": "Can call functions indirectly, which can skip the checks scripts normally go through."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.other",
+      "value": "Uses parts of Unity or .NET that are not on the list of things scripts may use. Check the names below to see what they are."
     },
     {
       "key": "ui.option.on",
@@ -14847,11 +15499,11 @@
       "value": "Developer Options"
     },
     {
-      "key": "settings.developer.alwaysShowCalibration",
+      "key": "trackerLinking.alwaysShowCalibration",
       "value": "Always Show Calibration"
     },
     {
-      "key": "settings.developer.alwaysShowCalibration.tooltip",
+      "key": "trackerLinking.alwaysShowCalibration.tooltip",
       "value": "Keep the calibration menu available even when full body tracking is off."
     },
     {
@@ -14873,6 +15525,22 @@
     {
       "key": "settings.bodyTracking.ikMode.armDistance",
       "value": "Arm Distance"
+    },
+    {
+      "key": "settings.bodyTracking.ikMode.bestFit",
+      "value": "Best Fit"
+    },
+    {
+      "key": "settings.bodyTracking.ikMode.bestFit.tooltip",
+      "value": "Balance eye height and arm span together, leaning on eye height. Useful for avatars whose proportions differ from yours."
+    },
+    {
+      "key": "settings.bodyTracking.armRatio",
+      "value": "Arm Ratio"
+    },
+    {
+      "key": "settings.bodyTracking.armRatio.tooltip",
+      "value": "How long your arms are for your height. Higher makes you smaller compared to the avatar; lower makes you bigger. 45% suits most people. Used when sizing by arms."
     },
     {
       "key": "settings.bodyTracking.ikMode.disabledSeated",
@@ -14991,14 +15659,6 @@
       "value": "Max Dampening"
     },
     {
-      "key": "settings.remoteAudio.bufferedFrames",
-      "value": "Buffered Frames Target"
-    },
-    {
-      "key": "settings.remoteAudio.clipBuffer",
-      "value": "Playback Clip Buffer"
-    },
-    {
       "key": "settings.remoteAudio.minDistance",
       "value": "Min Distance"
     },
@@ -15043,16 +15703,20 @@
       "value": "Occlusion Radius"
     },
     {
+      "key": "settings.remoteAudio.worldReflectionPlayers",
+      "value": "World Reflection Players"
+    },
+    {
+      "key": "settings.remoteAudio.worldReflectionPlayers.tooltip",
+      "value": "Most players whose voices a world script can give reflections to. Reflections are CPU heavy, so lower this if a world slows your game down. 0 blocks them."
+    },
+    {
       "key": "settings.remoteAudio.occlusionSamples",
       "value": "Occlusion Samples"
     },
     {
       "key": "settings.remoteAudio.transmissionSurfaces",
       "value": "Transmission Surfaces"
-    },
-    {
-      "key": "settings.remoteAudio.lipSyncSlots",
-      "value": "OpenLipSync Max Slots"
     },
     {
       "key": "settings.bodyTracking.avatarHeightScale",
@@ -15064,15 +15728,15 @@
     },
     {
       "key": "settings.bodyTracking.armHeightRatio.tooltip",
-      "value": "Derives your arm span from eye height x ratio so your reach matches the avatar's (fixes stubby arms). Requires IK Mode = Arm Distance. Re-calibrate to apply."
+      "value": "Estimates your arm span from your height (eye height x ratio) instead of measuring it in a T-pose."
     },
     {
       "key": "settings.bodyTracking.armHeightRatio.enabled.title",
-      "value": "Match Arm Span"
+      "value": "Estimate Arm Span From Height"
     },
     {
       "key": "settings.bodyTracking.armHeightRatio.enabled.title.tooltip",
-      "value": "Scale the avatar's arms to your measured arm span instead of using the authored length."
+      "value": "Estimate your arm span from your height instead of measuring it in a T-pose. A T-pose reads short when arms are not held perfectly straight and level. Turn off to measure it instead."
     },
     {
       "key": "settings.bodyTracking.armHeightRatio.title",
@@ -15080,7 +15744,7 @@
     },
     {
       "key": "settings.bodyTracking.armHeightRatio.title.tooltip",
-      "value": "Arm span as a multiple of height. 1.0 is the human average; raise it for longer arms."
+      "value": "Hand-to-hand arm span as a multiple of eye height. About 0.92 suits most people; raise it if your arms are longer than average."
     },
     {
       "key": "settings.bodyTracking.calibSphereScale",
@@ -15115,30 +15779,6 @@
       "value": "Run locomotion on a worker thread. Keeps movement smooth when the main thread is busy."
     },
     {
-      "key": "settings.bodyTracking.kneeFollowsFoot",
-      "value": "Knees Follow Feet"
-    },
-    {
-      "key": "settings.bodyTracking.kneeFollowsFoot.tooltip",
-      "value": "Aim each knee along its foot's facing instead of straight ahead, so turned feet don't twist the leg."
-    },
-    {
-      "key": "settings.bodyTracking.shoulderShrug.title",
-      "value": "Shoulder Shrug"
-    },
-    {
-      "key": "settings.bodyTracking.shoulderShrug.title.tooltip",
-      "value": "Raise the shoulder as the hand reaches overhead, the way a real shoulder rides up."
-    },
-    {
-      "key": "settings.bodyTracking.shoulderMaxDeg.title",
-      "value": "Shoulder Travel Limit"
-    },
-    {
-      "key": "settings.bodyTracking.shoulderMaxDeg.title.tooltip",
-      "value": "Largest angle the shoulder may rotate away from its bind pose, in degrees."
-    },
-    {
       "key": "settings.bodyTracking.bodyFit.maxDeviation.title",
       "value": "Max Deviation"
     },
@@ -15155,28 +15795,12 @@
       "value": "How far the head leads the body as you move. 0 keeps the head over the hips."
     },
     {
-      "key": "settings.bodyTracking.headSwing.backward",
-      "value": "Backward Carry"
-    },
-    {
-      "key": "settings.bodyTracking.headSwing.backward.tooltip",
-      "value": "How much of that carry applies when looking up. Lower it toward 0 to keep the camera still on a look-up instead of sliding it backwards."
-    },
-    {
       "key": "library.instantiated.assignTracker.tooltip",
       "value": "Bind this item to a spare tracker"
     },
     {
       "key": "library.instantiated.unbindTracker.tooltip",
       "value": "Release this item from its tracker"
-    },
-    {
-      "key": "settings.bodyTracking.kneeFootFollow.title",
-      "value": "Knee Follows Foot (Upright)"
-    },
-    {
-      "key": "settings.bodyTracking.kneeFootFollow.title.tooltip",
-      "value": "How strongly the knee tracks its foot while you are standing upright."
     },
     {
       "key": "settings.bodyTracking.vspineGazeSwingRemoval.title",
@@ -15335,6 +15959,14 @@
       "value": "Stop non-admin players from sharing new image pickups, and from receiving images shared while this is on. Admins are unaffected."
     },
     {
+      "key": "settings.admin.title.imageMaxResolution",
+      "value": "Max Shared Image Resolution"
+    },
+    {
+      "key": "settings.admin.title.imageMaxResolution.tooltip",
+      "value": "Largest side a shared image can have, from 1K (1024) to 16K (16384). Larger images are downscaled before sharing. Players whose GPU can't hold the chosen size skip images bigger than it supports. Default 4K."
+    },
+    {
       "key": "settings.admin.title.lockSharedImages.description",
       "value": "Stops non-admin players from sharing new image pickups, and from receiving images shared while this is on. Images already shared stay until removed. Admins are unaffected."
     },
@@ -15385,6 +16017,30 @@
     {
       "key": "settings.admin.title.lockMediaPlayer.description",
       "value": "Stops non-admin players from loading new media player URLs, and from accepting ones shared while this is on. Media already playing keeps playing until replaced. Admins are unaffected."
+    },
+    {
+      "key": "settings.admin.title.lockVideoClips",
+      "value": "Lock Video and Audio Clips"
+    },
+    {
+      "key": "settings.admin.title.lockVideoClips.tooltip",
+      "value": "Stop non-admin players from sharing video and audio files they paste or drop into the world. Clips that already arrived keep playing. Admins are unaffected."
+    },
+    {
+      "key": "settings.admin.title.videoClipMaxSize",
+      "value": "Max Shared Clip Size"
+    },
+    {
+      "key": "settings.admin.title.videoClipMaxSize.tooltip",
+      "value": "Largest video or audio file players can paste or drop into the world, from 16 MB to 1 GB. Bigger files are refused when shared, and players skip clips larger than this. Larger clips take longer to reach everyone and use more server bandwidth. Default 96 MB."
+    },
+    {
+      "key": "settings.admin.title.videoClipMaxPerPlayer",
+      "value": "Max Shared Clips Per Player"
+    },
+    {
+      "key": "settings.admin.title.videoClipMaxPerPlayer.tooltip",
+      "value": "How many video or audio clips each player can have shared at once, from 1 to 16. Players have to remove one to share another past this. Every clip that plays costs viewers bandwidth and frame rate. Default 3."
     },
     {
       "key": "settings.admin.title.lockCameraCapture",
@@ -15449,6 +16105,18 @@
     {
       "key": "settings.admin.title.resourceLimits",
       "value": "Resource Limits"
+    },
+    {
+      "key": "settings.admin.title.networkProtection",
+      "value": "Network Protection"
+    },
+    {
+      "key": "settings.admin.networkProtection.description",
+      "value": "Limits that protect this server from connection floods and abuse. Changes apply right away and are saved to the server config."
+    },
+    {
+      "key": "settings.admin.networkProtection.empty",
+      "value": "Join this server with config editor permission to see these settings."
     },
     {
       "value": "Max Database Entries"
@@ -15925,10 +16593,6 @@
       "value": "Fill this user's UUID into the admin fields below."
     },
     {
-      "key": "settings.ra.title.voiceBuffer",
-      "value": "Voice Buffer"
-    },
-    {
       "key": "settings.microphone.noiseGate.auto",
       "value": "Automatic Threshold"
     },
@@ -15937,16 +16601,44 @@
       "value": "Set the gate threshold from your measured room noise instead of a fixed number."
     },
     {
-      "key": "settings.microphone.agc.debug",
-      "value": "AGC Status"
+      "key": "settings.microphone.processing.title",
+      "value": "Voice Processing"
     },
     {
-      "key": "settings.microphone.agc.debug.off",
-      "value": "Automatic gain is off."
+      "key": "settings.microphone.denoiser.title",
+      "value": "Denoiser"
     },
     {
-      "key": "settings.microphone.agc.debug.listening",
-      "value": "Listening for your voice..."
+      "key": "settings.microphone.agc.title",
+      "value": "Auto Gain"
+    },
+    {
+      "key": "settings.microphone.scope.sent",
+      "value": "Sent"
+    },
+    {
+      "key": "settings.microphone.scope.muted",
+      "value": "Muted"
+    },
+    {
+      "key": "settings.microphone.scope.notSent",
+      "value": "Not Sent"
+    },
+    {
+      "key": "settings.microphone.scope.cutGate",
+      "value": "Cut by Noise Gate"
+    },
+    {
+      "key": "settings.microphone.scope.cutDenoiser",
+      "value": "Removed by Denoiser"
+    },
+    {
+      "key": "settings.microphone.scope.cutLimiter",
+      "value": "Cut by Limiter"
+    },
+    {
+      "key": "settings.microphone.scope.target",
+      "value": "Auto Gain Target"
     },
     {
       "key": "settings.performanceMode.title",
@@ -16037,16 +16729,8 @@
       "value": "Record this player's voice on your machine. They are asked first and can revoke it at any time."
     },
     {
-      "key": "menu.individualPlayer.voiceRecording.start",
-      "value": "Start Recording"
-    },
-    {
       "key": "menu.individualPlayer.voiceRecording.start.description",
       "value": "Ask this player for permission to record their voice."
-    },
-    {
-      "key": "menu.individualPlayer.voiceRecording.stop",
-      "value": "Stop Recording"
     },
     {
       "key": "menu.individualPlayer.voiceRecording.requesting",
@@ -18013,18 +18697,6 @@
       "value": "Unban player?"
     },
     {
-      "key": "settings.remoteAudio.bufferedFrames.description",
-      "value": "Each frame is 20 ms. 1 = ~20 ms (default, low latency, more dropouts).\n5 = ~100 ms. 15 = ~300 ms (max resilience)."
-    },
-    {
-      "key": "settings.remoteAudio.clipBuffer.description",
-      "value": "Multiplier on the per-player AudioClip length used by Unity's AudioSource.\nLower = tighter coupling to the decoded queue (less latency, more sensitive\nto underruns). Default: 2. Live audio sources reload in place when changed."
-    },
-    {
-      "key": "settings.remoteAudio.lipSyncSlots.description",
-      "value": "Number of concurrent OpenLipSync (neural viseme) instances.\nHigher = better lip sync on more players, but more CPU.\nDefault: 30. Players beyond this get no visemes until a slot frees up."
-    },
-    {
       "key": "settings.slimevr.fullReset",
       "value": "Full Reset"
     },
@@ -18342,6 +19014,10 @@
     },
     {
       "key": "mirror.status",
+      "value": "Mirror"
+    },
+    {
+      "key": "mirror.selector",
       "value": "Mirror"
     },
     {
@@ -19089,6 +19765,10 @@
       "value": "Name"
     },
     {
+      "key": "library.sortMode",
+      "value": "Sort By"
+    },
+    {
       "key": "library.sort.dateOldestToNewest",
       "value": "Oldest First"
     },
@@ -19099,6 +19779,10 @@
     {
       "key": "library.filter.all",
       "value": "All"
+    },
+    {
+      "key": "library.filterMode",
+      "value": "Filter"
     },
     {
       "key": "library.filter.embedded",
@@ -19826,7 +20510,7 @@
     },
     {
       "key": "library.placement.atAnchor.description",
-      "value": "Lands on the spawn anchor selected under Settings > Developer > Spawn Anchors. Without one it falls back to aiming."
+      "value": "Lands on the spawn anchor selected under Settings > Controls > Spawn Anchors (shown when \"Show Developer Tab\" is on). Without one it falls back to aiming."
     },
     {
       "key": "settings.developer.spawnAnchors.positionX",
@@ -20289,6 +20973,10 @@
       "value": "Press a key..."
     },
     {
+      "key": "settings.controls.keyboard.keyInUse",
+      "value": "({0} is already in use)"
+    },
+    {
       "key": "ui.bodyRole.centerEye",
       "value": "Center Eye"
     },
@@ -20445,10 +21133,6 @@
       "value": "Calibration report unavailable."
     },
     {
-      "key": "settings.bodyTracking.ikMode.disabledArmToHeight",
-      "value": "Disabled while Arm To Height Ratio is enabled."
-    },
-    {
       "key": "settings.platform.activeTag",
       "value": "ACTIVE"
     },
@@ -20505,11 +21189,11 @@
       "value": "Your avatar's head shifts to follow your real head movement."
     },
     {
-      "key": "settings.mediapipe.armTrackingExperimental",
-      "value": "Arm Tracking (experimental)"
+      "key": "settings.mediapipe.armTracking",
+      "value": "Arm Tracking"
     },
     {
-      "key": "settings.mediapipe.armTrackingExperimental.description",
+      "key": "settings.mediapipe.armTracking.description",
       "value": "Move your avatar's arms to match your real arms, retargeted from the pose skeleton (turns on the pose model; extra CPU)."
     },
     {
@@ -20527,14 +21211,6 @@
     {
       "key": "settings.mediapipe.mirrorCamera.description",
       "value": "Flip the camera horizontally (selfie view)."
-    },
-    {
-      "key": "settings.mediapipe.swapHands",
-      "value": "Swap Hands"
-    },
-    {
-      "key": "settings.mediapipe.swapHands.description",
-      "value": "Fix left/right hands if they are reversed."
     },
     {
       "key": "settings.mediapipe.diagnostics.notRunning",
@@ -21001,6 +21677,34 @@
       "value": "Save this shared {0} to your library?"
     },
     {
+      "key": "content.share.save.folder",
+      "value": "Save the folder {0} and everything in it ({1}) to your library?"
+    },
+    {
+      "key": "content.share.folder.unreadable",
+      "value": "This folder could not be read. It may have been shared from a newer version of Basis."
+    },
+    {
+      "key": "content.share.folder.saveToLibrary",
+      "value": "Save to Library"
+    },
+    {
+      "key": "content.share.folder.saved.title",
+      "value": "Folder Saved"
+    },
+    {
+      "key": "content.share.folder.saved",
+      "value": "Saved the folder {0} and everything in it ({1}) to your library."
+    },
+    {
+      "key": "content.share.folder.paste.title",
+      "value": "Pasted Folder"
+    },
+    {
+      "key": "content.share.folder.paste.body",
+      "value": "Share the folder {0} and everything in it ({1}) with everyone on the server? You choose where to place it next."
+    },
+    {
       "key": "content.share.type.avatar",
       "value": "Avatar"
     },
@@ -21225,6 +21929,10 @@
       "value": "Shared Text"
     },
     {
+      "key": "library.shareable.folder",
+      "value": "Shared Folder"
+    },
+    {
       "key": "content.share.type.link",
       "value": "Link"
     },
@@ -21233,12 +21941,100 @@
       "value": "Text"
     },
     {
-      "key": "content.share.link.open",
-      "value": "Open Link"
+      "key": "content.share.type.folder",
+      "value": "Folder"
+    },
+    {
+      "key": "content.share.type.setting",
+      "value": "Setting"
+    },
+    {
+      "key": "library.shareable.setting",
+      "value": "Shared Setting"
+    },
+    {
+      "key": "library.shareable.video",
+      "value": "Shared Video"
+    },
+    {
+      "key": "content.share.setting.offer.title",
+      "value": "Share Setting"
+    },
+    {
+      "key": "content.share.setting.offer.body",
+      "value": "Share where to find {0}, or what you have it set to? You choose where to place it next."
+    },
+    {
+      "key": "content.share.setting.location",
+      "value": "Location"
+    },
+    {
+      "key": "content.share.setting.value",
+      "value": "My Value"
+    },
+    {
+      "key": "content.share.setting.where",
+      "value": "Where"
+    },
+    {
+      "key": "content.share.setting.yourValue",
+      "value": "Your value"
+    },
+    {
+      "key": "content.share.setting.theirValue",
+      "value": "Their value"
+    },
+    {
+      "key": "content.share.setting.sharedValue",
+      "value": "Shared value"
+    },
+    {
+      "key": "content.share.setting.show",
+      "value": "Show Setting"
+    },
+    {
+      "key": "content.share.setting.location.question",
+      "value": "Open this setting in your menu?"
+    },
+    {
+      "key": "content.share.setting.value.question",
+      "value": "Open this setting in your menu? You can choose to use their value there."
+    },
+    {
+      "key": "content.share.setting.unreadable",
+      "value": "This setting could not be read. It may have been shared from a newer version of Basis."
+    },
+    {
+      "key": "content.share.setting.missing.title",
+      "value": "Setting Not Found"
+    },
+    {
+      "key": "content.share.setting.missing",
+      "value": "{0} could not be found here. It may be about a player or item that isn't here, on a panel or tab you can't see right now, only on another device, or from a different version of Basis."
+    },
+    {
+      "key": "content.share.setting.apply.body",
+      "value": "Use the shared value for this setting?"
+    },
+    {
+      "key": "content.share.setting.apply",
+      "value": "Apply"
+    },
+    {
+      "key": "content.share.setting.value.same",
+      "value": "You already have this setting set to the shared value."
+    },
+    {
+      "key": "content.share.setting.value.unusable",
+      "value": "The shared value can't be used here. Your version of this setting may have different options."
+    },
+    {
+      "key": "content.share.setting.value.locked",
+      "value": "This setting can't be changed right now."
     },
     {
       "key": "content.share.link.open.question",
-      "value": "Open this link in your browser?"
+      "value": "Do you want to open this link in your browser?"
     },
     {
       "key": "content.share.link.site",
@@ -21269,6 +22065,70 @@
       "value": "This text is {0} characters long. Shared text is limited to {1} characters."
     },
     {
+      "key": "content.share.paste.warning.secret.title",
+      "value": "Might be private"
+    },
+    {
+      "key": "content.share.paste.warning.secret",
+      "value": "This looks like it could contain a password, key or sign-in token. Everyone on the server will be able to read it."
+    },
+    {
+      "key": "content.share.paste.warning.local.title",
+      "value": "Local address"
+    },
+    {
+      "key": "content.share.paste.warning.local",
+      "value": "This link points to your own computer or local network, so other players probably can't open it."
+    },
+    {
+      "key": "content.share.link.warning.local.title",
+      "value": "Local network"
+    },
+    {
+      "key": "content.share.link.warning.local",
+      "value": "This link points to this computer or a device on your local network, such as your router. Links like this can change settings on those devices."
+    },
+    {
+      "key": "content.share.link.warning.program.title",
+      "value": "Downloads a program"
+    },
+    {
+      "key": "content.share.link.warning.program",
+      "value": "This link looks like it downloads a file that can install or run software on your computer."
+    },
+    {
+      "key": "content.share.link.warning.lookalike.title",
+      "value": "Look-alike name"
+    },
+    {
+      "key": "content.share.link.warning.lookalike",
+      "value": "This website name uses special characters that can imitate a different site. Make sure it is the site you expect."
+    },
+    {
+      "key": "content.share.link.warning.shortened.title",
+      "value": "Shortened link"
+    },
+    {
+      "key": "content.share.link.warning.shortened",
+      "value": "Short links hide where they really go until they open."
+    },
+    {
+      "key": "content.share.link.warning.ip.title",
+      "value": "Numeric address"
+    },
+    {
+      "key": "content.share.link.warning.ip",
+      "value": "This link uses a bare IP address instead of a website name, which is common for scam and malware sites."
+    },
+    {
+      "key": "content.share.link.warning.unencrypted.title",
+      "value": "Not encrypted"
+    },
+    {
+      "key": "content.share.link.warning.unencrypted",
+      "value": "This page is not encrypted (http), so don't enter passwords or personal details on it."
+    },
+    {
       "key": "settings.admin.title.lockContentRemoval",
       "value": "Lock Content Removal"
     },
@@ -21279,6 +22139,170 @@
     {
       "key": "library.disabled.removalLocked",
       "value": "An admin has locked removing other players' content."
+    },
+    {
+      "key": "externalLinks.prompt.title",
+      "value": "Open Web Page?"
+    },
+    {
+      "key": "externalLinks.prompt.body",
+      "value": "\"{0}\" ({1}) wants to open this page in your web browser. Only open it if you trust where it goes."
+    },
+    {
+      "key": "externalLinks.prompt.open",
+      "value": "Open Page"
+    },
+    {
+      "key": "externalLinks.prompt.site",
+      "value": "Website"
+    },
+    {
+      "key": "webRequests.prompt.title",
+      "value": "Let this content use a website?"
+    },
+    {
+      "key": "webRequests.prompt.body",
+      "value": "\"{0}\" ({1}) wants to connect to the site below. It could download from it and send it information about you, including your name and player ID. Allow it only if you trust both. This lasts until you leave."
+    },
+    {
+      "key": "webRequests.prompt.allow",
+      "value": "Allow"
+    },
+    {
+      "key": "webRequests.prompt.site",
+      "value": "Site"
+    },
+    {
+      "key": "externalLinks.prompt.link",
+      "value": "Address"
+    },
+    {
+      "key": "externalLinks.prompt.wait",
+      "value": "Check the address first. This button turns on in a moment."
+    },
+    {
+      "key": "externalLinks.kind.world",
+      "value": "World"
+    },
+    {
+      "key": "externalLinks.kind.prop",
+      "value": "Prop"
+    },
+    {
+      "key": "externalLinks.unnamed",
+      "value": "Unnamed"
+    },
+    {
+      "key": "serverRequests.connect.title",
+      "value": "Switch Server?"
+    },
+    {
+      "key": "serverRequests.connect.body",
+      "value": "\"{0}\" ({1}) wants to move you to the server below. You will leave this server. Only accept if you trust where it goes."
+    },
+    {
+      "key": "serverRequests.connect.accept",
+      "value": "Switch Server"
+    },
+    {
+      "key": "serverRequests.disconnect.title",
+      "value": "Leave Server?"
+    },
+    {
+      "key": "serverRequests.disconnect.body",
+      "value": "\"{0}\" ({1}) wants to disconnect you from this server."
+    },
+    {
+      "key": "serverRequests.disconnect.accept",
+      "value": "Leave Server"
+    },
+    {
+      "key": "serverRequests.prompt.server",
+      "value": "Server"
+    },
+    {
+      "key": "settings.general.externalLinkRequests",
+      "value": "Web Page Requests"
+    },
+    {
+      "key": "settings.general.externalLinkRequests.tooltip",
+      "value": "Let worlds and props ask to open web pages in your browser. You always see the address and decide whether to open it. Turn off to refuse every request."
+    },
+    {
+      "key": "settings.admin.title.lockExternalLinks",
+      "value": "Lock Web Page Requests"
+    },
+    {
+      "key": "settings.admin.title.lockExternalLinks.tooltip",
+      "value": "Worlds and props can't ask players to open web pages in their browser. Links players share as orbs are not affected. Admins are unaffected."
+    },
+    {
+      "key": "settings.admin.title.lockAvatarHosting",
+      "value": "Lock Local Avatar Sharing"
+    },
+    {
+      "key": "settings.admin.title.lockAvatarHosting.tooltip",
+      "value": "Players can't share an avatar from a file on their computer through this server, and anything they are already sharing stops. Anyone who already loaded it keeps it. Admins are unaffected. Size and memory limits are under Network Protection."
+    },
+    {
+      "key": "library.shareable.portal",
+      "value": "Shared Portal"
+    },
+    {
+      "key": "content.share.type.portal",
+      "value": "Portal"
+    },
+    {
+      "key": "content.share.portal.go",
+      "value": "Go"
+    },
+    {
+      "key": "content.share.portal.question",
+      "value": "Travel to this server?"
+    },
+    {
+      "key": "content.share.portal.destination",
+      "value": "Destination"
+    },
+    {
+      "key": "content.share.portal.lifetime",
+      "value": "Lifetime"
+    },
+    {
+      "key": "content.share.portal.persistent",
+      "value": "Stays until removed"
+    },
+    {
+      "key": "content.share.portal.timed",
+      "value": "Closes {0} seconds after it was placed"
+    },
+    {
+      "key": "content.share.portal.health",
+      "value": "Server Health"
+    },
+    {
+      "key": "content.share.portal.checking",
+      "value": "Checking…"
+    },
+    {
+      "key": "content.share.portal.offline",
+      "value": "Offline or unreachable"
+    },
+    {
+      "key": "content.share.portal.online",
+      "value": "Online: {0} / {1} players, {2} ms"
+    },
+    {
+      "key": "content.share.portal.name",
+      "value": "Name"
+    },
+    {
+      "key": "content.share.portal.motd",
+      "value": "Message"
+    },
+    {
+      "key": "content.share.portal.invalid",
+      "value": "This portal's destination could not be read."
     }
   ]
 }

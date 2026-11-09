@@ -192,7 +192,7 @@ namespace Basis.Shims.Editor
             FieldInfo field = owner.GetField(fieldName, StaticAny);
             if (field == null)
             {
-                LoadError = $"{owner.Name}.{fieldName} was not found — the whitelist may have been renamed.";
+                LoadError = LocFormat("sdk.cilbox.error.whitelistMissing", owner.Name, fieldName);
                 return null;
             }
             return field.GetValue(null) as HashSet<string>;
@@ -203,7 +203,7 @@ namespace Basis.Shims.Editor
             FieldInfo field = owner.GetField(fieldName, StaticAny);
             if (field == null)
             {
-                LoadError = $"{owner.Name}.{fieldName} was not found — the whitelist may have been renamed.";
+                LoadError = LocFormat("sdk.cilbox.error.whitelistMissing", owner.Name, fieldName);
                 return null;
             }
             return field.GetValue(null) as Dictionary<Type, HashSet<string>>;
@@ -543,19 +543,33 @@ namespace Basis.Shims.Editor
         /// into a list. Shown so the window can explain a refusal no whitelist accounts for; the
         /// verdicts above never consult this table, they call the real method.
         /// </summary>
-        [NoAutoStaticsCleanup] public static readonly (string Type, string Members, string ReasonKey)[] HardDenies =
+        public static (string Type, string Members, string ReasonKey)[] HardDenies => new[]
         {
             ("*", "*Invoke*", "sdk.cilbox.deny.invoke"),
             ("System.IntPtr, System.UIntPtr, System.Void*, System.RuntimeFieldHandle, System.RuntimeMethodHandle, System.RuntimeTypeHandle, System.Runtime.CompilerServices.Unsafe, System.Runtime.InteropServices.Marshal, System.Runtime.InteropServices.MemoryMarshal, System.Runtime.InteropServices.GCHandle, System.Runtime.InteropServices.NativeLibrary",
-                "(the whole type)", "sdk.cilbox.deny.nativePointers"),
+                Loc("sdk.cilbox.deny.wholeType"), "sdk.cilbox.deny.nativePointers"),
             ("Unity.Collections.NativeArray<T>",
-                "everything except get_Length, get_IsCreated, ToArray, CopyTo, Equals, GetHashCode, ToString",
+                LocFormat("sdk.cilbox.deny.allExcept", "get_Length, get_IsCreated, ToArray, CopyTo, Equals, GetHashCode, ToString"),
                 "sdk.cilbox.deny.nativeArray"),
             ("UnityEngine.Application", "OpenURL, Quit, Unload, Load*, ExternalCall, ExternalEval, RequestUserAuthorization, GetBuildTags, SetBuildTags, SetStackTraceLogType, CanStreamedLevelBeLoaded", "sdk.cilbox.deny.application"),
             ("UnityEngine.Object", "Instantiate, InstantiateAsync", "sdk.cilbox.deny.instantiate"),
             ("UnityEngine.GameObject", "AddComponent, SendMessage, SendMessageUpwards, BroadcastMessage", "sdk.cilbox.deny.gameObject"),
             ("UnityEngine.Component", "SendMessage, SendMessageUpwards, BroadcastMessage", "sdk.cilbox.deny.component"),
             ("UnityEngine.Animator", "GetBehaviour, GetBehaviours", "sdk.cilbox.deny.animator"),
+            ("UnityEngine.ComputeShader, UnityEngine.ComputeBuffer, UnityEngine.GraphicsBuffer", "Dispatch, new ComputeBuffer, new GraphicsBuffer, CopyCount", "sdk.cilbox.deny.compute"),
+            ("UnityEngine.Shader", "SetGlobalBuffer, SetGlobalConstantBuffer", "sdk.cilbox.deny.globalBuffer"),
+            ("Basis.Scripts.Networking.BasisNetworkConnection",
+                LocFormat("sdk.cilbox.deny.allExcept", "get_LocalPlayerIsConnected, TryGetLocalPlayerID"),
+                "sdk.cilbox.deny.networkConnection"),
+            ("BasisNetworkLifeCycle, Basis.Scripts.Networking.BasisNetworkManagement, Basis.Scripts.Networking.BasisConnectionService, Basis.Scripts.Networking.BasisServerRequests, Basis.Scripts.Networking.BasisDeepLinkProvider",
+                Loc("sdk.cilbox.deny.wholeType"), "sdk.cilbox.deny.connectionControl"),
+            ("Basis.Scripts.Networking.BasisServerStorageClient",
+                Loc("sdk.cilbox.deny.wholeType"), "sdk.cilbox.deny.serverStorageClient"),
+            ("Cilbox.*",
+                LocFormat("sdk.cilbox.deny.allExcept", "Cilbox.CilboxPublicUtils"), "sdk.cilbox.deny.permissionControl"),
+            ("Basis.BasisUI.BasisCilboxPermissions, Basis.Scripts.Settings.BasisSettingsSystem",
+                Loc("sdk.cilbox.deny.wholeType"), "sdk.cilbox.deny.permissionControl"),
+            ("Basis.BasisUI.BasisSettingsDefaults", "AllowUntrustedScriptPermissions", "sdk.cilbox.deny.permissionControl"),
         };
 
         /// <summary>
@@ -563,11 +577,11 @@ namespace Basis.Shims.Editor
         /// <c>GetTypeOverride</c>. A script writing <c>UnityEngine.Debug</c> is really calling
         /// <c>BasisDebugPropsShim</c>, which is worth saying out loud.
         /// </summary>
-        [NoAutoStaticsCleanup] public static readonly (string Written, string Actual)[] TypeOverrides =
+        public static (string Written, string Actual)[] TypeOverrides => new[]
         {
             ("UnityEngine.Debug", "Basis.Shims.BasisDebugPropsShim"),
             ("UnityEngine.Video.VideoPlayer", "Basis.Shims.VideoPlayerShim"),
-            ("Basis.Scripts.BasisSdk.BasisAvatar", "Basis.Shims.BasisAvatarShim (avatar box)"),
+            ("Basis.Scripts.BasisSdk.BasisAvatar", LocFormat("sdk.cilbox.override.avatarBoxOnly", "Basis.Shims.BasisAvatarShim")),
             ("Basis.Shims.BasisNetworkShim", "Basis.BasisNetworkShim"),
         };
 

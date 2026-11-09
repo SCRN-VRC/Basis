@@ -51,6 +51,7 @@ namespace Cilbox
 			// nothing here writes a setting.
 			"Basis.Shims.BasisGraphicsSettingsShim",
 			"Basis.Shims.BasisPlatformShim",
+			"Basis.Shims.BasisSaveScope",
 			"BasisPlatformSwitch", // Restrictive, see method whitelist.
 			"BasisPlatformSwitchRule",
 			"Basis.Scripts.Device_Management.BasisPlatformCondition",
@@ -268,6 +269,13 @@ namespace Cilbox
 
 			// Unity types - rendering / materials / mesh
 			"UnityEngine.BoneWeight",
+			"UnityEngine.ComputeBuffer",
+			"UnityEngine.ComputeBufferMode",
+			"UnityEngine.ComputeBufferType",
+			"UnityEngine.ComputeShader",
+			"UnityEngine.GraphicsBuffer",
+			"UnityEngine.GraphicsBuffer+Target",
+			"UnityEngine.GraphicsBuffer+UsageFlags",
 			"UnityEngine.IndexFormat",
 			"UnityEngine.Material",
 			"UnityEngine.MaterialGlobalIlluminationFlags",
@@ -284,8 +292,12 @@ namespace Cilbox
 			"UnityEngine.Rendering.AmbientMode",
 			"UnityEngine.Rendering.IndexFormat",
 			"UnityEngine.Rendering.LightProbeUsage",
+			"UnityEngine.Rendering.LocalKeyword",
+			"UnityEngine.Rendering.LocalKeywordSpace",
 			"UnityEngine.Rendering.OpaqueSortMode",
 			"UnityEngine.Rendering.ReflectionProbeUsage",
+			"UnityEngine.Rendering.RenderTextureSubElement",
+			"UnityEngine.Rendering.ShaderKeywordType",
 			"UnityEngine.Rendering.ShadowCastingMode",
 			"UnityEngine.Rendering.ShadowMapPass",
 			"UnityEngine.Rendering.UVChannelFlags",
@@ -514,8 +526,9 @@ namespace Cilbox
 			//   get_AvatarTransform/AvatarAnimatorTransform/PlayerSelf/Transform/AvatarParent — a
 			//     Transform is default-allow once handed over, so these are write handles.
 			//   get_GameObject — SetActive is allowed on GameObject; that hides or breaks a player.
-			//   get_UUID — stable across instances, so it lets any world fingerprint and correlate
-			//     users between visits. PlayerId covers per-session identity.
+			// get_UUID is allowed by the maintainer's call (2026-10-15): it is stable across instances,
+			// so content can recognise a returning player. Web requests that could carry it off-device
+			// are consent- and per-site-gated in BasisWebRequestShim.
 			//   add/remove_OnAvatarSwitched — an interpreted delegate cannot be unsubscribed, and
 			//     this event outlives the script.
 			//   get_AudioReceived — hands back a Delegate.
@@ -526,6 +539,7 @@ namespace Cilbox
 				"get_PlayerPlatform",
 				"get_DisplayName",
 				"get_SafeDisplayName",
+				"get_UUID",
 				"get_IsConsideredFallBackAvatar",
 				"get_AvatarLoadMode",
 				"get_FaceIsVisible",
@@ -537,14 +551,24 @@ namespace Cilbox
 				typeof(Basis.Scripts.Networking.NetworkedAvatar.BasisNetworkPlayer).GetProperty(nameof(Basis.Scripts.Networking.NetworkedAvatar.BasisNetworkPlayer.displayName)).GetGetMethod().Name,
 				"get_playerId", nameof(Basis.Scripts.Networking.NetworkedAvatar.BasisNetworkPlayer.GetAllPlayers),
 				} },
+			{ typeof(Basis.Scripts.Networking.BasisNetworkConnection), new HashSet<string> {
+				$"get_{nameof(Basis.Scripts.Networking.BasisNetworkConnection.LocalPlayerIsConnected)}",
+				nameof(Basis.Scripts.Networking.BasisNetworkConnection.TryGetLocalPlayerID),
+				} },
 			{ typeof(Basis.SafeUtil), new HashSet<string>{
 				".ctor",
+				nameof(Basis.SafeUtil.GetCurrentLanguage),
 				nameof(Basis.SafeUtil.AddEventTrigger),
 				nameof(Basis.SafeUtil.MakeNetworkable),
 				nameof(Basis.SafeUtil.MakeInteractable),
 				nameof(Basis.SafeUtil.GetExecutionBudgetUs),
 				nameof(Basis.SafeUtil.GetRemainingExecutionBudgetUs),
 				nameof(Basis.SafeUtil.GetLastFrameExecutionUs),
+				nameof(Basis.SafeUtil.GetContentGroupId),
+				nameof(Basis.SafeUtil.GetContentNetworkId),
+				nameof(Basis.SafeUtil.GetContentName),
+				nameof(Basis.SafeUtil.GetContentAuthor),
+				nameof(Basis.SafeUtil.GetContentTags),
 				} },
 			{ typeof(BasisContent), new HashSet<string>{ "SpawnedByLocalPlayer" } },
 			// Read-only identity. AssignContentIdentifier and get_ContentInformation are held back:
@@ -570,7 +594,7 @@ namespace Cilbox
 			{ typeof(BasisPositionConstraint), new HashSet<string>() },
 			{ typeof(BasisRotationConstraint), new HashSet<string>() },
 			{ typeof(BasisScaleConstraint), new HashSet<string>() },
-			{ typeof(BasisParentConstraint), new HashSet<string>{ nameof(BasisParentConstraint.CaptureOffsets) } },
+			{ typeof(Basis.Scripts.BasisSdk.Constraints.BasisParentConstraint), new HashSet<string>{ nameof(Basis.Scripts.BasisSdk.Constraints.BasisParentConstraint.CaptureOffsets) } },
 			{ typeof(BasisAimConstraint), new HashSet<string>() },
 			{ typeof(BasisLookAtConstraint), new HashSet<string>() },
 			{ typeof(BasisBlendConstraint), new HashSet<string>() },
@@ -673,6 +697,85 @@ namespace Cilbox
 				"get_version",
 				"IsPlaying",
 				} },
+			{ typeof(UnityEngine.ComputeShader), new HashSet<string>{
+				"FindKernel",
+				"HasKernel",
+				"GetKernelThreadGroupSizes",
+				"IsSupported",
+				"SetBool",
+				"SetInt",
+				"SetInts",
+				"SetFloat",
+				"SetFloats",
+				"SetVector",
+				"SetVectorArray",
+				"SetMatrix",
+				"SetMatrixArray",
+				"SetTexture",
+				"SetBuffer",
+				"SetConstantBuffer",
+				"Dispatch",
+				"EnableKeyword",
+				"DisableKeyword",
+				"IsKeywordEnabled",
+				"SetKeyword",
+				"get_keywordSpace",
+				"get_enabledKeywords",
+				"set_enabledKeywords",
+				"get_shaderKeywords",
+				"set_shaderKeywords",
+				} },
+			{ typeof(UnityEngine.ComputeBuffer), new HashSet<string>{
+				".ctor",
+				"get_count",
+				"get_stride",
+				"IsValid",
+				"Release",
+				"Dispose",
+				"set_name",
+				"SetData",
+				"GetData",
+				"SetCounterValue",
+				"CopyCount",
+				} },
+			{ typeof(UnityEngine.GraphicsBuffer), new HashSet<string>{
+				".ctor",
+				"get_count",
+				"get_stride",
+				"get_target",
+				"get_usageFlags",
+				"IsValid",
+				"Release",
+				"Dispose",
+				"set_name",
+				"SetData",
+				"GetData",
+				"SetCounterValue",
+				"CopyCount",
+				} },
+			{ typeof(UnityEngine.Rendering.LocalKeyword), new HashSet<string>{
+				".ctor",
+				"get_name",
+				"get_type",
+				"get_isValid",
+				"get_isDynamic",
+				"get_isOverridable",
+				"Equals",
+				"GetHashCode",
+				"ToString",
+				"op_Equality",
+				"op_Inequality",
+				} },
+			{ typeof(UnityEngine.Rendering.LocalKeywordSpace), new HashSet<string>{
+				"FindKeyword",
+				"get_keywordCount",
+				"get_keywordNames",
+				"get_keywords",
+				"Equals",
+				"GetHashCode",
+				"op_Equality",
+				"op_Inequality",
+				} },
 		};
 
 		protected abstract HashSet<string> ExtraWhiteListType { get; }
@@ -683,6 +786,27 @@ namespace Cilbox
 		internal string consentHash;
 		internal HashSet<string> consentGranted;
 		internal CilboxBasisConsent.Scan consentScan;
+		internal BasisContentBase ownerContent;
+		internal bool ownerRecorded;
+		internal string saveContentKey;
+		internal HashSet<string> saveStores;
+		internal HashSet<string> saveReadStores;
+		internal double saveWindowStart;
+		internal int saveWindowWrites;
+		internal double hapticWindowStart;
+		internal int hapticWindowPulses;
+		internal double menuWindowStart;
+		internal int menuWindowAdds;
+		internal List<(WeakReference<IDisposable> Buffer, long Bytes)> computeBuffers;
+		internal long computeBytes;
+		internal int computeFrame;
+		internal long computeFrameThreads;
+		internal bool computeWarned;
+		internal int computeBlockingFrame = -1;
+		internal int computeBlockingFrames;
+		internal bool computeBlockingWarned;
+
+		void OnDestroy() => CilboxCompute.Release(this);
 
 		protected bool Beyond(string item, bool floor)
 		{
@@ -694,7 +818,7 @@ namespace Cilbox
 			return !floor && CilboxBasisConsent.Permits(this, item);
 		}
 
-		protected static string MethodItem(Type declaringType, string name)
+		internal static string MethodItem(Type declaringType, string name)
 		{
 			string type = declaringType != null && declaringType.FullName != null ? GetSanitizedTypeName(declaringType) : "?";
 			return CilboxItems.MethodPrefix + type + "." + name;
@@ -715,6 +839,19 @@ namespace Cilbox
 			"System.Runtime.InteropServices.MemoryMarshal",
 			"System.Runtime.InteropServices.GCHandle",
 			"System.Runtime.InteropServices.NativeLibrary",
+			"BasisLinkSafety",
+			"BasisContentShareText",
+			"Basis.BasisUI.BasisExternalLinks",
+			"Basis.BasisUI.BasisWebRequests",
+			"Basis.Scripts.BasisSdk.Interactions.BasisUserActivation",
+			"BasisNetworkLifeCycle",
+			"Basis.Scripts.Networking.BasisNetworkManagement",
+			"Basis.Scripts.Networking.BasisConnectionService",
+			"Basis.Scripts.Networking.BasisServerRequests",
+			"Basis.Scripts.Networking.BasisDeepLinkProvider",
+			"Basis.Scripts.Networking.BasisServerStorageClient",
+			"Basis.BasisUI.BasisCilboxPermissions",
+			"Basis.Scripts.Settings.BasisSettingsSystem",
 		};
 
 		public override bool CheckTypeAllowed(Type t)
@@ -747,13 +884,15 @@ namespace Cilbox
 			{
 				if (MatchesWildcard(allowedType, sType)) return true;
 			}
-			return Beyond(CilboxItems.TypePrefix + sType, false);
+			return Beyond(CilboxItems.TypePrefix + sType, sType.StartsWith("Cilbox.", StringComparison.Ordinal));
 		}
 
 		public bool CheckFieldAllowed(string sType, string sFieldName)
 		{
 			if (!CheckTypeAllowed(sType)) return false;
 			string fullField = sType + "." + sFieldName;
+			if (sType == typeof(Basis.Scripts.Networking.BasisNetworkConnection).FullName) return Beyond(CilboxItems.FieldPrefix + fullField, true);
+			if (sType == typeof(Basis.BasisUI.BasisSettingsDefaults).FullName && sFieldName == nameof(Basis.BasisUI.BasisSettingsDefaults.AllowUntrustedScriptPermissions)) return Beyond(CilboxItems.FieldPrefix + fullField, true);
 			if (commonWhiteListFields.Contains(fullField)) return true;
 			if (ExtraWhiteListFields.Contains(fullField)) return true;
 			foreach (var allowedField in commonWhiteListFields)
@@ -770,6 +909,7 @@ namespace Cilbox
 		public override bool CheckMethodAllowed(out MethodInfo mi, Type declaringType, string name, SerializedTypeDescriptor[] parametersIn, SerializedTypeDescriptor[] genericArgumentsIn, string fullSignature)
 		{
 			mi = null;
+			CilboxProfiler.Resolving(this);
 
 			if (fullSignature != null && fullSignature.IndexOf('*') >= 0) return Beyond(MethodItem(declaringType, name), true);
 
@@ -785,6 +925,12 @@ namespace Cilbox
 				return mi != null;
 			}
 
+			if (declaringType == typeof(UnityEngine.Application) && name == nameof(UnityEngine.Application.OpenURL))
+			{
+				mi = typeof(Basis.Shims.BasisExternalLinkShim).GetMethod(nameof(Basis.Shims.BasisExternalLinkShim.OpenURL), BindingFlags.Static | BindingFlags.NonPublic, null, new[] { typeof(string) }, null);
+				return mi != null;
+			}
+
 			// NativeArray<T> only bounds-checks its indexer under ENABLE_UNITY_COLLECTIONS_CHECKS,
 			// which release players do not define. Restricted to the members that copy out.
 			if (declaringType != null && declaringType.IsGenericType &&
@@ -796,7 +942,84 @@ namespace Cilbox
 					   Beyond(MethodItem(declaringType, name), true);
 			}
 
+			if (PublicOnly(declaringType) && (!declaringType.IsVisible || (name != ConstructorInfo.ConstructorName && !IsPublicMethod(declaringType, name, parametersIn, genericArgumentsIn, fullSignature)))) return Beyond(MethodItem(declaringType, name), true);
+
+			if (declaringType == typeof(Basis.Shims.VideoPlayerShim) && (name == nameof(Basis.Shims.VideoPlayerShim.Awake) || name == nameof(Basis.Shims.VideoPlayerShim.OnDestroy))) return Beyond(MethodItem(declaringType, name), true);
+
+			if (declaringType == typeof(Basis.Shims.BasisSaveShim))
+			{
+				if (name != nameof(Basis.Shims.BasisSaveShim.Save) && name != nameof(Basis.Shims.BasisSaveShim.Load) && name != nameof(Basis.Shims.BasisSaveShim.Delete) && name != nameof(Basis.Shims.BasisSaveShim.LoadReadOnly)) return Beyond(MethodItem(declaringType, name), true);
+				Beyond(MethodItem(declaringType, name), false);
+			}
+
+			if (declaringType == typeof(Basis.Shims.BasisServerStorageShim))
+			{
+				if (!CilboxServerStorage.IsEntryPoint(name)) return Beyond(MethodItem(declaringType, name), true);
+				if (CilboxServerStorage.NeedsConsent(name)) Beyond(MethodItem(declaringType, name), false);
+			}
+
+			// Same shape as server storage: only the public entry points resolve, and the
+			// request methods record a consent item that the shim re-checks on every call.
+			if (declaringType == typeof(Basis.Shims.BasisWebRequestShim))
+			{
+				if (this is CilboxAvatarBasis || !CilboxWebRequests.IsEntryPoint(name)) return Beyond(MethodItem(declaringType, name), true);
+				if (CilboxWebRequests.NeedsConsent(name)) Beyond(MethodItem(declaringType, name), false);
+			}
+
+			if (declaringType == typeof(Basis.Shims.BasisModelShim) && (this is CilboxAvatarBasis || !CilboxModels.IsEntryPoint(name))) return Beyond(MethodItem(declaringType, name), true);
+
+			if (declaringType == typeof(Basis.Shims.BasisHapticsShim) && !CilboxHaptics.IsEntryPoint(name)) return Beyond(MethodItem(declaringType, name), true);
+
+			if (CilboxMenus.Blocks(declaringType, name)) return Beyond(MethodItem(declaringType, name), true);
+
+			if (CilboxScriptBus.Blocks(declaringType, name)) return Beyond(MethodItem(declaringType, name), true);
+
+			if (declaringType == typeof(Basis.Scripts.Networking.BasisNetworkConnection) && !CuratedMethodAllowed(declaringType, name)) return Beyond(MethodItem(declaringType, name), true);
+
+			if (declaringType == typeof(Basis.Shims.BasisConnectionShim) && (this is CilboxAvatarBasis || !CilboxConnection.IsEntryPoint(name))) return Beyond(MethodItem(declaringType, name), true);
+
+			if (CilboxCompute.IsRedirect(declaringType, name))
+			{
+				if (parametersIn == null) return true;
+				mi = CilboxCompute.Resolve(this, declaringType, name, parametersIn);
+				return mi != null || Beyond(MethodItem(declaringType, name), true);
+			}
+
+			if (declaringType == typeof(Basis.Shims.BasisComputeShim) && !CilboxCompute.IsEntryPoint(name)) return Beyond(MethodItem(declaringType, name), true);
+
 			return CuratedMethodAllowed(declaringType, name) || Beyond(MethodItem(declaringType, name), false);
+		}
+
+		private static bool PublicOnly(Type type)
+		{
+			for (; type != null; type = type.DeclaringType)
+			{
+				if (type == typeof(Basis.Shims.VideoPlayerShim) || type == typeof(Basis.BasisStringDownloader) || type == typeof(Basis.BasisImageDownloader)) return true;
+			}
+			return false;
+		}
+
+		protected bool IsPublicMethod(Type declaringType, string name, SerializedTypeDescriptor[] parametersIn, SerializedTypeDescriptor[] genericArgumentsIn, string fullSignature)
+		{
+			const BindingFlags publicMembers = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static;
+			if (genericArgumentsIn != null && genericArgumentsIn.Length > 0) return false;
+			try
+			{
+				if (parametersIn == null)
+				{
+					foreach (MethodInfo method in declaringType.GetMethods(publicMembers))
+						if (method.Name == name && (fullSignature == null || method.ToString() == fullSignature)) return true;
+					return false;
+				}
+				Type[] parameters = usage.DescriptorsToArrayOfNativeTypes(parametersIn);
+				for (int i = 0; i < parameters.Length; i++)
+					if (parameters[i] == null) return false;
+				return declaringType.GetMethod(name, 0, publicMembers, null, CallingConventions.Any, parameters, null) != null;
+			}
+			catch (Exception)
+			{
+				return false;
+			}
 		}
 
 		private bool CuratedMethodAllowed(Type declaringType, string name)
@@ -836,6 +1059,10 @@ namespace Cilbox
 			if (declaringType == typeof(UnityEngine.Animator) && (
 				name == "GetBehaviour" ||
 				name == "GetBehaviours"))
+				return false;
+			if (declaringType == typeof(UnityEngine.Shader) && (
+				name == "SetGlobalBuffer" ||
+				name == "SetGlobalConstantBuffer"))
 				return false;
 
 			bool inCommon = commonMethodWhitelist.TryGetValue(declaringType, out var commonAllowed);

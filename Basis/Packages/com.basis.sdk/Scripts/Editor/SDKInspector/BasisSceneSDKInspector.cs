@@ -41,6 +41,7 @@ public class BasisSceneSDKInspector : Editor
         if (visualTree != null)
         {
             uiElementsRoot = visualTree.CloneTree();
+            BasisEditorLocalization.LocalizeTree(uiElementsRoot, "sdk.uxml.scene.");
             rootElement.Add(uiElementsRoot);
 
             BasisSceneValidator = new BasisSceneValidator(BasisScene, rootElement);
@@ -79,6 +80,7 @@ public class BasisSceneSDKInspector : Editor
                 BasisEditorLocalization.Get("sdk.scene.icon.generate"),
                 BasisEditorLocalization.Get("sdk.scene.icon.generate.tooltip"),
                 CaptureSceneIcon);
+            BasisSDKCommonInspector.CreateAuthorshipFoldout(BasisSDKCommonInspector.ResolveDescriptionContainer(uiElementsRoot), serializedObject);
 
             // Spawn point field
             ObjectField SpawnPointField = uiElementsRoot.Q<ObjectField>(BasisSDKConstants.SpawnPointField);

@@ -40,6 +40,7 @@ public class BasisPropSDKInspector : Editor
         if (visualTree != null)
         {
             uiElementsRoot = visualTree.CloneTree();
+            BasisEditorLocalization.LocalizeTree(uiElementsRoot, "sdk.uxml.prop.");
             rootElement.Add(uiElementsRoot);
 
             BasisPropValidator = new BasisPropValidator(BasisProp, rootElement);
@@ -81,6 +82,7 @@ public class BasisPropSDKInspector : Editor
                 BasisEditorLocalization.Get("sdk.prop.icon.generate"),
                 BasisEditorLocalization.Get("sdk.prop.icon.generate.tooltip"),
                 () => BasisIconCapture.CaptureGameObject(BasisProp.gameObject, BasisIconCapture.PropYaw, BasisIconCapture.PropPitch));
+            BasisSDKCommonInspector.CreateAuthorshipFoldout(BasisSDKCommonInspector.ResolveDescriptionContainer(uiElementsRoot), serializedObject);
 
             // Parented into the UXML blocks so they pick up that styling rather than trailing off
             // the end of the inspector: what the prop is goes under Settings, how it is published

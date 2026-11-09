@@ -12,7 +12,6 @@ using K4os.Compression.LZ4;
 using System;
 using System.Buffers;
 using static SerializableBasis;
-[AutoStaticsCleanup]
 public static partial class BasisNetworkEvents
 {
     [NoAutoStaticsCleanup] private static bool _coreHandlersRegistered;
@@ -786,8 +785,11 @@ public static partial class BasisNetworkEvents
                 Reader.Recycle();
             }
         });
+
+        BasisClientMessageRegistry.RegisterCore(BasisNetworkCommons.StorageChannel, BasisServerStorageClient.HandleReply);
+        BasisAvatarHostClient.Initialize();
     }
-    public static Action<BasisNetworkStatistics.Snapshot> Snapshotdata;
+    [AutoStaticsCleanup] public static Action<BasisNetworkStatistics.Snapshot> Snapshotdata;
     public static void IncomingData(NetPacketReader Reader)
     {
         BasisNetworkStatistics.Snapshot Snapshot = BasisNetworkStatistics.Snapshot.Decode(Reader.GetRemainingBytesSegment(), true);
@@ -829,7 +831,7 @@ public static partial class BasisNetworkEvents
             return;
         }
         BasisDebug.Log("Validated Size " + Reader.AvailableBytes);
-        if (BasisDIDAuthIdentityClient.IdentityMessage(peer, Reader, out NetDataWriter Writer))
+        if (BasisDIDAuthIdentityClient.IdentityMessage(BasisNetworkConnection.NetworkClient, Reader, out NetDataWriter Writer))
         {
             BasisDebug.Log("Sent Identity To Server!");
             BasisNetworkConnection.LocalPlayerPeer.Send(Writer, BasisNetworkCommons.AuthIdentityChannel, DeliveryMethod.ReliableOrdered);
@@ -853,7 +855,7 @@ public static partial class BasisNetworkEvents
     // decodes on it) — keeps the per-join NetDataReader allocation out of GC.
     // Library messages arrive sequentially on that one thread, so a single
     // instance is enough.
-    private static NetDataReader _libraryPayloadReader;
+    [AutoStaticsCleanup] private static NetDataReader _libraryPayloadReader;
 
     private static bool TryDecodeServerLibrary(NetPacketReader reader, out ServerLibraryMessage libraryMessage)
     {
@@ -1025,6 +1027,10 @@ public static partial class BasisNetworkEvents
                 {
                     case BasisNetworkCommons.RejectKind_VersionMismatch:
                     {
+                        if (BasisNetworkConnection.TryRetryWithLegacyLogin(aux0))
+                        {
+                            return;
+                        }
                         ushort localVersion = BasisNetworkVersion.ServerVersion;
                         if (aux0 > localVersion)
                         {
@@ -1042,6 +1048,22 @@ public static partial class BasisNetworkEvents
                         title = BasisLocalization.Get("menu.servers.reject.serverFull.title");
                         body = !string.IsNullOrEmpty(structuredMsg) ? structuredMsg : BasisLocalization.Get("menu.servers.reject.serverFull.body");
                         break;
+                    case BasisNetworkCommons.RejectKind_PasswordRejected:
+                    {
+#if UNITY_SERVER
+                        bool canPrompt = canShowMenu;
+#else
+                        bool canPrompt = true;
+#endif
+                        if (canPrompt && BasisConnectionService.TryRequestPassword())
+                        {
+                            BasisDebug.LogWarning("The server rejected the password; asking for it.", BasisDebug.LogTag.Networking);
+                            return;
+                        }
+                        title = BasisLocalization.Get("menu.servers.reject.title");
+                        body = !string.IsNullOrEmpty(structuredMsg) ? structuredMsg : BasisLocalization.Get("menu.servers.reject.body");
+                        break;
+                    }
                     default:
                         title = BasisLocalization.Get("menu.servers.reject.title");
                         body = !string.IsNullOrEmpty(structuredMsg) ? structuredMsg : BasisLocalization.Get("menu.servers.reject.body");

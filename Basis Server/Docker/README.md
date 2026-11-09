@@ -27,11 +27,13 @@ When you first run the server using `docker compose up`, the following directori
 ```text
 Docker/
 ├── config/
-└── initialresources/
+├── initialresources/
+└── storage/
 ```
 
 - `config/`: Contains XML configuration files for the server (e.g., main settings, admin lists, ban lists). The server may auto-generate or update these based on its internal defaults and environment variables.
 - `initialresources/`: Contains static assets required by the server at runtime. These are typically mounted as read-only into the container.
+- `storage/`: Player storage: the save data worlds, props and avatars keep for each player on this server (one checksummed file per player, or `storage.db` with `StorageBackend=sqlite`).
 
 ## Configuration
 
@@ -86,6 +88,23 @@ Browsers cannot use UDP, so web builds of Basis connect over WebSocket. WebSocke
 4. Behind a proxy, add the proxy's address to `TrustedProxies` in `websocket.xml` so the server sees each player's real address in `X-Forwarded-For`. Without it every web player appears to come from the proxy, and an IP ban would hit all of them.
 
 `/health` lists each transport under `transports`, with its peer count and, for WebSocket, pending handshakes and shed updates.
+
+### DNS SRV Records (RFC 2782)
+
+Players can join with just your domain name instead of a host and port. When a player enters a name with no port (or the default port 4296), the client first looks up an SRV record for `_basis._udp.<name>` and connects to the host and port it points to. If there is no record, it connects to `<name>:4296` as before, so publishing one is optional.
+
+```
+_basis._udp.example.com. 3600 IN SRV 10 60 4296 eu1.example.com.
+_basis._udp.example.com. 3600 IN SRV 10 40 5000 eu2.example.com.
+_basis._udp.example.com. 3600 IN SRV 20 0 4296 backup.example.com.
+```
+
+- Lower priority is tried first; records with the same priority share players by weight (60/40 above). The client checks up to three targets and joins the first one that answers.
+- A target of `.` means "no Basis server here" and the client falls back to the plain name.
+- A port typed by the player (`example.com:5000`) always wins; no lookup is made.
+- The client caches answers for the record TTL (at most 5 minutes). It asks the system's DNS servers first, then 1.1.1.1 and 8.8.8.8.
+- Web builds cannot make DNS queries, so they always connect to the address as entered.
+- The server itself needs no setting for this; only the DNS zone changes.
 
 ## Docker Compose Configuration
 
@@ -176,6 +195,7 @@ services:
 
 -   `./config:/app/config`: This volume mounts the `Docker/config/` directory on your host to `/app/config` inside the container. This allows server configuration to persist across container restarts. The server can read from and write to these files.
 -   `./initialresources:/app/initialresources:ro`: This mounts `Docker/initialresources/` as read-only into the container. These are static assets the server needs.
+-   `./storage:/app/storage`: Player storage. Without this mount every player's saved data is lost when the container is recreated. Only one server may use a storage folder at a time; to share player storage between servers, point them at one database with `StorageBackend`, `StorageConnectionString` and `StorageSqlTable` instead.
 
 ## Logging and Monitoring
 

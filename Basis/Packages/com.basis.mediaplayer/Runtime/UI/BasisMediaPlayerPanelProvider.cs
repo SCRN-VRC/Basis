@@ -184,6 +184,7 @@ public partial class BasisMediaPlayerPanelProvider : BasisMenuActionProvider<Bas
         // which does not fit the navigation column at all. The no-title variant drops that
         // reservation; the Library panel uses the same one in this container.
         _selector = PanelDropdown.CreateNew(PanelDropdown.DropdownStyles.EntryNoLabel, PickerColumn);
+        _selector.ShareTitleKey = "mediaPlayer.selector";
         _selector.Descriptor.SetSize(new Vector2(60, 80));
         _selector.transform.SetSiblingIndex(0);
         FitToNavColumn(_selector.Descriptor, releaseControlSlot: false);
@@ -446,9 +447,8 @@ public partial class BasisMediaPlayerPanelProvider : BasisMenuActionProvider<Bas
             // visibly becomes "https://youtube.com/…" rather than being silently rewritten.
             string normalized = BasisMediaUrlRouter.NormalizeUrl(u);
             if (normalized != u) _urlField.SetValueWithoutNotify(normalized);
-            // A typed URL is the user's own choice and skips the prompt.
-            if (_activeNetworking != null) _ = _activeNetworking.SetApprovedUrl(normalized);
-            else _activePlayer.LoadApprovedUrl(normalized);
+            if (_activeNetworking != null) _ = _activeNetworking.TrySetUrlAsync(normalized, true);
+            else _activePlayer.LoadUrl(normalized, true);
         };
 
         PanelButton playBtn = PanelButton.CreateNew(actions);
@@ -525,7 +525,7 @@ public partial class BasisMediaPlayerPanelProvider : BasisMenuActionProvider<Bas
         if (player.State == BmState.Idle || player.State == BmState.Ended || player.State == BmState.Error)
         {
             string url = player.ResolvedUrl;
-            if (!string.IsNullOrEmpty(url)) player.LoadUrl(url);
+            if (!string.IsNullOrEmpty(url)) player.LoadUrl(url, true);
         }
     }
 
@@ -622,7 +622,7 @@ public partial class BasisMediaPlayerPanelProvider : BasisMenuActionProvider<Bas
                 return;
             }
             string url = _activePlayer.ResolvedUrl;
-            if (!string.IsNullOrEmpty(url)) _activePlayer.LoadUrl(url);
+            if (!string.IsNullOrEmpty(url)) _activePlayer.LoadUrl(url, true);
         };
 
         _advancedToggle = PanelToggle.CreateNewEntry(content);

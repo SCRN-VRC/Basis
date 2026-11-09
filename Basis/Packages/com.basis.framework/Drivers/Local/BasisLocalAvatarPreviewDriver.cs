@@ -222,6 +222,12 @@ namespace Basis.Scripts.Drivers
         {
             if (initialized) return;
             if (cachedDriver == null) return;
+            Shader displayShader = Shader.Find("Basis/UI/Main");
+            if (displayShader == null)
+            {
+                BasisDebug.LogWarning("Avatar preview unavailable: shader Basis/UI/Main is not in this build.");
+                return;
+            }
 
             // --- Render Texture ---
             var desc = new RenderTextureDescriptor(TextureWidth, TextureHeight, RenderTextureFormat.ARGB32, 16)
@@ -247,7 +253,9 @@ namespace Basis.Scripts.Drivers
             PreviewCamera.farClipPlane = 10f;
             PreviewCamera.allowHDR = false;
             PreviewCamera.allowMSAA = true;
+#pragma warning disable 618
             PreviewCamera.useOcclusionCulling = false;
+#pragma warning restore 618
 
             var urpData = cameraGO.GetComponent<UniversalAdditionalCameraData>();
             if (urpData != null)
@@ -267,7 +275,7 @@ namespace Basis.Scripts.Drivers
             displayGO.transform.localRotation = Quaternion.identity;
 
             displaySpriteRenderer = displayGO.AddComponent<SpriteRenderer>();
-            displaySpriteRenderer.sharedMaterial = new Material(Shader.Find("Basis/UI/Main"));
+            displaySpriteRenderer.sharedMaterial = new Material(displayShader);
             displaySpriteRenderer.sharedMaterial.SetInt(CullModeId, (int)UnityEngine.Rendering.CullMode.Off);
 
             // Create a dummy sprite for mesh/UV generation (full 0-1 UVs)

@@ -1,6 +1,8 @@
 using Unity.Scripting.LifecycleManagement;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
 
 namespace Basis.BasisUI
 {
@@ -11,6 +13,9 @@ namespace Basis.BasisUI
         public const string MethodPrefix = "Method:";
         public const string FieldPrefix = "Field:";
         private const int DetailNames = 4;
+        private const int ReviewPlaces = 12;
+        private const int ReviewCodes = 6;
+        private const int ReviewNameLength = 64;
 
         public readonly struct Line
         {
@@ -23,6 +28,20 @@ namespace Basis.BasisUI
                 Text = text;
                 Detail = detail;
                 Severe = severe;
+            }
+        }
+
+        public readonly struct Use
+        {
+            public readonly string Item;
+            public readonly string Where;
+            public readonly string Code;
+
+            public Use(string item, string where, string code)
+            {
+                Item = item;
+                Where = where;
+                Code = code;
             }
         }
 
@@ -61,6 +80,8 @@ namespace Basis.BasisUI
             new Rule("UnityEngine.WebCamDevice", null, "webcam", true),
             new Rule("UnityEngine.SceneManagement.", null, "scenes", true),
             new Rule("Basis.Scripts.BasisSdk.Players.BasisLocalPlayer", null, "yourPlayer", true),
+            new Rule("Basis.Shims.BasisVelocityShim", null, "yourPlayer", true),
+            new Rule("Basis.Shims.BasisPoseOverrideShim", null, "yourPlayer", true),
             new Rule("BasisMediaPlayer", "LoadLocalPath", "localMedia", true),
             new Rule("BasisMediaPlayer", "LoadSource", "localMedia", true),
             new Rule("BasisMediaPlayer", "CaptureScreenshot", "screenshots", false),
@@ -69,7 +90,7 @@ namespace Basis.BasisUI
             new Rule("UnityEngine.SystemInfo", null, "deviceInfo", false),
             new Rule("UnityEngine.Device.", null, "deviceInfo", false),
             new Rule("System.Threading.", null, "background", false),
-            new Rule("UnityEngine.PlayerPrefs", null, "storage", false),
+            new Rule("UnityEngine.PlayerPrefs", null, "storage", true),
             new Rule("UnityEngine.Input", null, "input", false),
             new Rule("UnityEngine.InputSystem.", null, "input", false),
             new Rule("UnityEngine.GameObject", "AddComponent", "addComponents", false),
@@ -84,39 +105,73 @@ namespace Basis.BasisUI
             new Rule("UnityEngine.Audio.", null, "audio", false),
             new Rule("UnityEngine.AudioListener", null, "audio", false),
             new Rule("UnityEngine.AudioSettings", null, "audio", false),
+            new Rule("Basis.Shims.BasisSaveShim", "LoadReadOnly", "readSaves", false),
+            new Rule("Basis.Shims.BasisSaveShim", null, "saves", false),
+            new Rule("Basis.Shims.BasisServerStorageShim", null, "serverSaves", false),
+            new Rule("Basis.Shims.BasisWebRequestShim", null, "webRequests", true),
             new Rule("Basis.", null, "basisInternals", false),
         };
 
-        public static List<Line> Describe(IEnumerable<string> items)
-        {
-            List<string> keys = new List<string>();
-            Dictionary<string, List<string>> names = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-            HashSet<string> severe = new HashSet<string>(StringComparer.Ordinal);
-            foreach (string item in items)
-            {
-                if (string.IsNullOrEmpty(item)) continue;
-                Split(item, out string type, out string member);
-                string key = Classify(type, member, out bool isSevere);
-                if (!names.TryGetValue(key, out List<string> list))
-                {
-                    list = new List<string>();
-                    names[key] = list;
-                    keys.Add(key);
-                }
-                string shortName = ShortName(type, member);
-                if (!list.Contains(shortName)) list.Add(shortName);
-                if (isSevere) severe.Add(key);
-            }
+        public static List<Line> Describe(IEnumerable<string> items) => Describe(items, null);
 
-            List<Line> lines = new List<Line>(keys.Count);
-            foreach (string key in keys)
+        public static List<Line> Describe(IEnumerable<string> items, IReadOnlyList<Use> uses)
+        {
+            List<(string Key, bool Severe, List<string> Items)> groups = Group(items);
+            List<Line> lines = new List<Line>(groups.Count);
+            foreach ((string key, bool severe, List<string> group) in groups)
             {
-                if (severe.Contains(key)) lines.Add(MakeLine(key, names[key], true));
+                List<string> names = Calls(group, uses);
+                foreach (string item in group)
+                {
+                    string name = ShortName(item);
+                    if (!names.Contains(name) && !Called(item, uses)) names.Add(name);
+                }
+                lines.Add(new Line(BasisLocalization.Get("settings.cilboxPermissions.cap." + key), Join(names, DetailNames), severe));
             }
-            foreach (string key in keys)
+            return lines;
+        }
+
+        private static List<string> Calls(List<string> items, IReadOnlyList<Use> uses)
+        {
+            List<string> calls = new List<string>();
+            if (uses == null) return calls;
+            HashSet<string> wanted = new HashSet<string>(items, StringComparer.Ordinal);
+            foreach (Use use in uses)
             {
-                if (!severe.Contains(key)) lines.Add(MakeLine(key, names[key], false));
+                if (use.Item == null || use.Code == null || !wanted.Contains(use.Item)) continue;
+                string code = Clean(use.Code);
+                if (!calls.Contains(code)) calls.Add(code);
             }
+            return calls;
+        }
+
+        private static bool Called(string item, IReadOnlyList<Use> uses)
+        {
+            if (uses == null) return false;
+            foreach (Use use in uses)
+            {
+                if (use.Code != null && string.Equals(use.Item, item, StringComparison.Ordinal)) return true;
+            }
+            return false;
+        }
+
+        public static List<Line> Review(IEnumerable<string> items, IEnumerable<string> blocked, IReadOnlyList<Use> uses)
+        {
+            List<(string Key, bool Severe, List<string> Items)> groups = Group(items);
+            List<Line> lines = new List<Line>(groups.Count + 1);
+            foreach ((string key, bool severe, List<string> group) in groups)
+            {
+                lines.Add(new Line(BasisLocalization.Get("settings.cilboxPermissions.cap." + key), ReviewBody(BasisLocalization.Get("settings.cilboxPermissions.why." + key), group, uses), severe));
+            }
+            List<string> never = new List<string>();
+            if (blocked != null)
+            {
+                foreach (string item in blocked)
+                {
+                    if (!string.IsNullOrEmpty(item)) never.Add(item);
+                }
+            }
+            if (never.Count > 0) lines.Add(new Line(BasisLocalization.Get("settings.cilboxPermissions.review.blocked"), ReviewBody(BasisLocalization.Get("settings.cilboxPermissions.review.blocked.why"), never, uses), true));
             return lines;
         }
 
@@ -137,12 +192,97 @@ namespace Basis.BasisUI
             return false;
         }
 
-        private static Line MakeLine(string key, List<string> names, bool severe)
+        private static List<(string Key, bool Severe, List<string> Items)> Group(IEnumerable<string> items)
         {
-            string detail = names.Count <= DetailNames
+            List<string> keys = new List<string>();
+            Dictionary<string, List<string>> groups = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            HashSet<string> severe = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string item in items)
+            {
+                if (string.IsNullOrEmpty(item)) continue;
+                Split(item, out string type, out string member);
+                string key = Classify(type, member, out bool isSevere);
+                if (!groups.TryGetValue(key, out List<string> list))
+                {
+                    list = new List<string>();
+                    groups[key] = list;
+                    keys.Add(key);
+                }
+                list.Add(item);
+                if (isSevere) severe.Add(key);
+            }
+            List<(string Key, bool Severe, List<string> Items)> ordered = new List<(string Key, bool Severe, List<string> Items)>(keys.Count);
+            foreach (string key in keys)
+            {
+                if (severe.Contains(key)) ordered.Add((key, true, groups[key]));
+            }
+            foreach (string key in keys)
+            {
+                if (!severe.Contains(key)) ordered.Add((key, false, groups[key]));
+            }
+            return ordered;
+        }
+
+        private static string ReviewBody(string why, List<string> items, IReadOnlyList<Use> uses)
+        {
+            HashSet<string> wanted = new HashSet<string>(items, StringComparer.Ordinal);
+            HashSet<string> placed = new HashSet<string>(StringComparer.Ordinal);
+            Dictionary<string, List<string>> codes = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            List<string> places = new List<string>();
+            if (uses != null)
+            {
+                foreach (Use use in uses)
+                {
+                    if (use.Item == null || !wanted.Contains(use.Item)) continue;
+                    placed.Add(use.Item);
+                    string where = Clean(use.Where);
+                    if (!codes.TryGetValue(where, out List<string> list))
+                    {
+                        list = new List<string>();
+                        codes[where] = list;
+                        places.Add(where);
+                    }
+                    string code = Clean(use.Code);
+                    if (!list.Contains(code)) list.Add(code);
+                }
+            }
+            places.Sort(StringComparer.OrdinalIgnoreCase);
+            StringBuilder body = new StringBuilder(why);
+            for (int i = 0; i < places.Count && i < ReviewPlaces; i++)
+            {
+                body.Append('\n').Append(BasisLocalization.Get("settings.cilboxPermissions.review.in", places[i], Join(codes[places[i]], ReviewCodes)));
+            }
+            if (places.Count > ReviewPlaces) body.Append('\n').Append(BasisLocalization.Get("settings.cilboxPermissions.more", places.Count - ReviewPlaces));
+            List<string> unplaced = new List<string>();
+            foreach (string item in items)
+            {
+                string name = Clean(ShortName(item));
+                if (!placed.Contains(item) && !unplaced.Contains(name)) unplaced.Add(name);
+            }
+            if (unplaced.Count > 0) body.Append('\n').Append(BasisLocalization.Get("settings.cilboxPermissions.review.unplaced", Join(unplaced, ReviewCodes)));
+            return body.ToString();
+        }
+
+        private static string Join(List<string> names, int shown)
+        {
+            return names.Count <= shown
                 ? string.Join(", ", names)
-                : string.Join(", ", names.GetRange(0, DetailNames)) + " " + BasisLocalization.Get("settings.cilboxPermissions.more", names.Count - DetailNames);
-            return new Line(BasisLocalization.Get("settings.cilboxPermissions.cap." + key), detail, severe);
+                : string.Join(", ", names.GetRange(0, shown)) + " " + BasisLocalization.Get("settings.cilboxPermissions.more", names.Count - shown);
+        }
+
+        private static string Clean(string text)
+        {
+            StringBuilder clean = new StringBuilder(ReviewNameLength);
+            if (text != null)
+            {
+                foreach (char c in text)
+                {
+                    if (clean.Length >= ReviewNameLength || (char.IsHighSurrogate(c) && clean.Length == ReviewNameLength - 1)) break;
+                    if (char.IsControl(c) || CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.Format) continue;
+                    clean.Append(c);
+                }
+            }
+            return clean.Length > 0 ? clean.ToString() : "?";
         }
 
         private static string Classify(string type, string member, out bool severe)
@@ -185,6 +325,12 @@ namespace Basis.BasisUI
             }
             type = name.Substring(0, split);
             member = name.Substring(split + 1);
+        }
+
+        private static string ShortName(string item)
+        {
+            Split(item, out string type, out string member);
+            return ShortName(type, member);
         }
 
         private static string ShortName(string type, string member)

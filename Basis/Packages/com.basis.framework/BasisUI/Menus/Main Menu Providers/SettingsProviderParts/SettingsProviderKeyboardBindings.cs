@@ -18,46 +18,51 @@ public static class SettingsProviderKeyboardBindings
         if (playerMap == null) return;
 
         RectTransform container = tab.Descriptor.ContentParent;
+        RebindSession session = new RebindSession();
 
-        // Movement — split WASD vs Arrow Keys
-        BuildSplitCompositeGroups(container, playerMap.FindAction("Move"),
-            BasisLocalization.Get("settings.controls.keyboard.movementWasd"), BasisLocalization.Get("settings.controls.keyboard.movementWasd.description"),
-            BasisLocalization.Get("settings.controls.keyboard.movementArrows"), BasisLocalization.Get("settings.controls.keyboard.movementArrows.description"),
-            asset);
+        // One section for every key, each kind of key under its own heading.
+        CreateCollapsibleSection(container, BasisLocalization.Get("settings.controls.keyboardBindings.title"), BasisLocalization.Get("settings.controls.keyboardBindings.description"), section =>
+        {
+            // Movement — split WASD vs Arrow Keys
+            BuildSplitCompositeGroups(section, playerMap.FindAction("Move"),
+                BasisLocalization.Get("settings.controls.keyboard.movementWasd"), BasisLocalization.Get("settings.controls.keyboard.movementWasd.description"),
+                BasisLocalization.Get("settings.controls.keyboard.movementArrows"), BasisLocalization.Get("settings.controls.keyboard.movementArrows.description"),
+                asset, session);
 
-        // Camera
-        BuildActionGroup(container, playerMap.FindAction("Look Delta"), "look",
-            BasisLocalization.Get("settings.controls.keyboard.camera"), BasisLocalization.Get("settings.controls.keyboard.camera.description"), asset);
+            // Vertical Movement
+            BuildActionGroup(section, playerMap.FindAction("MoveLocalUpDown"), "fly",
+                BasisLocalization.Get("settings.controls.keyboard.verticalMovement"), BasisLocalization.Get("settings.controls.keyboard.verticalMovement.description"), asset, session);
 
-        // Vertical Movement
-        BuildActionGroup(container, playerMap.FindAction("MoveLocalUpDown"), "fly",
-            BasisLocalization.Get("settings.controls.keyboard.verticalMovement"), BasisLocalization.Get("settings.controls.keyboard.verticalMovement.description"), asset);
+            // Actions
+            BuildSimpleGroup(section, playerMap, asset, session, BasisLocalization.Get("settings.controls.keyboard.actions"), BasisLocalization.Get("settings.controls.keyboard.actions.description"),
+                ("Jump", BasisLocalization.Get("settings.controls.keyboard.action.jump")),
+                ("Running", BasisLocalization.Get("settings.controls.keyboard.action.sprint")),
+                ("Crouch", BasisLocalization.Get("settings.controls.keyboard.action.crouch")),
+                ("Prone", BasisLocalization.Get("settings.controls.keyboard.action.prone")),
+                ("ToggleMicMute", BasisLocalization.Get("settings.controls.keyboard.action.microphoneInput")));
 
-        // Actions
-        BuildSimpleGroup(container, playerMap, asset, BasisLocalization.Get("settings.controls.keyboard.actions"), BasisLocalization.Get("settings.controls.keyboard.actions.description"),
-            ("Jump", BasisLocalization.Get("settings.controls.keyboard.action.jump")),
-            ("Running", BasisLocalization.Get("settings.controls.keyboard.action.sprint")),
-            ("Crouch", BasisLocalization.Get("settings.controls.keyboard.action.crouch")),
-            ("Prone", BasisLocalization.Get("settings.controls.keyboard.action.prone")),
-            ("ToggleMicMute", BasisLocalization.Get("settings.controls.keyboard.action.microphoneInput")));
+            // Camera
+            BuildActionGroup(section, playerMap.FindAction("Look Delta"), "look",
+                BasisLocalization.Get("settings.controls.keyboard.camera"), BasisLocalization.Get("settings.controls.keyboard.camera.description"), asset, session);
 
-        // Menu
-        BuildSimpleGroup(container, playerMap, asset, BasisLocalization.Get("settings.controls.keyboard.menu"), BasisLocalization.Get("settings.controls.keyboard.menu.description"),
-            ("Tab", BasisLocalization.Get("settings.controls.keyboard.action.freeCursor")),
-            ("OpenChat", BasisLocalization.Get("settings.controls.keyboard.action.openChat")));
+            // Menu
+            BuildSimpleGroup(section, playerMap, asset, session, BasisLocalization.Get("settings.controls.keyboard.menu"), BasisLocalization.Get("settings.controls.keyboard.menu.description"),
+                ("Tab", BasisLocalization.Get("settings.controls.keyboard.action.freeCursor")),
+                ("OpenChat", BasisLocalization.Get("settings.controls.keyboard.action.openChat")));
 
-        // Mode Switching
-        BuildSimpleGroup(container, playerMap, asset, BasisLocalization.Get("settings.controls.keyboard.modeSwitching"), BasisLocalization.Get("settings.controls.keyboard.modeSwitching.description"),
-            ("HotSwitchToDesktop", BasisLocalization.Get("settings.controls.keyboard.action.desktopMode")),
-            ("HotSwtichToXR", BasisLocalization.Get("settings.controls.keyboard.action.xrMode")),
-            ("HotSwtichToVR", BasisLocalization.Get("settings.controls.keyboard.action.vrMode")));
+            // Mode Switching
+            BuildSimpleGroup(section, playerMap, asset, session, BasisLocalization.Get("settings.controls.keyboard.modeSwitching"), BasisLocalization.Get("settings.controls.keyboard.modeSwitching.description"),
+                ("HotSwitchToDesktop", BasisLocalization.Get("settings.controls.keyboard.action.desktopMode")),
+                ("HotSwtichToXR", BasisLocalization.Get("settings.controls.keyboard.action.xrMode")),
+                ("HotSwtichToVR", BasisLocalization.Get("settings.controls.keyboard.action.vrMode")));
+        });
     }
 
     private static void BuildSplitCompositeGroups(
-        RectTransform container, InputAction action,
+        PanelElementDescriptor section, InputAction action,
         string primaryTitle, string primaryDesc,
         string altTitle, string altDesc,
-        InputActionAsset asset)
+        InputActionAsset asset, RebindSession session)
     {
         if (action == null) return;
 
@@ -88,27 +93,23 @@ public static class SettingsProviderKeyboardBindings
 
         if (primaryEntries.Count > 0)
         {
-            CreateCollapsibleSection(container, primaryTitle, primaryDesc, group =>
-            {
-                foreach (var (index, label) in primaryEntries)
-                    CreateBindingRow(group, action, index, label, asset);
-            });
+            PanelElementDescriptor group = CreateSubGroup(section, primaryTitle, primaryDesc);
+            foreach (var (index, label) in primaryEntries)
+                CreateBindingRow(group, action, index, label, asset, session);
         }
 
         if (altEntries.Count > 0)
         {
-            CreateCollapsibleSection(container, altTitle, altDesc, group =>
-            {
-                foreach (var (index, label) in altEntries)
-                    CreateBindingRow(group, action, index, label, asset);
-            });
+            PanelElementDescriptor group = CreateSubGroup(section, altTitle, altDesc);
+            foreach (var (index, label) in altEntries)
+                CreateBindingRow(group, action, index, label, asset, session);
         }
     }
 
     private static void BuildActionGroup(
-        RectTransform container, InputAction action, string actionKey,
+        PanelElementDescriptor section, InputAction action, string actionKey,
         string groupTitle, string groupDesc,
-        InputActionAsset asset)
+        InputActionAsset asset, RebindSession session)
     {
         if (action == null) return;
 
@@ -147,16 +148,14 @@ public static class SettingsProviderKeyboardBindings
 
         if (entries.Count > 0)
         {
-            CreateCollapsibleSection(container, groupTitle, groupDesc, group =>
-            {
-                foreach (var (index, label) in entries)
-                    CreateBindingRow(group, action, index, label, asset);
-            });
+            PanelElementDescriptor group = CreateSubGroup(section, groupTitle, groupDesc);
+            foreach (var (index, label) in entries)
+                CreateBindingRow(group, action, index, label, asset, session);
         }
     }
 
     private static void BuildSimpleGroup(
-        RectTransform container, InputActionMap playerMap, InputActionAsset asset,
+        PanelElementDescriptor section, InputActionMap playerMap, InputActionAsset asset, RebindSession session,
         string groupTitle, string groupDesc,
         params (string actionName, string label)[] actions)
     {
@@ -178,11 +177,9 @@ public static class SettingsProviderKeyboardBindings
 
         if (entries.Count > 0)
         {
-            CreateCollapsibleSection(container, groupTitle, groupDesc, group =>
-            {
-                foreach (var (action, index, label) in entries)
-                    CreateBindingRow(group, action, index, label, asset);
-            });
+            PanelElementDescriptor group = CreateSubGroup(section, groupTitle, groupDesc);
+            foreach (var (action, index, label) in entries)
+                CreateBindingRow(group, action, index, label, asset, session);
         }
     }
 
@@ -219,6 +216,23 @@ public static class SettingsProviderKeyboardBindings
         {
             group.ForceRebuild();
         });
+    }
+
+    /// <summary>
+    /// Titled, background-free heading inside a section, so related rows read as one block
+    /// without becoming a section of their own.
+    /// </summary>
+    public static PanelElementDescriptor CreateSubGroup(PanelElementDescriptor section, string title, string description = null)
+    {
+        PanelElementDescriptor group = PanelElementDescriptor.CreateNew(
+            PanelElementDescriptor.ElementStyles.Group, section.ContentParent);
+        group.SetBackgroundVisible(false);
+        group.SetTitle(title);
+        if (!string.IsNullOrEmpty(description))
+        {
+            group.SetDescription(description);
+        }
+        return group;
     }
 
     private static string GetPartLabel(string actionName, string partName)
@@ -270,8 +284,25 @@ public static class SettingsProviderKeyboardBindings
 
     #region Binding Row & Rebind
 
+    private sealed class RebindSession
+    {
+        public Action Cancel;
+    }
+
+    private sealed class RebindGuard : MonoBehaviour
+    {
+        public Action Lost;
+
+        private void OnDisable()
+        {
+            Action lost = Lost;
+            Lost = null;
+            lost?.Invoke();
+        }
+    }
+
     private static void CreateBindingRow(PanelElementDescriptor parent, InputAction action,
-        int bindingIndex, string label, InputActionAsset asset)
+        int bindingIndex, string label, InputActionAsset asset, RebindSession session)
     {
         InputBinding binding = action.bindings[bindingIndex];
         string defaultKey = ReadableKey(binding.path);
@@ -280,37 +311,141 @@ public static class SettingsProviderKeyboardBindings
         PanelButton button = PanelButton.CreateNew(parent.ContentParent);
         button.Descriptor.SetTitle(FormatTitle(label, defaultKey, currentKey));
 
-        button.OnClicked += () => StartRebind(button, action, bindingIndex, label, defaultKey, asset);
+        button.OnClicked += () => StartRebind(button, action, bindingIndex, label, defaultKey, asset, session);
     }
 
     private static void StartRebind(PanelButton button, InputAction action,
-        int bindingIndex, string label, string defaultKey, InputActionAsset asset)
+        int bindingIndex, string label, string defaultKey, InputActionAsset asset, RebindSession session)
     {
+        session.Cancel?.Invoke();
+        if (button == null || button.IsReleased)
+        {
+            return;
+        }
+
         button.Descriptor.SetTitle($"{label} \u2014 {BasisLocalization.Get("settings.controls.keyboard.pressKey")}");
+
+        if (!button.TryGetComponent(out RebindGuard guard))
+        {
+            guard = button.gameObject.AddComponent<RebindGuard>();
+        }
+
+        bool wasEnabled = action.enabled;
+        bool finished = false;
+        string rejected = null;
+        InputActionRebindingExtensions.RebindingOperation operation = null;
+        Action cancel = () => operation?.Cancel();
+
+        void Finish()
+        {
+            if (finished)
+            {
+                return;
+            }
+            finished = true;
+            if (session.Cancel == cancel)
+            {
+                session.Cancel = null;
+            }
+            if (guard != null)
+            {
+                guard.Lost = null;
+            }
+            if (button != null)
+            {
+                button.OnInstanceReleased -= cancel;
+            }
+            if (wasEnabled)
+            {
+                action.Enable();
+            }
+            operation.Dispose();
+        }
+
+        void ShowKey(string note)
+        {
+            if (button == null || button.IsReleased || button.Descriptor == null)
+            {
+                return;
+            }
+            string title = FormatTitle(label, defaultKey, ReadableKey(action.bindings[bindingIndex].effectivePath));
+            button.Descriptor.SetTitle(note == null ? title : $"{title} {note}");
+        }
 
         action.Disable();
 
-        action.PerformInteractiveRebinding(bindingIndex)
+        operation = action.PerformInteractiveRebinding(bindingIndex)
             .WithControlsExcluding("<Mouse>")
             .WithControlsExcluding("<Pointer>")
             .WithControlsExcluding("<Touchscreen>")
             .WithCancelingThrough("<Keyboard>/escape")
-            .OnComplete(operation =>
+            .OnApplyBinding((_, path) =>
             {
-                action.Enable();
-                string newKey = ReadableKey(action.bindings[bindingIndex].effectivePath);
-                button.Descriptor.SetTitle(FormatTitle(label, defaultKey, newKey));
+                if (IsBoundElsewhere(asset, action, bindingIndex, path))
+                {
+                    rejected = path;
+                    return;
+                }
+                action.ApplyBindingOverride(bindingIndex, path);
+            })
+            .OnComplete(_ =>
+            {
+                Finish();
+                if (rejected != null)
+                {
+                    ShowKey(BasisLocalization.Get("settings.controls.keyboard.keyInUse", ReadableKey(rejected)));
+                    return;
+                }
+                ShowKey(null);
                 SaveBindingOverrides(asset);
-                operation.Dispose();
             })
-            .OnCancel(operation =>
+            .OnCancel(_ =>
             {
-                action.Enable();
-                string currentKey = ReadableKey(action.bindings[bindingIndex].effectivePath);
-                button.Descriptor.SetTitle(FormatTitle(label, defaultKey, currentKey));
-                operation.Dispose();
-            })
-            .Start();
+                Finish();
+                ShowKey(null);
+            });
+
+        session.Cancel = cancel;
+        guard.Lost = cancel;
+        button.OnInstanceReleased += cancel;
+        operation.Start();
+    }
+
+    internal static bool IsBoundElsewhere(InputActionAsset asset, InputAction action, int bindingIndex, string path)
+    {
+        if (asset == null || string.IsNullOrEmpty(path))
+        {
+            return false;
+        }
+
+        bool restoringDefault = string.Equals(path, action.bindings[bindingIndex].path, StringComparison.OrdinalIgnoreCase);
+        foreach (InputActionMap map in asset.actionMaps)
+        {
+            foreach (InputAction other in map.actions)
+            {
+                for (int i = 0; i < other.bindings.Count; i++)
+                {
+                    if (other == action && i == bindingIndex)
+                    {
+                        continue;
+                    }
+
+                    InputBinding binding = other.bindings[i];
+                    if (binding.isComposite || !string.Equals(binding.effectivePath, path, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (restoringDefault && string.Equals(binding.path, path, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     #endregion

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Scripting.LifecycleManagement;
 using Basis.BasisUI;
 using Basis.Scripts.BasisSdk.Interactions;
@@ -107,6 +108,22 @@ namespace Basis.Scripts.Drivers
 
         private static BasisLocks.LockContext _movementLock;
         private static bool _hasMovementLock;
+        private static readonly HashSet<object> _suppressors = new();
+
+        /// <summary>True while gameplay owns the same hand gesture and the play-space mover must stand down.</summary>
+        public static bool IsSuppressed => _suppressors.Count != 0;
+
+        /// <summary>
+        /// Suppresses device-driven play-space movement for an owner without changing the user's setting or
+        /// discarding an existing offset. Owner tracking lets independent gameplay systems compose safely.
+        /// </summary>
+        public static void SetSuppressed(object owner, bool suppressed)
+        {
+            if (owner == null) return;
+            if (suppressed) _suppressors.Add(owner);
+            else _suppressors.Remove(owner);
+            if (suppressed) Stop();
+        }
 
         /// <summary>Total horizontal play-space drag currently applied (world units).</summary>
         public static Vector3 CurrentOffset => _offsetPos;
@@ -134,7 +151,7 @@ namespace Basis.Scripts.Drivers
                 && BasisDeviceManagement.IsCurrentModeVR();
             bool scriptDriven = BasisScriptedPlayerInput.MoverActive;
 
-            if (player == null || BasisLocalPlayer.PlayerReady == false
+            if (BasisLocalPlayer.PlayerReady == false
                 || (deviceDriven == false && scriptDriven == false)
                 || player.LocalSeatDriver.IsSeated)
             {
@@ -169,6 +186,13 @@ namespace Basis.Scripts.Drivers
             // Publish the flip from its settings every active frame (it's independent of grabbing and
             // persists through movement lock + idle, like the vertical offset).
             UpdateFlip();
+
+            if (IsSuppressed)
+            {
+                Stop();
+                SetGizmoState(BasisPlayspaceMoverState.MovementLocked);
+                return;
+            }
 
             if (_movementLock)
             {
@@ -481,7 +505,7 @@ namespace Basis.Scripts.Drivers
                     _scriptScaleRestoreCustom = BasisSettingsDefaults.CustomScale.RawValue;
                     _scriptScaleRestore = _scriptScaleRestoreCustom
                         ? BasisSettingsDefaults.SelectedScale.RawValue
-                        : BasisHeightDriver.SelectedUnScaledAvatarHeight;
+                        : BasisHeightDriver.AvatarEyeHeight;
                     if (_scriptScaleRestore < 1e-3f) _scriptScaleRestore = BasisHeightDriver.FallbackHeightInMeters;
                 }
 
@@ -524,6 +548,10 @@ namespace Basis.Scripts.Drivers
             GizmoSample.SpanCurrent = curDist;
 
             float target = Mathf.Clamp(_grabBaseHeight * (curDist / grabDist), MinHeight, MaxHeight);
+            if (_scaleDirty && SMModuleCalibration.ApplyCustomScale && Mathf.Abs(target - _pendingScaleHeight) <= target * 0.002f)
+            {
+                return;
+            }
 
             // Drive the full height/scale recompute live (same path the avatar-scale slider uses) so
             // the avatar, camera eye height, and scaled controller positions all update immediately.
@@ -556,7 +584,7 @@ namespace Basis.Scripts.Drivers
         private static void ReportInactive(BasisLocalPlayer player)
         {
             BasisPlayspaceMoverState state = BasisPlayspaceMoverState.Disabled;
-            if (player != null && BasisLocalPlayer.PlayerReady && player.LocalSeatDriver.IsSeated)
+            if (BasisLocalPlayer.PlayerReady && player.LocalSeatDriver.IsSeated)
             {
                 state = BasisPlayspaceMoverState.Seated;
             }
@@ -585,11 +613,12 @@ namespace Basis.Scripts.Drivers
 
         private static void CaptureScaleBaseline(Vector3 leftUnscaled, Vector3 rightUnscaled)
         {
+            BasisHeightDriver.ClearRuntimeOscEyeHeightOverride();
             _grabLeftUnscaled = leftUnscaled;
             _grabRightUnscaled = rightUnscaled;
             _grabBaseHeight = BasisSettingsDefaults.CustomScale.RawValue
                 ? BasisSettingsDefaults.SelectedScale.RawValue
-                : BasisHeightDriver.SelectedUnScaledAvatarHeight;
+                : BasisHeightDriver.AvatarEyeHeight;
             if (_grabBaseHeight < 1e-3f) _grabBaseHeight = BasisHeightDriver.FallbackHeightInMeters;
         }
 

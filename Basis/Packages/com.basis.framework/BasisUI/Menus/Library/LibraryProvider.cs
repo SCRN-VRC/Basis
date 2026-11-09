@@ -9,6 +9,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using TMPro;
@@ -23,7 +25,7 @@ using static SerializableBasis;
 namespace Basis.BasisUI
 {
     [AutoStaticsCleanup]
-    public partial class LibraryProvider : BasisMenuActionProvider<BasisMainMenu>
+    public partial class LibraryProvider : BasisMenuActionProvider<BasisMainMenu>, IBasisMenuSharePlace
     {
         #region Provider Setup
         [RuntimeInitializeOnLoadMethod]
@@ -35,6 +37,7 @@ namespace Basis.BasisUI
             // begin meta data caching here
             // load all the keys
             await BasisDataStoreItemKeys.LoadKeys();
+            await BasisDataStoreItemFolders.EnsureLoaded();
 
             // cache all items into the meta data
             // build data to be used
@@ -83,6 +86,7 @@ namespace Basis.BasisUI
             BasisRuntimeSpawnRegistry.OnPendingLoadsChanged -= OnPendingLoadsChanged;
             BasisRuntimeSpawnRegistry.OnPendingLoadProgress -= OnPendingLoadProgress;
             BasisRuntimeSpawnRegistry.OnFailedLoadsChanged -= OnFailedLoadsChanged;
+            BasisShareableRegistry.OnChanged -= OnShareablesRegistryChanged;
             BasisNetworkManagement.OnlocalPermissionsChanged -= ProtectionValidation;
         }
 
@@ -123,7 +127,8 @@ namespace Basis.BasisUI
             Prop = 0,
             World = 1,
             Avatar = 2,
-            Instantiated = 3
+            Folders = 3,
+            Instantiated = 4
         }
         private static Page _currentPage = Page.Avatar;
         private static Dictionary<Page, PanelTabPage> tabMap;
@@ -165,7 +170,7 @@ namespace Basis.BasisUI
             var propsTab = PropsTab(tabGroup);
             var worldsTab = WorldsTab(tabGroup);
             var avatarsTab = AvatarsTab(tabGroup);
-            var instantiatedTab = InstantiatedTab(tabGroup);
+            var foldersTab = FoldersTab(tabGroup);
 
             // map of the pages to enums
             tabMap = new Dictionary<Page, PanelTabPage>
@@ -173,14 +178,15 @@ namespace Basis.BasisUI
                 [Page.Avatar] = avatarsTab,
                 [Page.World] = worldsTab,
                 [Page.Prop] = propsTab,
-                [Page.Instantiated] = instantiatedTab
+                [Page.Folders] = foldersTab
             };
 
             // Attach per-tab refresh callbacks that only fetch and rebuild the associated tab when selected
             tabGroup.AddTab(BasisLocalization.Get("library.tab.props"), AddressableAssets.Sprites.Items, async () => await RefreshTabAsync(Page.Prop, true), propsTab);
             tabGroup.AddTab(BasisLocalization.Get("library.tab.worlds"), AddressableAssets.Sprites.World, async () => await RefreshTabAsync(Page.World, true), worldsTab);
             tabGroup.AddTab(BasisLocalization.Get("library.tab.avatars"), AddressableAssets.Sprites.Avatars, async () => await RefreshTabAsync(Page.Avatar, true), avatarsTab);
-            tabGroup.AddTab(BasisLocalization.Get("library.tab.instantiated"), AddressableAssets.Sprites.List, async () => await RefreshTabAsync(Page.Instantiated, true), instantiatedTab);
+            tabGroup.AddTab(BasisLocalization.Get("library.tab.folders"), AddressableAssets.Sprites.FileTray, async () => await RefreshTabAsync(Page.Folders, true), foldersTab);
+            tabGroup.AddTab(BasisLocalization.Get("library.tab.instantiated"), AddressableAssets.Sprites.List, async () => await RefreshTabAsync(Page.Instantiated, true), null);
 
             // create a search text field in the tab group extras area
             searchField = PanelTextField.CreateNew(TextFieldStyles.EntryWithNoTitle, tabGroup.ExtrasContainer);
@@ -196,6 +202,7 @@ namespace Basis.BasisUI
 
             // create a sorting dropdown in the tab group extras area
             dateSorting = PanelDropdown.CreateNew(PanelDropdown.DropdownStyles.EntryNoLabel, tabGroup.ExtrasContainer);
+            dateSorting.ShareTitleKey = "library.sortMode";
             string[] dateSortNames = Enum.GetNames(typeof(LibraryDateSortMode));
 
             dateSorting.Descriptor.SetSize(new Vector2(60, 80));
@@ -216,6 +223,7 @@ namespace Basis.BasisUI
 
             // create a sorting dropdown in the tab group extras area
             itemTypeSorting = PanelDropdown.CreateNew(PanelDropdown.DropdownStyles.EntryNoLabel, tabGroup.ExtrasContainer);
+            itemTypeSorting.ShareTitleKey = "library.filterMode";
             string[] itemTypeNames = Enum.GetNames(typeof(LibraryItemTypeFilter));
 
             itemTypeSorting.Descriptor.SetSize(new Vector2(60, 80));
@@ -256,6 +264,9 @@ namespace Basis.BasisUI
 
             // add our extra menu button items, this is the buttons below the panel content
             addNewContentButton = tabGroup.AddExtraAction(BasisLocalization.Get("library.addNewContent"), async () => await LibraryProviderDialogAdd.PromptUserForNewContent(panel), new Vector2(70, 80));
+            newFolderButton = tabGroup.AddExtraAction(BasisLocalization.Get("library.folder.new"), async () => await PromptCreateFolder(), new Vector2(70, 80));
+
+            if (!SyncFoldersTab() && _currentPage == Page.Folders) _currentPage = Page.Avatar;
 
             // set the current tab to the current page
             tabGroup.SetValue((int)_currentPage); // this will trigger the tab selection and associated content loading
@@ -520,6 +531,17 @@ namespace Basis.BasisUI
             return tab;
         }
 
+        private static PanelTabPage EnsureInstantiatedTab()
+        {
+            PanelTabPage tab = GetTabFromPage(Page.Instantiated);
+            if (tab != null || !PanelAlive) return tab;
+            tab = InstantiatedTab(tabGroup);
+            tabMap[Page.Instantiated] = tab;
+            tabGroup.Pages[(int)Page.Instantiated] = tab;
+            tab.ShowPage(tabGroup.Value == (int)Page.Instantiated);
+            return tab;
+        }
+
         private static void BuildItemsList(List<List<BasisDataStoreItemKeys.ItemKey>> stacks, PanelTabPage tab)
         {
             RectTransform container = tab.Descriptor.ContentParent;
@@ -635,7 +657,7 @@ namespace Basis.BasisUI
             return DateTime.MinValue;
         }
 
-        private static void ClearTabContent(RectTransform container)
+        internal static void ClearTabContent(RectTransform container)
         {
             if (container == null) return;
             // Destroy all child gameobjects under the content parent
@@ -669,13 +691,23 @@ namespace Basis.BasisUI
 
         public static async Task RefreshTabAsync(Page page, bool clearSearch = false)
         {
-            PanelTabPage tab = GetTabFromPage(page);
+            PanelTabPage tab = page == Page.Instantiated ? EnsureInstantiatedTab() : GetTabFromPage(page);
             //BasisDebug.Log($"RefreshTabAsync() was invoked -> for page = {page}, tab = {tab} _currentTab = {_currentTab}, ");
             if (tab == null) return;
 
             // Ensure keys are loaded
             await BasisDataStoreItemKeys.LoadKeys();
             if (!PanelAlive) return;
+
+            await BasisDataStoreItemFolders.EnsureLoaded();
+            if (!PanelAlive) return;
+            if (!SyncFoldersTab() && page == Page.Folders)
+            {
+                page = Page.Avatar;
+                tab = GetTabFromPage(page);
+                if (tab == null) return;
+                tabGroup.SetValue((int)page);
+            }
 
             if(clearSearch)
             {
@@ -703,6 +735,7 @@ namespace Basis.BasisUI
                     BasisRuntimeSpawnRegistry.OnPendingLoadsChanged -= OnPendingLoadsChanged;
                     BasisRuntimeSpawnRegistry.OnPendingLoadProgress -= OnPendingLoadProgress;
                     BasisRuntimeSpawnRegistry.OnFailedLoadsChanged -= OnFailedLoadsChanged;
+                    BasisShareableRegistry.OnChanged -= OnShareablesRegistryChanged;
                 }
             }
 
@@ -710,9 +743,16 @@ namespace Basis.BasisUI
             _currentPage = page;
             _currentTab = tab;
 
-            addNewContentButton.Descriptor.SetActive(_currentPage != Page.Instantiated); // if we are on the Instantiated hide the add new content button
+            addNewContentButton.Descriptor.SetActive(_currentPage != Page.Instantiated && _currentPage != Page.Folders); // if we are on the Instantiated hide the add new content button
+            newFolderButton.Descriptor.SetActive(_currentPage == Page.Folders);
             //networkSorting.Descriptor.SetActive(_currentPage == Page.Instantiated); // show network sorting on the Instantiated page.
             itemTypeSorting.Descriptor.SetActive(_currentPage == Page.Instantiated); // show item type sorting for the Instantiated page.
+
+            if (page == Page.Folders)
+            {
+                await RefreshFoldersTab(tab);
+                return;
+            }
 
             // try convert the mode and page we are on to match
             if (TryConvert(page, out BundledContentHolder.Mode mode))
@@ -911,7 +951,7 @@ namespace Basis.BasisUI
         /// The item card displayed all around the library menu. A stack with more than one entry
         /// renders as a single card (newest upload in front) that opens a version picker on click.
         /// </summary>
-        private static void CreateItemCard(List<BasisDataStoreItemKeys.ItemKey> stack, RectTransform container)
+        private static PanelButton CreateItemCard(List<BasisDataStoreItemKeys.ItemKey> stack, RectTransform container, Action onOverlayClosed = null)
         {
             BasisDataStoreItemKeys.ItemKey item = stack[0];
             PanelButton buttonPanel = PanelButton.CreateNew(ButtonStyles.Prop, container);
@@ -989,7 +1029,7 @@ namespace Basis.BasisUI
             if (item.EmbeddedSettings.IsEmbedded && item.EmbeddedSettings.SourceType == BasisDataStoreItemKeys.EmbeddedSource.Addressable)
             {
 
-                desc.SetTitle(LibraryProviderStrUtil.TitleToCase(EmbeddedItems.GetDisplayNameForEmbeddedItem(item)));
+                desc.SetTitle(EmbeddedItems.GetDisplayNameForEmbeddedItem(item));
                 desc.SetDescription(urlKey);
                 desc.ForceRebuild();
 
@@ -1042,7 +1082,7 @@ namespace Basis.BasisUI
 
                 try
                 {
-                    ShowItemOverlay(chosen);
+                    ShowItemOverlay(chosen, onOverlayClosed);
                 }
                 catch (Exception ex)
                 {
@@ -1050,6 +1090,7 @@ namespace Basis.BasisUI
                     _ = HandleBadItem(chosen);
                 }
             };
+            return buttonPanel;
         }
 
         /// <summary>
@@ -1154,6 +1195,44 @@ namespace Basis.BasisUI
         }
 
         private static BasisDataStoreItemKeys.ItemKey _activeItem;
+        private static PanelElementDescriptor _itemOverlay;
+        private static string _itemOverlayPlace;
+        private static string _itemOverlayLabel;
+
+        public string DescribeSharePlace(PanelComponent control, out string label)
+        {
+            label = null;
+            if (_itemOverlay == null || control == null || !control.transform.IsChildOf(_itemOverlay.transform)) return null;
+            label = _itemOverlayLabel;
+            return _itemOverlayPlace;
+        }
+
+        public bool OpenSharePlace(string place)
+        {
+            List<BasisDataStoreItemKeys.ItemKey> items = LibraryItemsForFolders();
+            for (int Index = 0; Index < items.Count; Index++)
+            {
+                if (items[Index] == null || SharePlaceOf(items[Index]) != place) continue;
+                BasisMainMenu.OpenWithProvider(this);
+                if (!PanelAlive) return false;
+                ShowItemOverlay(items[Index]);
+                return true;
+            }
+            return false;
+        }
+
+        public RectTransform SharePlaceRoot(string place) => _itemOverlay != null && _itemOverlayPlace == place ? _itemOverlay.ContentParent : null;
+
+        private static string SharePlaceOf(BasisDataStoreItemKeys.ItemKey item)
+        {
+            using (SHA256 sha = SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(item.Url ?? string.Empty));
+                StringBuilder text = new StringBuilder(32);
+                for (int Index = 0; Index < 16; Index++) text.Append(hash[Index].ToString("x2", CultureInfo.InvariantCulture));
+                return text.ToString();
+            }
+        }
 
         private static string ConvertItemKeyToAddressableSprite(BasisDataStoreItemKeys.ItemKey item)
         {
@@ -1208,7 +1287,7 @@ namespace Basis.BasisUI
             await RefreshCurrentTab();
         }
 
-        public static void ShowItemOverlay(BasisDataStoreItemKeys.ItemKey item)
+        public static void ShowItemOverlay(BasisDataStoreItemKeys.ItemKey item, Action onClosed = null)
         {
             #region ITEM OVERLAY SETUP
 
@@ -1268,9 +1347,13 @@ namespace Basis.BasisUI
 
             // Build overlay using DialogBox helper
             DialogBox<BasisDataStoreItemKeys.ItemKey> existingItemDialog = DialogBox<BasisDataStoreItemKeys.ItemKey>.Create(panel, overlaySize,
-                $"{LibraryProviderStrUtil.TitleToCase(description.AssetBundleName)}{(spawnItemCount > 0 ? $" {BasisLocalization.Get("library.spawnedCount", spawnItemCount)}" : "" )}",
+                $"{description.AssetBundleName}{(spawnItemCount > 0 ? $" {BasisLocalization.Get("library.spawnedCount", spawnItemCount)}" : "" )}",
                 $"{(description.AssetBundleDescription.Length > 0 ? description.AssetBundleDescription : BasisLocalization.Get("library.noDescription"))}",
                 ConvertItemKeyToAddressableSprite(item));
+            if (onClosed != null) NotifyWhenClosed(existingItemDialog, onClosed);
+            _itemOverlay = existingItemDialog.Descriptor;
+            _itemOverlayPlace = SharePlaceOf(item);
+            _itemOverlayLabel = description.AssetBundleName;
 
             // only items can be pinned as props
             // this has to be here to ensure correct placement
@@ -1688,10 +1771,11 @@ namespace Basis.BasisUI
 
             actionsPanel.Descriptor.SetHeight(60);
             //actionsPanel.Descriptor.SetWidth(900);
+            if (actionsPanel.TabButtonParent.TryGetComponent(out HorizontalLayoutGroup actionsLayout)) actionsLayout.spacing = 30;
 
             PanelButton deletePanelButton = PanelButton.CreateNew(ButtonStyles.CancelButton, actionsPanel.TabButtonParent); //ButtonStyles.Cancel
             deletePanelButton.Descriptor.SetTitle(BasisLocalization.Get("library.delete"));
-            deletePanelButton.Descriptor.SetWidth(200);
+            deletePanelButton.Descriptor.SetWidth(170);
             deletePanelButton.Descriptor.SetHeight(60);
 
             // Embedded items can never be deleted. Server-provided items CAN — the
@@ -1784,6 +1868,28 @@ namespace Basis.BasisUI
                 }
             };
 
+            PanelButton folderPanelButton = PanelButton.CreateNew(ButtonStyles.StandardButton, actionsPanel.TabButtonParent);
+            ApplyFolderMembership(folderPanelButton, item);
+            folderPanelButton.Descriptor.SetWidth(200);
+            folderPanelButton.Descriptor.SetHeight(60);
+            folderPanelButton.OnClicked += async () =>
+            {
+                if (existingItemDialog.IsBusy) return;
+                existingItemDialog.IsBusy = true;
+                try
+                {
+                    if (await LibraryProviderDialogItemFolders.PromptUserToFileItem(panel, item))
+                    {
+                        ApplyFolderMembership(folderPanelButton, item);
+                        await RefreshCurrentTab();
+                    }
+                }
+                finally
+                {
+                    existingItemDialog.IsBusy = false;
+                }
+            };
+
             // Share button - only enabled when connected to a server
             PanelButton sharePanelButton = PanelButton.CreateNew(ButtonStyles.StandardButton, actionsPanel.TabButtonParent);
             sharePanelButton.Descriptor.SetTitle(BasisLocalization.Get("library.share"));
@@ -1852,7 +1958,7 @@ namespace Basis.BasisUI
                     break;
             }
 
-            loadPanelButton.Descriptor.SetWidth(450);
+            loadPanelButton.Descriptor.SetWidth(340);
             loadPanelButton.Descriptor.SetHeight(60);
             // on load of a item we do these actions
             loadPanelButton.OnClicked += async () =>
@@ -1897,7 +2003,7 @@ namespace Basis.BasisUI
         private static async void ApplyMetaDataToButton(PanelButton buttonPanel, CachedMetaData.CachedContent cachedMeta, string urlKey)
         {
             var desc = buttonPanel.Descriptor;
-            desc.SetTitle(LibraryProviderStrUtil.TitleToCase(!string.IsNullOrEmpty(cachedMeta.Name) ? cachedMeta.Name : urlKey));
+            desc.SetTitle(!string.IsNullOrEmpty(cachedMeta.Name) ? cachedMeta.Name : urlKey);
             desc.SetDescription(urlKey);
             desc.ForceRebuild();
 
@@ -2223,7 +2329,7 @@ namespace Basis.BasisUI
         {
             bool hasMetaData = k.bundleConnector != null;
             return hasMetaData
-                ? LibraryProviderStrUtil.TitleToCase(k.bundleConnector.BasisBundleDescription.AssetBundleName)
+                ? k.bundleConnector.BasisBundleDescription.AssetBundleName
                 : EmbeddedItems.GetDisplayNameForUrl(k.Url);
         }
 
@@ -2490,7 +2596,7 @@ namespace Basis.BasisUI
         {
             if (CachedMetaData.TryGetMeta(pending.Url, out var meta) && !string.IsNullOrEmpty(meta.Name))
             {
-                return LibraryProviderStrUtil.TitleToCase(meta.Name);
+                return meta.Name;
             }
             return pending.Url;
         }
@@ -2687,7 +2793,7 @@ namespace Basis.BasisUI
         {
             if (CachedMetaData.TryGetMeta(failed.Url, out var meta) && !string.IsNullOrEmpty(meta.Name))
             {
-                return LibraryProviderStrUtil.TitleToCase(meta.Name);
+                return meta.Name;
             }
             return failed.Url;
         }
@@ -2874,9 +2980,10 @@ namespace Basis.BasisUI
             PanelTextField itemTextInfo = PanelTextField.CreateNew(TextFieldStyles.Entry, itemListPanel.TabButtonParent);
             itemTextInfo._inputField.gameObject.SetActive(false);
             itemTextInfo.Descriptor.SetTitle(ShareableDisplayName(entry));
-            if (!string.IsNullOrEmpty(entry.SharerName))
+            string sharerName = BasisRemotePlayer.BuildSafeDisplayName(entry.SharerName);
+            if (!string.IsNullOrEmpty(sharerName))
             {
-                itemTextInfo.Descriptor.SetDescription(BasisLocalization.Get("library.shareable.sharedBy", LibraryProviderStrUtil.TitleToCase(entry.SharerName)));
+                itemTextInfo.Descriptor.SetDescription(BasisLocalization.Get("library.shareable.sharedBy", sharerName));
             }
             itemTextInfo.Descriptor.SetHeight(50);
             itemTextInfo.Descriptor.SetWidth(400);
@@ -2995,6 +3102,9 @@ namespace Basis.BasisUI
                 case BasisShareableKind.DollyTrack: return AddressableAssets.Sprites.Camera;
                 case BasisShareableKind.Link: return AddressableAssets.Sprites.Link;
                 case BasisShareableKind.Text: return AddressableAssets.Sprites.List;
+                case BasisShareableKind.Folder: return AddressableAssets.Sprites.FileTray;
+                case BasisShareableKind.Setting: return AddressableAssets.Sprites.Settings;
+                case BasisShareableKind.Video: return AddressableAssets.Sprites.Camera;
                 default: return AddressableAssets.Sprites.Items;
             }
         }
@@ -3011,6 +3121,9 @@ namespace Basis.BasisUI
                 case BasisShareableKind.DollyTrack: return BasisLocalization.Get("library.shareable.dollyTrack");
                 case BasisShareableKind.Link: return BasisLocalization.Get("library.shareable.link");
                 case BasisShareableKind.Text: return BasisLocalization.Get("library.shareable.text");
+                case BasisShareableKind.Folder: return BasisLocalization.Get("library.shareable.folder");
+                case BasisShareableKind.Setting: return BasisLocalization.Get("library.shareable.setting");
+                case BasisShareableKind.Video: return BasisLocalization.Get("library.shareable.video");
                 default: return BasisLocalization.Get("library.shareable.other");
             }
         }
@@ -3027,7 +3140,7 @@ namespace Basis.BasisUI
         {
             bool hasMetaData = itemKey.bundleConnector != null;
             string title = hasMetaData
-                ? LibraryProviderStrUtil.TitleToCase(itemKey.bundleConnector.BasisBundleDescription.AssetBundleName)
+                ? itemKey.bundleConnector.BasisBundleDescription.AssetBundleName
                 : EmbeddedItems.GetDisplayNameForUrl(itemKey.Url);
             //string description = hasMetaData ? (itemKey.bundleConnector.BasisBundleDescription.AssetBundleDescription.Length > 0 ? itemKey.bundleConnector.BasisBundleDescription.AssetBundleDescription : "No description was provided.") : (itemKey.SpawnMethod == BasisRuntimeSpawnRegistry.SpawnMethod.Embedded ? "Embedded Item" : "N/A");
 
@@ -3297,6 +3410,27 @@ namespace Basis.BasisUI
                         // Mode 0 = GameObject. The server authorizes per tier and rebroadcasts; the row
                         // icon updates when that broadcast arrives (RegistryChangeType.Modified).
                         BasisNetworkSpawnItem.RequestSetStatic(itemKey.LoadedNetID, 0, nextStatic, nextAdmin);
+                        return Task.CompletedTask;
+                    },
+                });
+            }
+
+            // Save to server — admins with basis.resource.savetodisk can make a network prop or world load again after a server restart.
+            if (itemKey.SpawnMethod == BasisRuntimeSpawnRegistry.SpawnMethod.Network
+                && (itemKey.SpawnMode == BasisRuntimeSpawnRegistry.SpawnMode.GameObject || itemKey.SpawnMode == BasisRuntimeSpawnRegistry.SpawnMode.Scene)
+                && BasisNetworkModeration.LocalPlayerHasNode(BasisPermissions.PermNodes.ResourceSaveToDisk))
+            {
+                bool savedToDisk = BasisRuntimeSpawnRegistry.IsSavedToDisk(itemKey.LoadedNetID);
+                byte diskMode = itemKey.SpawnMode == BasisRuntimeSpawnRegistry.SpawnMode.Scene ? (byte)1 : (byte)0;
+                BuildEntryActionButton(itemListPanel.TabButtonParent, new EntryActionButton
+                {
+                    Style = savedToDisk ? ButtonStyles.AcceptButton : ButtonStyles.StandardButton,
+                    Icon = AddressableAssets.Sprites.Pin,
+                    Tooltip = BasisLocalization.Get(savedToDisk ? "library.instantiated.saveToServer.savedTooltip" : "library.instantiated.saveToServer.tooltip"),
+                    OnClick = () =>
+                    {
+                        // The row updates when the server broadcasts the new saved state (RegistryChangeType.Modified).
+                        BasisNetworkSpawnItem.RequestSaveToDisk(itemKey.LoadedNetID, diskMode, !savedToDisk);
                         return Task.CompletedTask;
                     },
                 });

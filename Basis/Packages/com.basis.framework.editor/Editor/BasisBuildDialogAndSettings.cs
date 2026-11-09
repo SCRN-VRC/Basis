@@ -1,3 +1,5 @@
+using Unity.Scripting.LifecycleManagement;
+using Basis.Editor.Localization;
 using LinkerGenerator;
 using System;
 using System.Collections.Generic;
@@ -8,6 +10,7 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
+[NoAutoStaticsCleanup]
 public class BasisBuildDialogAndSettings : IPreprocessBuildWithReport
 {
     public int callbackOrder => 0;
@@ -26,11 +29,9 @@ public class BasisBuildDialogAndSettings : IPreprocessBuildWithReport
         BuildTarget.iOS,
         BuildTarget.tvOS,
         BuildTarget.WebGL,
-#if UNITY_2019_1_OR_NEWER
         BuildTarget.PS4,
         BuildTarget.XboxOne,
         BuildTarget.Switch,
-#endif
     };
 
     // Platforms you want to force CoreCLR (example: your Linux choice).
@@ -77,11 +78,7 @@ public class BasisBuildDialogAndSettings : IPreprocessBuildWithReport
         // 3) Use the remembered backend; prompt only when set to Ask
         ScriptingImplementation desired;
         var backendPref = BasisBuildScriptingBackendPreference.Current;
-        if (backendPref == BasisBuildScriptingBackendPreference.Mode.IL2CPP)
-        {
-            desired = ScriptingImplementation.IL2CPP;
-        }
-        else if (backendPref == BasisBuildScriptingBackendPreference.Mode.Mono)
+        if (backendPref == BasisBuildScriptingBackendPreference.Mode.Mono)
         {
             desired = ScriptingImplementation.Mono2x;
         }
@@ -94,31 +91,19 @@ public class BasisBuildDialogAndSettings : IPreprocessBuildWithReport
             // Safe default for CI: CoreCLR
             desired = ScriptingImplementation.CoreCLR;
         }
+        else if (EditorUtility.DisplayDialog(
+            BasisEditorLocalization.Get("editor.buildDialog.title"),
+            BasisEditorLocalization.Get("editor.buildDialog.message", target),
+            "CoreCLR",
+            "Mono"))
+        {
+            desired = ScriptingImplementation.CoreCLR;
+            BasisBuildScriptingBackendPreference.Current = BasisBuildScriptingBackendPreference.Mode.CoreCLR;
+        }
         else
         {
-            int choice = EditorUtility.DisplayDialogComplex(
-                "Scripting Backend",
-                $"Build target: {target}\n\nWhich scripting backend should this build use?\n\nYour choice is remembered for next time. Change it under Basis ▸ Project Setup ▸ Build & Modules.",
-                "IL2CPP",
-                "Mono",
-                "CoreCLR"
-            );
-
-            if (choice == 0)
-            {
-                desired = ScriptingImplementation.IL2CPP;
-                BasisBuildScriptingBackendPreference.Current = BasisBuildScriptingBackendPreference.Mode.IL2CPP;
-            }
-            else if (choice == 2)
-            {
-                desired = ScriptingImplementation.CoreCLR;
-                BasisBuildScriptingBackendPreference.Current = BasisBuildScriptingBackendPreference.Mode.CoreCLR;
-            }
-            else
-            {
-                desired = ScriptingImplementation.Mono2x;
-                BasisBuildScriptingBackendPreference.Current = BasisBuildScriptingBackendPreference.Mode.Mono;
-            }
+            desired = ScriptingImplementation.Mono2x;
+            BasisBuildScriptingBackendPreference.Current = BasisBuildScriptingBackendPreference.Mode.Mono;
         }
 
         SetBackendIfNeeded(namedBuildTarget, currentBackend, desired);

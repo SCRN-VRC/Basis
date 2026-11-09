@@ -482,7 +482,9 @@ public partial class BasisSDKMirror : MonoBehaviour
         camera.nearClipPlane = Mathf.Max(0.001f, nearClipLimit);
         camera.farClipPlane = FarClipPlane;
         camera.cullingMask = ReflectingLayers;
+#pragma warning disable 618
         camera.useOcclusionCulling = OcclusionCulling;
+#pragma warning restore 618
 
         if (cameraData == null) return;
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -1252,6 +1254,9 @@ public partial class BasisSDKMirror : MonoBehaviour
         newCamera.depth = 2;
         newCamera.allowHDR = false;
         newCamera.allowMSAA = true;
+#if !UNITY_ANDROID && !UNITY_IOS && !UNITY_WEBGL
+        newCamera.opaqueSortMode = UnityEngine.Rendering.OpaqueSortMode.NoDistanceSort;
+#endif
         updateCameraClearFlags(newCamera, sourceCamera);
 
         cameraData = newCamera.GetUniversalAdditionalCameraData();

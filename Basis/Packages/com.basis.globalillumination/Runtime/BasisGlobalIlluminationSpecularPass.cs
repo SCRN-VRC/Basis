@@ -277,6 +277,7 @@ public sealed partial class BasisGlobalIlluminationPass
                     passData.previousViewProjection = previousViewProjection;
                     previousViewProjection[0] = history.PreviousSpecularViewProjection[0];
                     previousViewProjection[1] = history.PreviousSpecularViewProjection[1];
+                    passData.skipEye = -1f;
                     // Pooled PassData again: the temporal stage binds motion and the traced depth buffer
                     // whenever their handles look valid, and this pass records earlier in the frame than the
                     // diffuse one that also sets them - so anything left unset here is a handle from a graph
@@ -333,6 +334,8 @@ public sealed partial class BasisGlobalIlluminationPass
                 // this pass shares that stage and must not inherit the diffuse composite's mask handle.
                 passData.lightmapMask = TextureHandle.nullHandle;
                 passData.lightmapMaskValid = false;
+                passData.surface = TextureHandle.nullHandle;
+                passData.surfaceValid = false;
                 builder.SetRenderAttachment(published, 0, AccessFlags.WriteAll);
                 builder.UseTexture(denoiseSource);
                 builder.UseTexture(historyWriteStats);
@@ -696,6 +699,7 @@ public sealed partial class BasisGlobalIlluminationPass
     /// Enqueued only when the screen space backend will run; the ray traced backend relights its hits from
     /// the light list and never reads a colour buffer.
     /// </summary>
+    [NoAutoStaticsCleanup]
     public sealed class SpecularColorCapturePass : ScriptableRenderPass
     {
         private static readonly ProfilingSampler samplerCapture = new ProfilingSampler("Basis GI Specular Prior Color");

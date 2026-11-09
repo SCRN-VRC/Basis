@@ -26,6 +26,7 @@ namespace Cilbox
 			"BasisMediaPlayerStreaming",
 			"BasisVideoMaterialOutput",
 			"BasisVideoMaterialOutput+MaterialTarget",
+			"BasisVideoTextureOutput",
 			"BasisVideoProjectionMode",
 			"BasisVideoStereoEye",
 			"BasisVideoAspectMode",
@@ -163,6 +164,7 @@ namespace Cilbox
 			"BasisMediaPlayerStreaming.PcUrl",
 			"BasisMediaPlayerStreaming.QuestUrl",
 			"BasisVideoMaterialOutput.*",
+			"BasisVideoTextureOutput.*",
 		};
 
 		static readonly Dictionary<Type, HashSet<string>> extraMethodWhitelist = new Dictionary<Type, HashSet<string>>()
@@ -179,6 +181,13 @@ namespace Cilbox
 			{ typeof(Basis.Shims.BasisPlayspaceInputShim), new HashSet<string>() },
 			{ typeof(Basis.Shims.BasisVixxyShim), new HashSet<string>() },
 			{ typeof(Basis.Shims.BasisDesktopInputShim), new HashSet<string>() },
+			{ typeof(Basis.Shims.BasisControllerInputShim), new HashSet<string>() },
+			{ typeof(Basis.Shims.BasisInputShim), new HashSet<string>() },
+			{ typeof(Basis.Shims.BasisInputRequest), new HashSet<string>() },
+			{ typeof(Basis.Shims.BasisRemotePlayerAudioShim), new HashSet<string>() },
+			// Props may ask whether the local player sits; the seat itself is a world object.
+			{ typeof(Basis.Shims.BasisSeatShim), new HashSet<string>{ $"get_{nameof(Basis.Shims.BasisSeatShim.IsSeated)}" } },
+			{ typeof(Basis.Shims.BasisVelocityShim), new HashSet<string>{ $"get_{nameof(Basis.Shims.BasisVelocityShim.Velocity)}" } },
 			// Jiggle grab/touch events, so a prop with jiggle can answer being handled the same way
 			// an avatar or a world object can.
 			{ typeof(Basis.Shims.BasisJiggleEventShim), new HashSet<string>{
@@ -201,6 +210,13 @@ namespace Cilbox
 				} },
 			{ typeof(Basis.Shims.BasisPlatformEventShim), new HashSet<string>{
 				nameof(Basis.Shims.BasisPlatformEventShim.Rebind),
+				} },
+			{ typeof(Basis.Shims.BasisLanguageEventShim), new HashSet<string>{
+				nameof(Basis.Shims.BasisLanguageEventShim.Rebind),
+				} },
+			{ typeof(Basis.Shims.BasisExternalLinkShim), new HashSet<string>{
+				nameof(Basis.Shims.BasisExternalLinkShim.Open),
+				nameof(Basis.Shims.BasisExternalLinkShim.IsValidUrl),
 				} },
 			{ typeof(UnityEngine.Rendering.AsyncGPUReadback), new HashSet<string>{ "Request" } },
 			{ typeof(BitConverter), new HashSet<string>{
@@ -258,13 +274,6 @@ namespace Cilbox
 				"get_queriesHitBackfaces", "get_queriesHitTriggers",
 				"get_sleepThreshold", "get_defaultContactOffset",
 				} },
-			{
-				typeof(Basis.Scripts.Networking.BasisNetworkConnection),
-				new HashSet<string>
-				{
-					"get_LocalPlayerIsConnected",
-				}
-			},
 			{
 				typeof(BasisNetworkContentBase),
 				new HashSet<string>
@@ -370,6 +379,12 @@ namespace Cilbox
 					name == nameof(global::BasisMediaPlayer.LoadSource) ||
 					name == nameof(global::BasisMediaPlayer.CaptureScreenshot)) &&
 					!Beyond(MethodItem(declaringType, name), false))
+				{
+					mi = null;
+					return false;
+				}
+				if (!IsPublicMethod(declaringType, name, parametersIn, genericArgumentsIn, fullSignature) &&
+					!Beyond(MethodItem(declaringType, name), true))
 				{
 					mi = null;
 					return false;
