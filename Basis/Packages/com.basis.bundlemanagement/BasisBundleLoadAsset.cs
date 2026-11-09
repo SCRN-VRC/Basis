@@ -8,7 +8,7 @@ using UnityEngine.SceneManagement;
 using static BundledContentHolder;
 public static class BasisBundleLoadAsset
 {
-    public static async Task<GameObject> LoadFromWrapper(GameObject DisabledGameobject, BasisTrackedBundleWrapper BasisLoadableBundle, bool UseContentRemoval, Vector3 Position, Quaternion Rotation, bool ModifyScale, Vector3 Scale, Selector Selector, Transform Parent = null, bool DestroyColliders = false, bool ChangeColidersToCorrectLayer = false, List<BasisHeadChop.HeadChopTarget> HarvestedHeadChop = null)
+    public static async Task<GameObject> LoadFromWrapper(GameObject DisabledGameobject, BasisTrackedBundleWrapper BasisLoadableBundle, bool UseContentRemoval, Vector3 Position, Quaternion Rotation, bool ModifyScale, Vector3 Scale, Selector Selector, Transform Parent = null, bool DestroyColliders = false, bool ChangeColidersToCorrectLayer = false, List<BasisHeadChop.HeadChopTarget> HarvestedHeadChop = null, int RendererLayer = -1)
     {
         if (BasisLoadableBundle.AssetBundle != null || BasisLoadableBundle.HasGltfTemplate)
         {
@@ -38,7 +38,7 @@ public static class BasisBundleLoadAsset
                             // GraphicsStateCollection resolves Shader references at load time, so
                             // parse the sidecar only after this prefab and its shaders are resident.
                             await BasisLoadableBundle.EnsureEmbeddedGraphicsStatesLoaded();
-                            return await InstantiateContentControlled(DisabledGameobject, BasisLoadableBundle, loadedObject, UseContentRemoval, Position, Rotation, ModifyScale, Scale, Selector, Parent, DestroyColliders, ChangeColidersToCorrectLayer, HarvestedHeadChop);
+                            return await InstantiateContentControlled(DisabledGameobject, BasisLoadableBundle, loadedObject, UseContentRemoval, Position, Rotation, ModifyScale, Scale, Selector, Parent, DestroyColliders, ChangeColidersToCorrectLayer, HarvestedHeadChop, RendererLayer);
                         }
                     case BasisBundleConnector.GltfAssetMode:
                         {
@@ -51,7 +51,7 @@ public static class BasisBundleLoadAsset
                                 BasisLoadableBundle.DidErrorOccur = true;
                                 return null;
                             }
-                            return await InstantiateContentControlled(DisabledGameobject, BasisLoadableBundle, template, UseContentRemoval, Position, Rotation, ModifyScale, Scale, Selector, Parent, DestroyColliders, ChangeColidersToCorrectLayer, HarvestedHeadChop);
+                            return await InstantiateContentControlled(DisabledGameobject, BasisLoadableBundle, template, UseContentRemoval, Position, Rotation, ModifyScale, Scale, Selector, Parent, DestroyColliders, ChangeColidersToCorrectLayer, HarvestedHeadChop, RendererLayer);
                         }
                     default:
                         BasisDebug.LogError("Requested type " + Generated.AssetMode + " has no handler");
@@ -71,7 +71,7 @@ public static class BasisBundleLoadAsset
         return null;
     }
 
-    private static async Task<GameObject> InstantiateContentControlled(GameObject DisabledGameobject, BasisTrackedBundleWrapper BasisLoadableBundle, GameObject loadedObject, bool UseContentRemoval, Vector3 Position, Quaternion Rotation, bool ModifyScale, Vector3 Scale, Selector Selector, Transform Parent, bool DestroyColliders, bool ChangeColidersToCorrectLayer, List<BasisHeadChop.HeadChopTarget> HarvestedHeadChop)
+    private static async Task<GameObject> InstantiateContentControlled(GameObject DisabledGameobject, BasisTrackedBundleWrapper BasisLoadableBundle, GameObject loadedObject, bool UseContentRemoval, Vector3 Position, Quaternion Rotation, bool ModifyScale, Vector3 Scale, Selector Selector, Transform Parent, bool DestroyColliders, bool ChangeColidersToCorrectLayer, List<BasisHeadChop.HeadChopTarget> HarvestedHeadChop, int RendererLayer)
     {
         ChecksRequired ChecksRequired = new ChecksRequired();
         if (loadedObject.TryGetComponent<BasisAvatar>(out BasisAvatar BasisAvatar))
@@ -89,7 +89,7 @@ public static class BasisBundleLoadAsset
             BasisLegacyMaterialCompatibility.RequiresLegacyEmissionUpgrade(BasisLoadableBundle.BuiltWithUnityVersion)
                 ? renderers => BasisLegacyMaterialCompatibility.UpgradeEmission(renderers, BasisLoadableBundle.BuiltWithUnityVersion)
                 : null;
-        ContentPoliceControl.ContentControlState scrubState = ContentPoliceControl.BeginContentControl(DisabledGameobject, loadedObject, ChecksRequired, Position, Rotation, ModifyScale, Scale, Selector, Parent, LayerMask.NameToLayer("IgnoredByInteractable"), HarvestedHeadChop, harvest, BasisLoadableBundle.EmbeddedGraphicsStates, emissionPostprocessor);
+        ContentPoliceControl.ContentControlState scrubState = ContentPoliceControl.BeginContentControl(DisabledGameobject, loadedObject, ChecksRequired, Position, Rotation, ModifyScale, Scale, Selector, Parent, LayerMask.NameToLayer("IgnoredByInteractable"), HarvestedHeadChop, harvest, BasisLoadableBundle.EmbeddedGraphicsStates, emissionPostprocessor, RendererLayer);
         GameObject CreatedCopy = ContentPoliceControl.PrepareContentControl(scrubState, out BasisGraphicsStatePrewarm.WarmupRequest warmup);
         while (!warmup.IsCompleted)
         {
@@ -144,61 +144,18 @@ public static class BasisBundleLoadAsset
         {
             string scenePath = scenePaths[0];
             string sceneName = System.IO.Path.GetFileNameWithoutExtension(scenePath);
-            List<GameObject> roots = null;
-            List<Renderer> gatedRenderers = null;
-            bool[] previousForceRenderingOff = null;
-
-            // sceneLoaded runs before Start and before the first rendered frame. Gate only the
-            // renderers: disabling whole roots also disables terrain/ground colliders, allowing
-            // the player to fall below the world while PSOs warm.
-            void GateSceneRenderers(Scene scene)
+            ChecksRequired ChecksRequired = new ChecksRequired
             {
-                roots = new List<GameObject>();
-                scene.GetRootGameObjects(roots);
-                gatedRenderers = new List<Renderer>();
-                int RootCounts = roots.Count;
-                for (int Index = 0; Index < RootCounts; Index++)
-                {
-                    roots[Index].GetComponentsInChildren(true, gatedRenderers);
-                }
-
-                previousForceRenderingOff = new bool[gatedRenderers.Count];
-                for (int i = 0; i < gatedRenderers.Count; i++)
-                {
-                    Renderer renderer = gatedRenderers[i];
-                    if (renderer == null)
-                    {
-                        continue;
-                    }
-
-                    previousForceRenderingOff[i] = renderer.forceRenderingOff;
-                    renderer.forceRenderingOff = true;
-                }
-            }
-
-            void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+                UseContentRemoval = true,
+                ScrubPersistentUnityEvents = true
+            };
+            HashSet<Scene> scenesPresentBeforeLoad = new HashSet<Scene>();
+            for (int Index = 0; Index < SceneManager.sceneCount; Index++)
             {
-                if (string.Equals(scene.path, scenePath, StringComparison.OrdinalIgnoreCase))
-                {
-                    GateSceneRenderers(scene);
-                }
+                Scene existing = SceneManager.GetSceneAt(Index);
+                if (string.Equals(existing.path, scenePath, StringComparison.OrdinalIgnoreCase)) scenesPresentBeforeLoad.Add(existing);
             }
-
-            void RestoreSceneRenderers()
-            {
-                if (gatedRenderers == null || previousForceRenderingOff == null)
-                {
-                    return;
-                }
-                int GatedRendersCount = gatedRenderers.Count;
-                for (int Index = 0; Index < GatedRendersCount; Index++)
-                {
-                    Renderer renderer = gatedRenderers[Index];
-                    if (renderer != null) renderer.forceRenderingOff = previousForceRenderingOff[Index];
-                }
-            }
-
-            SceneManager.sceneLoaded += OnSceneLoaded;
+            BasisWorldSceneGate.Ticket ticket = BasisWorldSceneGate.Expect(scenePath, ChecksRequired, Selector.World, requiresLegacyEmissionUpgrade ? renderers => BasisLegacyMaterialCompatibility.UpgradeEmission(renderers, bundle.BuiltWithUnityVersion) : null);
             try
             {
                 AsyncOperation asyncLoad = SceneManager.LoadSceneAsync(scenePath, LoadSceneMode.Additive);
@@ -215,39 +172,30 @@ public static class BasisBundleLoadAsset
             }
             finally
             {
-                SceneManager.sceneLoaded -= OnSceneLoaded;
+                BasisWorldSceneGate.Release(ticket);
+            }
+
+            if (!ticket.Claimed || !ticket.Scanned)
+            {
+                Scene rejected = ticket.Claimed ? ticket.Scene : FindUnclaimedScene(scenePath, scenesPresentBeforeLoad);
+                BasisDebug.LogError($"World scene {sceneName} was refused because Content Police could not scan it before it ran.", BasisDebug.LogTag.Event);
+                ticket.RestoreRenderers();
+                if (rejected.IsValid() && !string.IsNullOrEmpty(bundle.MetaLink) && bundle.MetaLink == rejected.path) bundle.Increment();
+                await UnloadRejectedScene(rejected);
+                return new Scene();
             }
 
             BasisDebug.Log("Scene loaded successfully from AssetBundle.");
-            Scene loadedScene = SceneManager.GetSceneByPath(scenePath);
+            Scene loadedScene = ticket.Scene;
             bundle.MetaLink = loadedScene.path;
             if (loadedScene.IsValid())
             {
-                // Defensive fallback if Unity did not deliver sceneLoaded for this path.
-                if (roots == null)
-                {
-                    GateSceneRenderers(loadedScene);
-                }
-
-                ChecksRequired ChecksRequired = new ChecksRequired
-                {
-                    UseContentRemoval = true,
-                    ScrubPersistentUnityEvents = true
-                };
                 // Scene shaders become resident as part of additive scene load. Loading the
                 // collection here lets Unity resolve them before we select and warm its PSOs.
                 try
                 {
                     await bundle.EnsureEmbeddedGraphicsStatesLoaded(progressCallback);
-                    BasisGraphicsStatePrewarm.WarmupRequest warmup = ContentPoliceControl.ContentControl(
-                        ChecksRequired,
-                        Selector.World,
-                        loadedScene,
-                        true,
-                        bundle.EmbeddedGraphicsStates,
-                        requiresLegacyEmissionUpgrade
-                            ? renderers => BasisLegacyMaterialCompatibility.UpgradeEmission(renderers, bundle.BuiltWithUnityVersion)
-                            : null);
+                    BasisGraphicsStatePrewarm.WarmupRequest warmup = ContentPoliceControl.ScheduleScenePrewarm(ticket.Renderers, loadedScene, bundle.EmbeddedGraphicsStates);
                     while (!warmup.IsCompleted)
                     {
                         await Task.Yield();
@@ -257,7 +205,7 @@ public static class BasisBundleLoadAsset
                 }
                 finally
                 {
-                    RestoreSceneRenderers();
+                    ticket.RestoreRenderers();
                 }
                 AssignedIncrement = bundle.Increment();
                 if (MakeActiveScene && !cancellationToken.IsCancellationRequested)
@@ -291,7 +239,7 @@ public static class BasisBundleLoadAsset
             }
             else
             {
-                RestoreSceneRenderers();
+                ticket.RestoreRenderers();
                 BasisDebug.LogError("Failed to get loaded scene.");
             }
         }
@@ -300,5 +248,25 @@ public static class BasisBundleLoadAsset
             BasisDebug.LogError("Path was null or empty! this should not be happening!");
         }
         return new Scene();
+    }
+    public static Scene FindUnclaimedScene(string scenePath, HashSet<Scene> scenesPresentBeforeLoad)
+    {
+        for (int Index = SceneManager.sceneCount - 1; Index >= 0; Index--)
+        {
+            Scene scene = SceneManager.GetSceneAt(Index);
+            if (scene.isLoaded && string.Equals(scene.path, scenePath, StringComparison.OrdinalIgnoreCase) && !scenesPresentBeforeLoad.Contains(scene) && !BasisWorldSceneGate.IsClaimed(scene)) return scene;
+        }
+        return new Scene();
+    }
+    private static async Task UnloadRejectedScene(Scene scene)
+    {
+        if (!scene.IsValid() || !scene.isLoaded) return;
+        BasisWorldSceneGate.Lock(scene);
+        AsyncOperation unload = SceneManager.UnloadSceneAsync(scene);
+        if (unload == null) return;
+        while (!unload.isDone)
+        {
+            await Task.Yield();
+        }
     }
 }

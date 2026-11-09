@@ -5139,6 +5139,14 @@
       "value": "This server is running an older version of Basis (network protocol v{0}). You joined in compatibility mode, which uses its older, less secure login. Ask the server owner to update."
     },
     {
+      "key": "network.passwordServer.title",
+      "value": "Older Server"
+    },
+    {
+      "key": "network.passwordServer.body",
+      "value": "This server runs an older version of Basis (network protocol v{0}), so you joined it as v{0}. On this server the passwords that unlock avatars, props and worlds go through the server the old way, so the server and anyone watching the connection can read them. On v{1} servers a password is never sent over the network: other players only get the keys for the file they load, encrypted for them alone. Ask the server owner to update."
+    },
+    {
       "key": "menu.servers.list.default",
       "value": "Default Basis Server"
     },
@@ -6451,6 +6459,10 @@
       "value": "Add New Content"
     },
     {
+      "key": "library.openFile",
+      "value": "Open File"
+    },
+    {
       "key": "library.folder.new",
       "value": "New Folder"
     },
@@ -6737,6 +6749,18 @@
     {
       "key": "library.instantiated.saveToServer.savedTooltip",
       "value": "Saved to server: this item loads again after a restart. Click to stop saving it; it stays until removed."
+    },
+    {
+      "key": "library.saveToServer",
+      "value": "Save to Server"
+    },
+    {
+      "key": "library.saveToServer.description",
+      "value": "Keep this item on the server so it loads again after a restart, where it spawns. Admins only."
+    },
+    {
+      "key": "library.saveToServer.networkedOnly",
+      "value": "Only networked spawns can be saved to the server."
     },
     {
       "key": "library.instantiated.static.noPermission",
@@ -7285,6 +7309,46 @@
     {
       "key": "settings.general.jiggleGrabInteractions.tooltip",
       "value": "Allow grabbing and pulling jiggle physics (hair, tails, and similar) between you and other players. Turning this off means you never grab anyone and nobody's grabs affect you. Per-player permission lives in each player's panel."
+    },
+    {
+      "key": "settings.general.contactsFromOthers",
+      "value": "Contacts From Other Players"
+    },
+    {
+      "key": "settings.general.contactsFromOthers.tooltip",
+      "value": "Let other players' hands, heads and bodies trigger contact receivers on your avatar, such as boops and headpats that change your Vixxy toggles. Blocked players and players with interactions disabled never trigger them."
+    },
+    {
+      "key": "settings.general.bodyHaptics",
+      "value": "Body Haptics"
+    },
+    {
+      "key": "settings.general.bodyHaptics.tooltip",
+      "value": "Work out where other players touch your body and send it to a haptic vest or suit. Values go out over OSC (turn on OSC) as /avatar/parameters/BasisHaptics/<zone> from 0 to 1, for a bridge app to forward to your hardware."
+    },
+    {
+      "key": "settings.general.bodyHapticsFromOthers",
+      "value": "Haptics From Other Players"
+    },
+    {
+      "key": "settings.general.bodyHapticsFromOthers.tooltip",
+      "value": "Other players' hands, feet and heads, and contact senders on props and worlds, can trigger your haptics. Blocked players and players with interactions disabled never can."
+    },
+    {
+      "key": "settings.general.bodyHapticsFromSelf",
+      "value": "Haptics From Your Own Hands"
+    },
+    {
+      "key": "settings.general.bodyHapticsFromSelf.tooltip",
+      "value": "Your own hands can trigger your haptics. A hand never triggers the arm it belongs to."
+    },
+    {
+      "key": "settings.general.bodyHapticsIntensity",
+      "value": "Haptics Intensity"
+    },
+    {
+      "key": "settings.general.bodyHapticsIntensity.tooltip",
+      "value": "Caps how strong any touch can feel. Lower it if contacts are too intense."
     },
     {
       "key": "settings.general.hud.title",
@@ -14963,6 +15027,10 @@
       "value": "Move, teleport or freeze you"
     },
     {
+      "key": "settings.cilboxPermissions.cap.otherPlayersPose",
+      "value": "Change how other players' bodies look on your screen"
+    },
+    {
       "key": "settings.cilboxPermissions.cap.localMedia",
       "value": "Open video or audio files on your computer"
     },
@@ -15009,6 +15077,14 @@
     {
       "key": "settings.cilboxPermissions.cap.addComponents",
       "value": "Add new components to objects"
+    },
+    {
+      "key": "settings.cilboxPermissions.cap.spawnProps",
+      "value": "Spawn objects from your avatar with the same parts a prop can use"
+    },
+    {
+      "key": "settings.cilboxPermissions.cap.animationEvents",
+      "value": "Turn animation events back on"
     },
     {
       "key": "settings.cilboxPermissions.cap.graphics",
@@ -15161,6 +15237,14 @@
     {
       "key": "settings.cilboxPermissions.why.addComponents",
       "value": "Can add built-in components to objects, including kinds scripts are not normally allowed to create."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.spawnProps",
+      "value": "Objects an avatar spawns normally keep only what avatars may contain. This lets them keep everything a prop may contain, such as pickups, buttons and media players."
+    },
+    {
+      "key": "settings.cilboxPermissions.why.animationEvents",
+      "value": "Basis removes animation events from content because they can call methods on any component by name, outside the script sandbox. This lets scripts add them back and turn them on."
     },
     {
       "key": "settings.cilboxPermissions.why.graphics",
@@ -20977,6 +21061,42 @@
       "value": "({0} is already in use)"
     },
     {
+      "key": "settings.controls.keyboard.keyInUseBy",
+      "value": "({0} is already used by {1})"
+    },
+    {
+      "key": "settings.controls.keyboard.row.tooltip",
+      "value": "Click, then press the new key. Escape or a second click cancels."
+    },
+    {
+      "key": "settings.controls.keyboard.resetKey.body",
+      "value": "Set {0} back to {1}?"
+    },
+    {
+      "key": "settings.controls.keyboard.resetAll",
+      "value": "Reset All Keys"
+    },
+    {
+      "key": "settings.controls.keyboard.resetAll.tooltip",
+      "value": "Put every key back to its default."
+    },
+    {
+      "key": "settings.controls.keyboard.resetAll.none",
+      "value": "Every key is already at its default."
+    },
+    {
+      "key": "settings.controls.roles.boundTo",
+      "value": "Bound to: {0}"
+    },
+    {
+      "key": "settings.controls.roles.none",
+      "value": "Not bound to any role."
+    },
+    {
+      "key": "settings.controls.actionBindings.otherMode",
+      "value": "Editing {0}. Changes are saved now and used the next time that mode starts."
+    },
+    {
       "key": "ui.bodyRole.centerEye",
       "value": "Center Eye"
     },
@@ -22219,6 +22339,38 @@
     {
       "key": "serverRequests.prompt.server",
       "value": "Server"
+    },
+    {
+      "key": "playerLocks.title",
+      "value": "Allow Lock?"
+    },
+    {
+      "key": "playerLocks.body",
+      "value": "\"{0}\" ({1}) from {2} wants to lock your {3}. You can break free any time by respawning from the menu."
+    },
+    {
+      "key": "playerLocks.accept",
+      "value": "Allow"
+    },
+    {
+      "key": "playerLocks.kind.avatar",
+      "value": "Avatar"
+    },
+    {
+      "key": "playerLocks.movement",
+      "value": "movement"
+    },
+    {
+      "key": "playerLocks.look",
+      "value": "view"
+    },
+    {
+      "key": "playerLocks.crouch",
+      "value": "crouching"
+    },
+    {
+      "key": "prompt.armWait",
+      "value": "Read this first. This button turns on in a moment."
     },
     {
       "key": "settings.general.externalLinkRequests",

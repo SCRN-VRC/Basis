@@ -18,6 +18,7 @@ namespace Cilbox
 			"Basis.Shims.BasisAvatarShim+AvatarReadyEvent",
 			"Basis.Shims.BasisCilboxInstantiateShim",
 			"Basis.Shims.BasisJiggleEventShim", // Restrictive, see method whitelist.
+			"Basis.Shims.BasisContactEventShim",
 			"Basis.Shims.BasisPermissionEventShim", // Restrictive, see method whitelist.
 			"Basis.Shims.BasisGraphicsSettingsEventShim", // Restrictive, see method whitelist.
 			"Basis.Shims.BasisPlatformEventShim", // Restrictive, see method whitelist.
@@ -25,7 +26,10 @@ namespace Cilbox
 			"Basis.Shims.BasisDebugPropsShim",
 			"Basis.Shims.BasisPlayspaceInputShim", // Restrictive, see method whitelist.
 			"Basis.Shims.BasisPlayerInputBlend",
-			"Basis.Shims.BasisVixxyShim", // Restrictive, see method whitelist.
+			"Basis.Shims.BasisGrabShim",
+			"Basis.Shims.BasisLockShim",
+			"Basis.Shims.BasisPlayerLock",
+			"Basis.Shims.BasisLockResult",
 			// Bulk transform / blendshape get-set-copy. The prop and scene boxes pick these up
 			// from their blanket "Basis.Shims.*"; the avatar box enumerates, so they need naming.
 			// They grant no authority a script does not already have on a Transform or a
@@ -43,6 +47,7 @@ namespace Cilbox
 			"Basis.Shims.BasisHapticsShim", // Only buzzes the player wearing the avatar.
 			"Basis.Shims.BasisHapticHand",
 			"Basis.Shims.BasisPoseOverrideShim", // Only poses the player wearing the avatar.
+			"Basis.Shims.BasisRemotePoseShim", // Only poses the remote player wearing the avatar, on this client.
 			"Basis.Shims.BasisSharedRandomShim",
 			"Basis.Shims.BasisComputeShim",
 			"Basis.Shims.BasisAudioRoutingShim", // Only routes the avatar's own sources, to the Avatars group.
@@ -54,9 +59,8 @@ namespace Cilbox
 			"Basis.Shims.BasisScriptBus",
 			"Basis.Shims.BasisScriptTarget",
 			"Basis.Shims.BasisScriptMessage",
-
-			// HVR Vixxy
-			"HVR.Vixxy.HVRVixxyMenuItem", // Restrictive, see method whitelist.
+			"Basis.Shims.BasisScriptReference",
+			"Basis.Shims.BasisSharedTransform",
 		};
 
 		static readonly HashSet<string> extraWhiteListFields = new HashSet<string>(){
@@ -83,6 +87,14 @@ namespace Cilbox
 				nameof(Basis.Shims.BasisJiggleEventShim.GetJiggleRigCount),
 				nameof(Basis.Shims.BasisJiggleEventShim.GetJiggleRigName),
 				nameof(Basis.Shims.BasisJiggleEventShim.FindJiggleRig),
+				} },
+			{ typeof(Basis.Shims.BasisContactEventShim), new HashSet<string>{
+				nameof(Basis.Shims.BasisContactEventShim.Rebind),
+				nameof(Basis.Shims.BasisContactEventShim.GetReceiverCount),
+				nameof(Basis.Shims.BasisContactEventShim.FindReceiver),
+				nameof(Basis.Shims.BasisContactEventShim.GetValue),
+				nameof(Basis.Shims.BasisContactEventShim.IsTouched),
+				nameof(Basis.Shims.BasisContactEventShim.GetTouchingPlayer),
 				} },
 			// Local permission changes. Same shape as the jiggle events above: fetching the
 			// component is the opt-in, Rebind is only for proxies that appear late, and the
@@ -120,23 +132,6 @@ namespace Cilbox
 				".ctor",
 				"get_value",
 				"op_Implicit",
-				} },
-			{ typeof(HVR.Vixxy.HVRVixxyMenuItem), new HashSet<string>{
-				nameof(HVR.Vixxy.HVRVixxyMenuItem.GetValue),
-				nameof(HVR.Vixxy.HVRVixxyMenuItem.ApplyValue),
-				} },
-			{ typeof(Basis.Shims.BasisVixxyShim), new HashSet<string>{
-				nameof(Basis.Shims.BasisVixxyShim.HasControl),
-				nameof(Basis.Shims.BasisVixxyShim.DefaultValue),
-				nameof(Basis.Shims.BasisVixxyShim.MinValue),
-				nameof(Basis.Shims.BasisVixxyShim.MaxValue),
-				nameof(Basis.Shims.BasisVixxyShim.ChoiceCount),
-				nameof(Basis.Shims.BasisVixxyShim.ChoiceValue),
-				nameof(Basis.Shims.BasisVixxyShim.ChoiceTitle),
-				nameof(Basis.Shims.BasisVixxyShim.IsToggle),
-				nameof(Basis.Shims.BasisVixxyShim.IsSlider),
-				nameof(Basis.Shims.BasisVixxyShim.Title),
-				nameof(Basis.Shims.BasisVixxyShim.Description),
 				} },
 			{ typeof(Basis.Shims.BasisPlayspaceInputShim), new HashSet<string>{
 				nameof(Basis.Shims.BasisPlayspaceInputShim.SetLocomotion),

@@ -13,9 +13,17 @@ namespace Basis.IK
         }
         void SolveToePass()
         {
-            if (plan.leftToeDriven) poseStream.SetRotation(handleLeftToe, leftDrivenTargetRot * offsetRotationLeftToe);
-            else if (plan.leftToeSurface) ApplyToeSurfaceBend(handleLeftToe, leftToeBendDeg, leftToeBendAxis);
-
+            SolveToe(true);
+            SolveToe(false);
+        }
+        void SolveToe(bool isLeft)
+        {
+            if (isLeft)
+            {
+                if (plan.leftToeDriven) poseStream.SetRotation(handleLeftToe, leftDrivenTargetRot * offsetRotationLeftToe);
+                else if (plan.leftToeSurface) ApplyToeSurfaceBend(handleLeftToe, leftToeBendDeg, leftToeBendAxis);
+                return;
+            }
             if (plan.rightToeDriven) poseStream.SetRotation(handleRightToe, rightDrivenTargetRot * offsetRotationRightToe);
             else if (plan.rightToeSurface) ApplyToeSurfaceBend(handleRightToe, rightToeBendDeg, rightToeBendAxis);
         }
@@ -94,6 +102,7 @@ namespace Basis.IK
             input.HintIsTracker = hintIsTracker;
             input.HasBodyFrame = bodyFrame.Valid;
             input.HipsForward = bodyFrame.Forward;
+            input.HipsRight = bodyFrame.Right;
             input.FootForward = (isLeft ? targetRotationLeftLowerLeg : targetRotationRightLowerLeg) * Vector3.forward; // Foot target's control rotation, before any preserveTip swap
             input.Up = playerUp;
 
@@ -113,6 +122,12 @@ namespace Basis.IK
             poseStream.SetRotation(root, result.RootDelta * poseStream.GetRotation(root));
             poseStream.SetRotation(root, result.HintDelta * poseStream.GetRotation(root));
             poseStream.SetRotation(mid, result.MidPostRoll * poseStream.GetRotation(mid));
+            poseStream.SetRotation(tip, result.TipRotation);
+
+            // Thigh roll
+            Quaternion keptMidRot = poseStream.GetRotation(mid);
+            poseStream.SetRotation(root, result.ThighUntwist * poseStream.GetRotation(root));
+            poseStream.SetRotation(mid, keptMidRot);
             poseStream.SetRotation(tip, result.TipRotation);
             Quaternion shinRoll = result.MidPostRoll;
 

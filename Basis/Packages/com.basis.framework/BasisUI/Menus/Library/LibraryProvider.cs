@@ -265,6 +265,7 @@ namespace Basis.BasisUI
             // add our extra menu button items, this is the buttons below the panel content
             addNewContentButton = tabGroup.AddExtraAction(BasisLocalization.Get("library.addNewContent"), async () => await LibraryProviderDialogAdd.PromptUserForNewContent(panel), new Vector2(70, 80));
             newFolderButton = tabGroup.AddExtraAction(BasisLocalization.Get("library.folder.new"), async () => await PromptCreateFolder(), new Vector2(70, 80));
+            if (Basis.Scripts.Platform.BasisDesktopFileDrop.CanPickFiles) tabGroup.AddExtraAction(BasisLocalization.Get("library.openFile"), Basis.Scripts.Platform.BasisDesktopFileDrop.PickFiles, new Vector2(70, 80));
 
             if (!SyncFoldersTab() && _currentPage == Page.Folders) _currentPage = Page.Avatar;
 
@@ -657,9 +658,31 @@ namespace Basis.BasisUI
             return DateTime.MinValue;
         }
 
+        private static PanelTextField _loadingCard;
+
+        private static void ShowLoadingCard(PanelTabPage tab)
+        {
+            RectTransform container = tab.Descriptor.ContentParent;
+            if (_loadingCard != null && _loadingCard.transform.parent == container) return;
+            HideLoadingCard();
+            if (container.childCount > 0) return;
+            _loadingCard = PanelTextField.CreateNew(TextFieldStyles.Entry, container);
+            _loadingCard._inputField.gameObject.SetActive(false);
+            _loadingCard.Descriptor.SetTitle(BasisLocalization.Get("library.loading"));
+            _loadingCard.Descriptor.ForceRebuild();
+            tab.Descriptor.ForceRebuild();
+        }
+
+        private static void HideLoadingCard()
+        {
+            if (_loadingCard != null) UnityEngine.Object.Destroy(_loadingCard.gameObject);
+            _loadingCard = null;
+        }
+
         internal static void ClearTabContent(RectTransform container)
         {
             if (container == null) return;
+            if (_loadingCard != null && _loadingCard.transform.parent == container) _loadingCard = null;
             // Destroy all child gameobjects under the content parent
             for (int i = container.childCount - 1; i >= 0; i--)
             {
@@ -694,6 +717,7 @@ namespace Basis.BasisUI
             PanelTabPage tab = page == Page.Instantiated ? EnsureInstantiatedTab() : GetTabFromPage(page);
             //BasisDebug.Log($"RefreshTabAsync() was invoked -> for page = {page}, tab = {tab} _currentTab = {_currentTab}, ");
             if (tab == null) return;
+            if (page != Page.Instantiated) ShowLoadingCard(tab);
 
             // Ensure keys are loaded
             await BasisDataStoreItemKeys.LoadKeys();
@@ -703,10 +727,12 @@ namespace Basis.BasisUI
             if (!PanelAlive) return;
             if (!SyncFoldersTab() && page == Page.Folders)
             {
+                HideLoadingCard();
                 page = Page.Avatar;
                 tab = GetTabFromPage(page);
                 if (tab == null) return;
                 tabGroup.SetValue((int)page);
+                ShowLoadingCard(tab);
             }
 
             if(clearSearch)
@@ -861,6 +887,7 @@ namespace Basis.BasisUI
                 }
                 catch (Exception e)
                 {
+                    HideLoadingCard();
                     BasisDebug.LogError(e);
                 }
             }
@@ -1653,6 +1680,8 @@ namespace Basis.BasisUI
             // declared here so the dropdown callback can reference them
             PanelButton loadPanelButton = null;
             bool replaceLoad = false;
+            bool saveToServer = false;
+            PanelToggle saveToServerToggle = null;
 
             // only do this menu for props & worlds
             if (item.Mode == BundledContentHolder.Mode.Prop || item.Mode == BundledContentHolder.Mode.World)
@@ -1689,6 +1718,7 @@ namespace Basis.BasisUI
                     {
                         desiredNetworkType = selectedNetType;
                         contentSyncModeDropDown.Descriptor.SetDescription(GetNetworkTypeDescription(selectedNetType));
+                        saveToServerToggle?.SetInteractable(selectedNetType == BundledContentHolder.NetworkType.Networked, BasisLocalization.Get("library.saveToServer.networkedOnly"));
 
                         // update the load button to reflect the selected mode
                         if (!replaceLoad)
@@ -1736,11 +1766,24 @@ namespace Basis.BasisUI
                     !item.EmbeddedSettings.IsEmbedded,
                     item.EmbeddedSettings.IsEmbedded ? BasisLocalization.Get("library.disabled.embedded") : null);
 
+                if (netConnectedForTypes && !isLocalItem && BasisNetworkModeration.LocalPlayerHasNode(BasisPermissions.PermNodes.ResourceSaveToDisk))
+                {
+                    saveToServerToggle = PanelToggle.CreateNew(advancedActionsPanel.TabButtonParent, PanelToggle.Styles.Entry);
+                    saveToServerToggle.SetValueWithoutNotify(false);
+                    saveToServerToggle.Descriptor.SetTitle(BasisLocalization.Get("library.saveToServer"));
+                    saveToServerToggle.Descriptor.SetIcon(AddressableAssets.Sprites.Pin);
+                    saveToServerToggle.Descriptor.SetDescription(BasisLocalization.Get("library.saveToServer.description"));
+                    saveToServerToggle.Descriptor.SetSize(new Vector2(700, 80));
+                    saveToServerToggle.SetInteractable(desiredNetworkType == BundledContentHolder.NetworkType.Networked, BasisLocalization.Get("library.saveToServer.networkedOnly"));
+                    saveToServerToggle.OnValueChanged = (val) => saveToServer = val;
+                    advancedActionsPanel.Descriptor.SetHeight(240);
+                }
+
                 // where a prop lands when spawned. Automatic defers to whatever the prop itself asks
                 // for, so this only needs touching to override the creator's choice.
                 if (item.Mode == BundledContentHolder.Mode.Prop)
                 {
-                    advancedActionsPanel.Descriptor.SetHeight(240);
+                    advancedActionsPanel.Descriptor.SetHeight(saveToServerToggle != null ? 320 : 240);
 
                     PanelDropdown placementDropDown = PanelDropdown.CreateNew(PanelDropdown.DropdownStyles.Entry, advancedActionsPanel.TabButtonParent);
                     placementDropDown.Descriptor.SetTitle(BasisLocalization.Get("library.placement"));
@@ -1977,7 +2020,7 @@ namespace Basis.BasisUI
                         }
                     }
 
-                    bool success = await LibraryProviderDialogLoading.PromptUserLoadingInProgress(panel, item, desiredNetworkType, !ephemeral);
+                    bool success = await LibraryProviderDialogLoading.PromptUserLoadingInProgress(panel, item, desiredNetworkType, !ephemeral, saveToServer: saveToServer && desiredNetworkType == BundledContentHolder.NetworkType.Networked);
                 }
                 catch (Exception ex)
                 {
@@ -2179,7 +2222,7 @@ namespace Basis.BasisUI
         /// <param name="item">The ItemKey desired to be loaded</param>
         /// <param name="networkType">default local unless specified</param>
         /// <returns></returns>
-        public static async Task LoadSelectedItem(BasisDataStoreItemKeys.ItemKey item, BundledContentHolder.NetworkType networkType = BundledContentHolder.NetworkType.Local, bool persistence = false, bool modifyScale = false)
+        public static async Task LoadSelectedItem(BasisDataStoreItemKeys.ItemKey item, BundledContentHolder.NetworkType networkType = BundledContentHolder.NetworkType.Local, bool persistence = false, bool modifyScale = false, bool saveToServer = false)
         {
             await PersistServerProvidedItemOnLoad(item);
 
@@ -2213,7 +2256,7 @@ namespace Basis.BasisUI
                         await ContentLoader.LoadAvatar(item);
                         break;
                     case BundledContentHolder.Mode.Prop:
-                        await ContentLoader.LoadProp(item, networkType, persistence, IsProtected, modifyScale);
+                        await ContentLoader.LoadProp(item, networkType, persistence, IsProtected, modifyScale, saveToServer);
                         if (persistBoot)
                         {
                             await PersistPropBootEntry(item);
@@ -2231,7 +2274,7 @@ namespace Basis.BasisUI
                                 PlacementOverride = item.PlacementOverride,
                             });
                         }
-                        await ContentLoader.LoadWorld(item, networkType, persistence, IsProtected);
+                        await ContentLoader.LoadWorld(item, networkType, persistence, IsProtected, saveToServer);
                         break;
                     default:
                         BasisDebug.LogError($"LoadSelectedItem was given an item with an unknown mode of {item.Mode}, cannot determine how to load!");

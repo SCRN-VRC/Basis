@@ -88,7 +88,7 @@ public sealed partial class BasisGlobalIlluminationPass : ScriptableRenderPass
         public TextureHandle rcColor1, rcColor2, rcColor3, rcDepth1, rcDepth2, rcDepth3, rcSourceColor, rcSourceDepth;
         public TextureHandle rcProbes, rcUpperProbes, rcUpper, rcSh0, rcSh1, rcSh2, rcSh3;
         public Vector4 rcCascade, rcInterval, rcGrid, rcJitter;
-        public Vector4[] rcRotations;
+        public float rcSpin;
         public float rcPhase;
         public readonly Vector4[] rcLevels = new Vector4[CascadeLevels];
     }
@@ -214,6 +214,10 @@ public sealed partial class BasisGlobalIlluminationPass : ScriptableRenderPass
         samplerCoarse.enableRecording = enabled;
         samplerCascades.enableRecording = enabled;
         samplerWorld.enableRecording = enabled;
+        samplerWorldVoxelize.enableRecording = enabled;
+        foreach (ProfilingSampler level in samplerWorldVoxelizeLevel) { level.enableRecording = enabled; }
+        samplerWorldCascades.enableRecording = enabled;
+        samplerWorldResolve.enableRecording = enabled;
         samplerTemporal.enableRecording = enabled;
         samplerBlur.enableRecording = enabled;
         samplerComposite.enableRecording = enabled;

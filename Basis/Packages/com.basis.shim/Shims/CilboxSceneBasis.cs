@@ -315,6 +315,14 @@ namespace Cilbox
 				nameof(Basis.Shims.BasisJiggleEventShim.GetJiggleRigName),
 				nameof(Basis.Shims.BasisJiggleEventShim.FindJiggleRig),
 				} },
+			{ typeof(Basis.Shims.BasisContactEventShim), new HashSet<string>{
+				nameof(Basis.Shims.BasisContactEventShim.Rebind),
+				nameof(Basis.Shims.BasisContactEventShim.GetReceiverCount),
+				nameof(Basis.Shims.BasisContactEventShim.FindReceiver),
+				nameof(Basis.Shims.BasisContactEventShim.GetValue),
+				nameof(Basis.Shims.BasisContactEventShim.IsTouched),
+				nameof(Basis.Shims.BasisContactEventShim.GetTouchingPlayer),
+				} },
 			// Local permission changes. Same shape as the jiggle events above: fetching the
 			// component is the opt-in, Rebind is only for proxies that appear late, and the
 			// callback is resolved by name off the script.
@@ -396,7 +404,6 @@ namespace Cilbox
 				nameof(Basis.Scripts.Drivers.BasisLocalCameraDriver.RightEyeWorldPosition),
 				} },
 			{ typeof(Basis.Shims.BasisPlayspaceInputShim), new HashSet<string>() },
-			{ typeof(Basis.Shims.BasisVixxyShim), new HashSet<string>() },
 			{ typeof(BasisLocalPlayer), new HashSet<string>{
 				nameof(BasisLocalPlayer.GetPositionAndRotation),
 				nameof(BasisLocalPlayer.Teleport),
@@ -438,7 +445,8 @@ namespace Cilbox
 				"ToString", "ToBase64String", "FromBase64String",
 				"ToDateTime", "ToDecimal" } },
 			// UnityEngine.Camera: limit to query/transform helpers + property accessors.
-			// Block Render(), CopyFrom(), SetTargetBuffers(), AddCommandBuffer*(),
+			// Render() is redirected to CilboxCameras (own cameras, target texture, budget).
+			// Block CopyFrom(), SetTargetBuffers(), AddCommandBuffer*(),
 			// RenderToCubemap(), SetReplacementShader(), SetStereoView/ProjectionMatrix.
 			{ typeof(UnityEngine.Camera), new HashSet<string>{
 				"CalculateFrustumCorners",

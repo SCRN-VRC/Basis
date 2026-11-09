@@ -107,7 +107,7 @@ namespace Basis.IK
         public Vector3 BendNormal, AnteriorNormal;
         public Quaternion HintRotation;
         public bool HintIsTracker, HasHintRotation;
-        public Vector3 FootForward, Up, HipsForward;
+        public Vector3 FootForward, Up, HipsForward, HipsRight;
         public bool HasBodyFrame;
     }
     public struct BasisLegSolveResult
@@ -119,6 +119,7 @@ namespace Basis.IK
         public float ShinRollDeg;
         public Vector3 KneeSolved, FootSolved;
         public Quaternion RootRotationSolved, MidRotationSolved;
+        public Quaternion ThighUntwist;
         public float UpperLength, LowerLength, TargetDistance, ReachRatio, KneeAngleDeg;
         public byte AxisSource;
         public float FootError;

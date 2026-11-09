@@ -179,12 +179,12 @@ namespace Cilbox
 			// Scripted player input is an AVATAR-box feature; Basis.Shims.* is type-whitelisted here, so
 			// block every method to keep prop scripts out of the local player's locomotion.
 			{ typeof(Basis.Shims.BasisPlayspaceInputShim), new HashSet<string>() },
-			{ typeof(Basis.Shims.BasisVixxyShim), new HashSet<string>() },
 			{ typeof(Basis.Shims.BasisDesktopInputShim), new HashSet<string>() },
 			{ typeof(Basis.Shims.BasisControllerInputShim), new HashSet<string>() },
 			{ typeof(Basis.Shims.BasisInputShim), new HashSet<string>() },
 			{ typeof(Basis.Shims.BasisInputRequest), new HashSet<string>() },
 			{ typeof(Basis.Shims.BasisRemotePlayerAudioShim), new HashSet<string>() },
+			{ typeof(Basis.Shims.BasisSpawnShim), new HashSet<string>() },
 			// Props may ask whether the local player sits; the seat itself is a world object.
 			{ typeof(Basis.Shims.BasisSeatShim), new HashSet<string>{ $"get_{nameof(Basis.Shims.BasisSeatShim.IsSeated)}" } },
 			{ typeof(Basis.Shims.BasisVelocityShim), new HashSet<string>{ $"get_{nameof(Basis.Shims.BasisVelocityShim.Velocity)}" } },
@@ -195,6 +195,14 @@ namespace Cilbox
 				nameof(Basis.Shims.BasisJiggleEventShim.GetJiggleRigCount),
 				nameof(Basis.Shims.BasisJiggleEventShim.GetJiggleRigName),
 				nameof(Basis.Shims.BasisJiggleEventShim.FindJiggleRig),
+				} },
+			{ typeof(Basis.Shims.BasisContactEventShim), new HashSet<string>{
+				nameof(Basis.Shims.BasisContactEventShim.Rebind),
+				nameof(Basis.Shims.BasisContactEventShim.GetReceiverCount),
+				nameof(Basis.Shims.BasisContactEventShim.FindReceiver),
+				nameof(Basis.Shims.BasisContactEventShim.GetValue),
+				nameof(Basis.Shims.BasisContactEventShim.IsTouched),
+				nameof(Basis.Shims.BasisContactEventShim.GetTouchingPlayer),
 				} },
 			// Local permission changes. Same shape as the jiggle events above: fetching the
 			// component is the opt-in, Rebind is only for proxies that appear late, and the
@@ -242,6 +250,7 @@ namespace Cilbox
 				"WorldToViewportPoint",
 				"get_aspect",
 				"get_cameraToWorldMatrix",
+				"get_cullingMask",
 				"get_farClipPlane",
 				"get_fieldOfView",
 				"get_main",

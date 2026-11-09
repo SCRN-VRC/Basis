@@ -8,7 +8,10 @@ namespace Basis.IK
         public const float KneeAnteriorHardDeg = 89.5f, KneeAnteriorTaperStartDeg = 160f, TrackerShinRollMaxDeg = 45f;
         public const float KneeHintForward = 0.75f;
         public const float KneeHintFootFlatTrust = 0.3f;
+        public const float KneeHintFootAgreeFull = -0.34f, KneeHintFootAgreeZero = -0.94f;
+        public const float KneeHintHingeFadeStart = 0.4f, KneeHintHingeFadeFull = 0.6f;
         public const float KneeTrackerHintBias = 0.06f;
+        public const float ThighTwistShare = 0.5f;
         public static float ClampKneeSwivelDeg(float swivelDeg, float softDeg, float hardDeg)
         {
             float wrapped = swivelDeg - 360f * Mathf.Floor((swivelDeg + 180f) / 360f);
@@ -65,15 +68,30 @@ namespace Basis.IK
                 float legLen = legAxis.magnitude;
                 legAxis = legLen > epsilon ? legAxis / legLen : -i.Up;
 
-                // Hips and foot forward with their along-the-leg part removed. The foot steers the knee only when it points
-                // clearly out from the leg and not behind the hips (pointed toes while lying down fall back to the hips).
+                // The knee bends around the hips' left/right axis, so the kneecap faces leg x hipsRight
                 Vector3 hipsPerp = Vector3.ProjectOnPlane(i.HipsForward, legAxis), footPerp = Vector3.ProjectOnPlane(i.FootForward, legAxis);
                 Vector3 pushDir = hipsPerp.sqrMagnitude > sqrEpsilon ? hipsPerp.normalized : i.HipsForward;
-                float footLen = footPerp.magnitude;
-                if (footLen > epsilon && Vector3.Dot(footPerp, pushDir) > 0f)
+                Vector3 hingeDir = Vector3.Cross(legAxis, i.HipsRight);
+                float hingeLen = hingeDir.magnitude; // sin of the leg/hipsRight angle
+                if (hingeLen > epsilon)
                 {
-                    float footTrust = Mathf.Clamp01(footLen / KneeHintFootFlatTrust);
-                    pushDir = Vector3.Slerp(pushDir, footPerp / footLen, footTrust).normalized;
+                    float hingeTrust = Mathf.Clamp01((hingeLen - KneeHintHingeFadeStart) / (KneeHintHingeFadeFull - KneeHintHingeFadeStart));
+                    hingeTrust = hingeTrust * hingeTrust * (3f - 2f * hingeTrust);
+                    pushDir = Vector3.Slerp(pushDir, hingeDir / hingeLen, hingeTrust).normalized;
+                }
+
+                // The foot steers the knee only when it points clearly out from the leg and roughly the same way as the knee.
+                // Its pull fades as it turns away so a splayed or pointed foot doesn't pop the knee.
+                float footLen = footPerp.magnitude;
+                if (footLen > epsilon)
+                {
+                    Vector3 footN = footPerp / footLen;
+                    float agree = Mathf.Clamp01((Vector3.Dot(footN, pushDir) - KneeHintFootAgreeZero) / (KneeHintFootAgreeFull - KneeHintFootAgreeZero));
+                    float footTrust = Mathf.Clamp01(footLen / KneeHintFootFlatTrust) * agree * agree * (3f - 2f * agree);
+                    if (footTrust > 0f)
+                    {
+                        pushDir = Vector3.Slerp(pushDir, footN, footTrust).normalized;
+                    }
                 }
 
                 // Start on the leg line where the knee sits, then push out in front of it.
@@ -233,6 +251,22 @@ namespace Basis.IK
                         midRot = r.MidPostRoll * midRot;
                         r.ShinRollDeg = rollSigned * Mathf.Rad2Deg;
                     }
+                }
+            }
+
+            // Split the thigh's roll between the hip and the knee
+            r.ThighUntwist = Quaternion.identity;
+            Vector3 thighRest = i.Mid - i.Root, thighNow = bPosition - aPosition;
+            if (ThighTwistShare < 1f && thighRest.sqrMagnitude > sqrEpsilon && thighNow.sqrMagnitude > sqrEpsilon)
+            {
+                Vector3 thighN = thighNow.normalized;
+                Quaternion swingOnly = BasisQuaternionExt.FromToRotation(thighRest, thighNow) * i.RootRotation;
+                float thighTwistDeg = BasisTwistSolveCore.SignedTwistAngleDeg(rootRot * Quaternion.Inverse(swingOnly), thighN);
+                float removeDeg = thighTwistDeg * (1f - ThighTwistShare);
+                if (removeDeg > 0.001f || removeDeg < -0.001f)
+                {
+                    r.ThighUntwist = Quaternion.AngleAxis(-removeDeg, thighN);
+                    rootRot = r.ThighUntwist * rootRot;
                 }
             }
 

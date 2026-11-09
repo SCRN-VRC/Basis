@@ -15,7 +15,7 @@ Texture3D<float4> _BasisGIVoxAlbedo;
 
 #ifndef BASISGI_WORLD_SPECULAR_DECLARED
 #define BASISGI_WORLD_SPECULAR_DECLARED
-TEXTURE3D(_BasisGIWorldSpecular);
+TEXTURE2D_ARRAY(_BasisGIWorldSpecular);
 float4 _BasisGIWorldSpecularParams;
 #endif
 static half3 basisWorldReflectionNormal = half3(0.0, 0.0, 0.0);
@@ -64,7 +64,7 @@ half4 BasisWorldReflection(float3 positionWS, half3 normalWS, half3 reflectVecto
     float3 direction = normalize((float3)reflectVector);
     float bins = _BasisGIWorldSpecularParams.y;
     float2 binTexel = clamp((PackNormalOctQuadEncode(direction) * 0.5 + 0.5) * bins, 0.5, bins - 0.5);
-    float3 atlasScale = 1.0 / float3(probes * bins, probes * bins, probes * levels);
+    float atlasScale = 1.0 / (probes * bins);
     float inverseVoxel = 1.0 / box.w;
 
     float roughness = max(Sq((float)perceptualRoughness), 0.002);
@@ -90,14 +90,19 @@ half4 BasisWorldReflection(float3 positionWS, half3 normalWS, half3 reflectVecto
         float3 probeWS = ((float3)probe + 0.5) * spacing;
         weight *= Sq(dot(normalize(probeWS - origin), normal) * 0.5 + 0.5) + 0.05;
         float3 midpoint = (origin + probeWS) * 0.5;
-        int3 voxel = (int3)floor((midpoint - box.xyz) * inverseVoxel);
-        if (all(voxel >= 0) && all(voxel < (int)voxels) && _BasisGIVoxAlbedo.Load(int4(voxel + int3(0, 0, level * (int)voxels), 0)).a > 0.5) { continue; }
+        float3 voxel = (midpoint - box.xyz) * inverseVoxel;
+        if (all(voxel >= 0.0) && all(voxel < voxels))
+        {
+            float3 uvw = clamp(voxel, 0.5, voxels - 0.5) + float3(0.0, 0.0, level * voxels);
+            weight *= saturate((0.6 - _BasisGIVoxAlbedo.SampleLevel(sampler_LinearClamp, uvw / float3(voxels, voxels, voxels * levels), 0).a) * 5.0);
+            if (weight <= 1e-5) { continue; }
+        }
 
         UNITY_BRANCH
         if (roughBlend < 1.0)
         {
-            float3 uvw = float3((float2)(slot.xy * bins) + binTexel, (float)slot.z + 0.5) * atlasScale;
-            glossy += SAMPLE_TEXTURE3D_LOD(_BasisGIWorldSpecular, sampler_TrilinearClamp, uvw, 0).rgb * weight;
+            float2 atlasUv = ((float2)(slot.xy * bins) + binTexel) * atlasScale;
+            glossy += SAMPLE_TEXTURE2D_ARRAY_LOD(_BasisGIWorldSpecular, sampler_LinearClamp, atlasUv, slot.z, 0).rgb * weight;
         }
         UNITY_BRANCH
         if (roughBlend > 0.0)
